@@ -254,6 +254,13 @@
         margin: 12px auto;
         max-width: 100%;
         padding: 10px 12px;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+      }
+
+      #${THREAD_SUMMARY_ID}.fc-premium-summary-stuck {
+        box-shadow: 0 4px 12px rgba(23, 50, 77, 0.16);
       }
 
       #${THREAD_SUMMARY_ID} strong {
@@ -1183,12 +1190,14 @@
     const existing = document.getElementById(THREAD_SUMMARY_ID);
 
     if (existing instanceof HTMLElement) {
+      installStickySummaryShadow(existing);
       return existing;
     }
 
     const summary = document.createElement("div");
     summary.id = THREAD_SUMMARY_ID;
     posts.before(summary);
+    installStickySummaryShadow(summary);
     return summary;
   }
 
@@ -1202,6 +1211,28 @@
     }
 
     summary.innerHTML = message;
+  }
+
+  /**
+   * @param {HTMLElement | null} summary
+   */
+  function installStickySummaryShadow(summary) {
+    if (!summary || summary.dataset.fcPremiumStickyInstalled === "true") {
+      return;
+    }
+
+    summary.dataset.fcPremiumStickyInstalled = "true";
+
+    const updateShadow = () => {
+      summary.classList.toggle(
+        "fc-premium-summary-stuck",
+        summary.getBoundingClientRect().top <= 0,
+      );
+    };
+
+    window.addEventListener("scroll", updateShadow, { passive: true });
+    window.addEventListener("resize", updateShadow);
+    updateShadow();
   }
 
   /**

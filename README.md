@@ -55,6 +55,8 @@ Thread pages include view controls:
 - `Todas paginas` controls whether the script loads the whole thread or only
   the current page. It is enabled by default.
 
+The summary and controls stay sticky while scrolling through a thread.
+
 The selected view, compact settings, and page-loading mode are saved in
 localStorage and reused on later thread pages.
 
