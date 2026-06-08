@@ -16,6 +16,7 @@
   const STYLE_ID = "fc-premium-style";
   const INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
+  const SELECTED_ATTRIBUTE = "data-fc-premium-selected";
   const POSTS_SELECTOR = "#posts";
   const POST_TABLE_SELECTOR = "table[id^='post']";
   const THREAD_TITLE_SELECTOR =
@@ -36,10 +37,20 @@
    */
 
   /**
+   * @typedef {object} NavigationItem
+   * @property {HTMLElement} element
+   * @property {HTMLAnchorElement | null} link
+   */
+
+  /**
    * @typedef {object} ThreadPage
    * @property {number} pageNumber
    * @property {string} url
    */
+
+  /** @type {NavigationItem[]} */
+  let navigationItems = [];
+  let selectedNavigationIndex = -1;
 
   /**
    * @param {string | null | undefined} text
@@ -55,6 +66,22 @@
    */
   function sleep(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  /**
+   * @param {Element} element
+   * @returns {boolean}
+   */
+  function isVisible(element) {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+
+    return (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden"
+    );
   }
 
   /**
@@ -94,6 +121,13 @@
       location.pathname.endsWith("/showthread.php") &&
       Boolean(getThreadId(new URL(location.href)))
     );
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  function isForumDisplayPage() {
+    return location.pathname.endsWith("/forumdisplay.php");
   }
 
   function ensureStyle() {
@@ -166,6 +200,25 @@
         text-transform: uppercase;
         vertical-align: 1px;
         white-space: nowrap;
+      }
+
+      [${SELECTED_ATTRIBUTE}] {
+        border-radius: 6px;
+        outline: 2px solid #1a73e8 !important;
+        outline-offset: 3px;
+        transition:
+          outline-offset 160ms ease,
+          transform 160ms ease;
+      }
+
+      .fc-premium-post-wrapper[${SELECTED_ATTRIBUTE}],
+      a[${SELECTED_ATTRIBUTE}] {
+        transform: scale(1.005);
+        transform-origin: center center;
+      }
+
+      tr[${SELECTED_ATTRIBUTE}] > td {
+        background: #eef5ff !important;
       }
     `;
 
@@ -267,6 +320,205 @@
         renderTaggedTitle(title);
       }
     }
+  }
+
+  /**
+   * @param {EventTarget | null} target
+   * @returns {boolean}
+   */
+  function isEditableTarget(target) {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    return Boolean(
+      target.closest("input, textarea, select, [contenteditable='true']"),
+    );
+  }
+
+  /**
+   * @param {HTMLAnchorElement} link
+   * @returns {HTMLElement}
+   */
+  function getThreadNavigationOwner(link) {
+    const row = link.closest("tr");
+
+    if (row instanceof HTMLElement) {
+      return row;
+    }
+
+    return link;
+  }
+
+  /**
+   * @returns {NavigationItem[]}
+   */
+  function getThreadTitleNavigationItems() {
+    /** @type {NavigationItem[]} */
+    const items = [];
+
+    for (const link of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
+      if (!(link instanceof HTMLAnchorElement) || !isVisible(link)) {
+        continue;
+      }
+
+      items.push({
+        element: getThreadNavigationOwner(link),
+        link,
+      });
+    }
+
+    return items;
+  }
+
+  /**
+   * @returns {NavigationItem[]}
+   */
+  function getPostNavigationItems() {
+    const posts = getPostsElement();
+
+    if (!posts) {
+      return [];
+    }
+
+    /** @type {NavigationItem[]} */
+    const items = [];
+
+    for (const wrapper of posts.querySelectorAll(".fc-premium-post-wrapper")) {
+      if (!(wrapper instanceof HTMLElement) || !isVisible(wrapper)) {
+        continue;
+      }
+
+      const table = wrapper.querySelector(POST_TABLE_SELECTOR);
+      const postId = table?.id.match(/^post(\d+)$/)?.[1] || null;
+      const link = postId
+        ? wrapper.querySelector(`#postcount${postId}`)
+        : wrapper.querySelector("a[id^='postcount']");
+
+      items.push({
+        element: wrapper,
+        link: link instanceof HTMLAnchorElement ? link : null,
+      });
+    }
+
+    return items;
+  }
+
+  /**
+   * @returns {NavigationItem[]}
+   */
+  function collectNavigationItems() {
+    if (isForumDisplayPage()) {
+      return getThreadTitleNavigationItems();
+    }
+
+    if (isThreadPage()) {
+      return getPostNavigationItems();
+    }
+
+    return [];
+  }
+
+  /**
+   * @param {{ reset?: boolean, scroll?: boolean }} [options]
+   */
+  function refreshNavigation(options = {}) {
+    const previousElement = navigationItems[selectedNavigationIndex]?.element;
+    navigationItems = collectNavigationItems();
+
+    if (navigationItems.length === 0) {
+      selectedNavigationIndex = -1;
+      renderNavigationSelection(options);
+      return;
+    }
+
+    if (options.reset || selectedNavigationIndex < 0) {
+      selectedNavigationIndex = 0;
+    } else {
+      const preservedIndex = navigationItems.findIndex(
+        (item) => item.element === previousElement,
+      );
+      selectedNavigationIndex = preservedIndex >= 0 ? preservedIndex : 0;
+    }
+
+    renderNavigationSelection(options);
+  }
+
+  /**
+   * @param {{ scroll?: boolean }} [options]
+   */
+  function renderNavigationSelection(options = {}) {
+    for (const selected of document.querySelectorAll(`[${SELECTED_ATTRIBUTE}]`)) {
+      selected.removeAttribute(SELECTED_ATTRIBUTE);
+    }
+
+    const selected = navigationItems[selectedNavigationIndex];
+
+    if (!selected) {
+      return;
+    }
+
+    selected.element.setAttribute(SELECTED_ATTRIBUTE, "true");
+
+    if (options.scroll) {
+      selected.element.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }
+  }
+
+  /**
+   * @param {number} direction
+   */
+  function moveNavigation(direction) {
+    if (navigationItems.length === 0) {
+      refreshNavigation({ reset: true });
+    }
+
+    if (navigationItems.length === 0) {
+      return;
+    }
+
+    selectedNavigationIndex = Math.min(
+      Math.max(selectedNavigationIndex + direction, 0),
+      navigationItems.length - 1,
+    );
+    renderNavigationSelection({ scroll: true });
+  }
+
+  function openSelectedNavigationItem() {
+    const selected = navigationItems[selectedNavigationIndex];
+
+    if (!selected?.link) {
+      return;
+    }
+
+    selected.link.click();
+  }
+
+  /**
+   * @param {KeyboardEvent} event
+   */
+  function onNavigationKeyDown(event) {
+    if (isEditableTarget(event.target)) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveNavigation(1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveNavigation(-1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      openSelectedNavigationItem();
+    }
+  }
+
+  function installKeyboardNavigation() {
+    window.addEventListener("keydown", onNavigationKeyDown, true);
   }
 
   /**
@@ -594,6 +846,7 @@
     }
 
     postsElement.append(fragment);
+    refreshNavigation({ reset: true });
   }
 
   /**
@@ -658,6 +911,14 @@
 
     window[INSTANCE_KEY] = true;
     enhanceThreadTitleTags();
+
+    if (isForumDisplayPage() || isThreadPage()) {
+      installKeyboardNavigation();
+    }
+
+    if (isForumDisplayPage()) {
+      refreshNavigation({ reset: true });
+    }
 
     if (!isThreadPage()) {
       return;
