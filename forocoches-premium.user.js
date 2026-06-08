@@ -2141,6 +2141,36 @@
   }
 
   /**
+   * @returns {{ total: number, visible: number, hidden: number }}
+   */
+  function getThreadFilterVisibilityCounts() {
+    const posts = getPostsElement();
+    let total = 0;
+    let visible = 0;
+
+    if (!posts) {
+      return { total, visible, hidden: 0 };
+    }
+
+    for (const wrapper of posts.querySelectorAll(".fc-premium-post-wrapper")) {
+      if (!(wrapper instanceof HTMLElement)) {
+        continue;
+      }
+
+      total += 1;
+
+      if (
+        !wrapper.hasAttribute(HIDDEN_POST_ATTRIBUTE) &&
+        !wrapper.hasAttribute(HIDDEN_POST_PAGE_ATTRIBUTE)
+      ) {
+        visible += 1;
+      }
+    }
+
+    return { total, visible, hidden: total - visible };
+  }
+
+  /**
    * @param {HTMLElement | null} summary
    */
   function renderThreadFilterActions(summary) {
@@ -2155,9 +2185,10 @@
 
     const bar = document.createElement("div");
     bar.id = THREAD_FILTER_ACTIONS_ID;
+    const counts = getThreadFilterVisibilityCounts();
     bar.textContent = `Filtros activos: ${getActiveThreadFilterLabels().join(
       " + ",
-    )}`;
+    )}. Visibles: ${counts.visible}/${counts.total}`;
 
     const clearButton = document.createElement("button");
     clearButton.type = "button";

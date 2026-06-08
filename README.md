@@ -69,7 +69,7 @@ Thread pages include view controls:
 
 The summary and controls stay sticky while scrolling through a thread.
 When author or page filters are active, the sticky summary shows a `Limpiar
-filtros` button to clear all thread filters at once.
+filtros` button and visible-post count to clear all thread filters at once.
 The sticky summary also shows the currently selected visible post, including
 its position in the keyboard navigation list, author, and original page.
 
