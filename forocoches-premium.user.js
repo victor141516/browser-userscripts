@@ -24,10 +24,12 @@
   const TOP_CITED_ID = "fc-premium-top-cited";
   const TOP_AUTHORS_ID = "fc-premium-top-authors";
   const THREAD_PAGES_ID = "fc-premium-thread-pages";
+  const THREAD_PROGRESS_ID = "fc-premium-thread-progress";
   const NAVIGATION_STATUS_ID = "fc-premium-navigation-status";
   const QUOTE_RETURN_ID = "fc-premium-quote-return";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
+  const TOP_CITED_REPLIES_ID = "fc-premium-top-cited-replies";
   const FORUM_SIDEBAR_HIDDEN_CLASS = "fc-premium-forum-sidebar-hidden";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
   const COMPACT_MODE_STORAGE_KEY = "fcPremiumCompactMode";
@@ -95,11 +97,32 @@
    * @property {number} count
    */
 
+  /**
+   * @typedef {object} ThreadLoadState
+   * @property {number} loadedPages
+   * @property {number} targetPages
+   * @property {number} totalPages
+   * @property {number} loadedPosts
+   * @property {boolean} isLoading
+   */
+
   /** @type {NavigationItem[]} */
   let navigationItems = [];
   let selectedNavigationIndex = -1;
   /** @type {PostRecord[]} */
   let loadedThreadPosts = [];
+  /** @type {ThreadPage[]} */
+  let threadPages = [];
+  /** @type {Set<number>} */
+  let loadedThreadPageNumbers = new Set();
+  /** @type {ThreadLoadState} */
+  let threadLoadState = {
+    loadedPages: 0,
+    targetPages: 0,
+    totalPages: 0,
+    loadedPosts: 0,
+    isLoading: false,
+  };
   /** @type {ThreadViewMode} */
   let currentThreadViewMode = getSavedThreadViewMode();
   let compactModeEnabled = getSavedCompactMode();
@@ -358,6 +381,29 @@
         color: #0b57d0;
       }
 
+      #${THREAD_PROGRESS_ID} {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+
+      .fc-premium-spinner {
+        animation: fc-premium-spin 720ms linear infinite;
+        border: 2px solid #c7d8ff;
+        border-radius: 999px;
+        border-top-color: #0b57d0;
+        display: inline-block;
+        height: 12px;
+        width: 12px;
+      }
+
+      @keyframes fc-premium-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       #${THREAD_CONTROLS_ID} {
         display: flex;
         flex-wrap: wrap;
@@ -389,6 +435,14 @@
         flex-wrap: wrap;
         gap: 6px;
         margin-top: 8px;
+      }
+
+      #${THREAD_PAGES_ID} {
+        gap: 8px;
+      }
+
+      #${THREAD_PAGES_ID} table {
+        width: auto;
       }
 
       #${TOP_CITED_ID} span,
@@ -423,6 +477,33 @@
         background: #0b57d0;
         border-color: #0b57d0;
         color: #fff;
+        text-decoration: none;
+      }
+
+      #${THREAD_PAGES_ID} .fc-premium-page-nav {
+        border-collapse: separate;
+        border-spacing: 1px;
+        font: 12px/1 Verdana, Arial, sans-serif;
+      }
+
+      #${THREAD_PAGES_ID} .fc-premium-page-nav button {
+        background: transparent;
+        border: 0;
+        color: #0b57d0;
+        cursor: pointer;
+        font: 700 12px/1 Verdana, Arial, sans-serif;
+        padding: 0;
+      }
+
+      #${THREAD_PAGES_ID} .fc-premium-page-nav button:hover {
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      #${THREAD_PAGES_ID} .fc-premium-page-nav td[aria-current="page"] button,
+      #${THREAD_PAGES_ID} .fc-premium-page-nav td[aria-current="true"] button {
+        color: #17324d;
+        cursor: default;
         text-decoration: none;
       }
 
@@ -628,6 +709,63 @@
       .fc-premium-post-wrapper[data-fc-premium-rank="1"] {
         background: #fff0bd;
         box-shadow: 0 0 0 3px #d79721;
+      }
+
+      #${TOP_CITED_REPLIES_ID} {
+        background: #fffdfa;
+        border: 1px solid #f0c36d;
+        border-radius: 6px;
+        box-sizing: border-box;
+        color: #4d3417;
+        font: 12px/1.35 Verdana, Arial, sans-serif;
+        margin: 0 0 10px;
+        padding: 8px;
+      }
+
+      #${TOP_CITED_REPLIES_ID} strong {
+        color: #9a5a00;
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .fc-premium-reply-preview-list {
+        display: grid;
+        gap: 6px;
+      }
+
+      .fc-premium-reply-preview {
+        background: #fff;
+        border: 1px solid #f0c36d;
+        border-radius: 5px;
+        box-sizing: border-box;
+        cursor: pointer;
+        max-height: 32px;
+        overflow: hidden;
+        padding: 6px 8px;
+        transition:
+          background-color 140ms ease,
+          max-height 180ms ease;
+      }
+
+      .fc-premium-reply-preview:hover,
+      .fc-premium-reply-preview:focus-within {
+        background: #fff7d6;
+        max-height: 180px;
+      }
+
+      .fc-premium-reply-preview button {
+        background: transparent;
+        border: 0;
+        color: #0b57d0;
+        cursor: pointer;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        margin: 0 6px 0 0;
+        padding: 0;
+      }
+
+      .fc-premium-reply-preview p {
+        color: #3c4043;
+        margin: 5px 0 0;
       }
 
       .fc-premium-post-badges {
@@ -1704,10 +1842,14 @@
   }
 
   /**
-   * @param {HTMLElement} element
+   * @param {HTMLElement | undefined} element
    * @returns {string | null}
    */
   function getPostIdFromNavigationElement(element) {
+    if (!(element instanceof HTMLElement)) {
+      return null;
+    }
+
     const postTable = element.querySelector(POST_TABLE_SELECTOR);
     const postId = postTable?.id.match(/^post(\d+)$/)?.[1];
 
@@ -2173,6 +2315,49 @@
 
   /**
    * @param {HTMLElement | null} summary
+   * @param {ThreadLoadState} state
+   */
+  function renderThreadProgress(summary, state) {
+    if (!(summary instanceof HTMLElement)) {
+      return;
+    }
+
+    let progress = document.getElementById(THREAD_PROGRESS_ID);
+
+    if (!(progress instanceof HTMLElement)) {
+      progress = document.createElement("div");
+      progress.id = THREAD_PROGRESS_ID;
+      summary.prepend(progress);
+    }
+
+    progress.textContent = "";
+
+    if (state.isLoading) {
+      const spinner = document.createElement("span");
+      spinner.className = "fc-premium-spinner";
+      spinner.setAttribute("aria-hidden", "true");
+      progress.append(spinner);
+    }
+
+    const text = document.createElement("span");
+    const quotedPosts = loadedThreadPosts.filter(
+      (post) => post.replyCount > 0,
+    ).length;
+    const totalReplies = loadedThreadPosts.reduce(
+      (total, post) => total + post.replyCount,
+      0,
+    );
+    const pageLabel = `${state.loadedPages}/${state.targetPages}`;
+    const loadingText = state.isLoading
+      ? `cargando paginas ${pageLabel}`
+      : `${pageLabel} paginas cargadas`;
+
+    text.innerHTML = `<strong>Forocoches Premium:</strong> ${loadingText}. ${state.loadedPosts} mensajes cargados. ${quotedPosts} mensajes tienen citas (${totalReplies} citas en total).`;
+    progress.append(text);
+  }
+
+  /**
+   * @param {HTMLElement | null} summary
    */
   function installStickySummaryShadow(summary) {
     if (!summary || summary.dataset.fcPremiumStickyInstalled === "true") {
@@ -2215,8 +2400,42 @@
   /**
    * @param {HTMLElement | null} summary
    */
+  function renderThreadSummaryMenu(summary) {
+    if (!(summary instanceof HTMLElement)) {
+      return;
+    }
+
+    renderThreadProgress(summary, threadLoadState);
+    renderTopCitedLinks(summary);
+    renderTopAuthorLinks(summary);
+    renderThreadPageLinks(summary);
+    renderThreadControls(summary);
+    renderAuthorFilterBar();
+    renderThreadFilterActions(summary);
+    renderNavigationStatus(navigationItems[selectedNavigationIndex] || null);
+    renderQuoteReturnControl(summary);
+  }
+
+  /**
+   * @param {string} postId
+   */
+  function jumpToLoadedPost(postId) {
+    const post = loadedThreadPosts.find((item) => item.id === postId);
+
+    if (post) {
+      activePageFilter = post.pageNumber;
+      renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+      renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+    }
+
+    selectPostById(postId);
+  }
+
+  /**
+   * @param {HTMLElement | null} summary
+   */
   function renderThreadControls(summary) {
-    if (!summary || loadedThreadPosts.length === 0) {
+    if (!summary) {
       return;
     }
 
@@ -2224,24 +2443,6 @@
 
     const controls = document.createElement("div");
     controls.id = THREAD_CONTROLS_ID;
-
-    for (const mode of THREAD_VIEW_MODES) {
-      if (!isThreadViewMode(mode)) {
-        continue;
-      }
-
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = getThreadViewModeLabel(mode);
-      button.setAttribute(
-        "aria-pressed",
-        String(mode === currentThreadViewMode),
-      );
-      button.addEventListener("click", () => {
-        switchThreadViewMode(mode);
-      });
-      controls.append(button);
-    }
 
     const compactButton = document.createElement("button");
     compactButton.type = "button";
@@ -2283,7 +2484,7 @@
    * @param {HTMLElement | null} summary
    */
   function renderTopCitedLinks(summary) {
-    if (!summary || loadedThreadPosts.length === 0) {
+    if (!summary) {
       return;
     }
 
@@ -2293,16 +2494,21 @@
       .filter((post) => post.replyCount > 0)
       .slice(0, 5);
 
-    if (topPosts.length === 0) {
-      return;
-    }
-
     const strip = document.createElement("div");
     strip.id = TOP_CITED_ID;
 
     const label = document.createElement("span");
     label.textContent = "Top citados:";
     strip.append(label);
+
+    if (topPosts.length === 0) {
+      const empty = document.createElement("span");
+      empty.textContent =
+        loadedThreadPosts.length === 0 ? "cargando..." : "sin citas todavia";
+      strip.append(empty);
+      summary.append(strip);
+      return;
+    }
 
     for (const post of topPosts) {
       const link = document.createElement("a");
@@ -2311,15 +2517,8 @@
         post.replyCount
       })`;
       link.addEventListener("click", (event) => {
-        const table = document.getElementById(`post${post.id}`);
-        const wrapper = table?.closest(".fc-premium-post-wrapper");
-
-        if (!(wrapper instanceof HTMLElement)) {
-          return;
-        }
-
         event.preventDefault();
-        selectNavigationElement(wrapper);
+        jumpToLoadedPost(post.id);
       });
       strip.append(link);
     }
@@ -2373,7 +2572,7 @@
    * @param {HTMLElement | null} summary
    */
   function renderTopAuthorLinks(summary) {
-    if (!summary || loadedThreadPosts.length === 0) {
+    if (!summary) {
       return;
     }
 
@@ -2391,6 +2590,15 @@
     const label = document.createElement("span");
     label.textContent = "Top autores:";
     strip.append(label);
+
+    if (topAuthors.length === 0) {
+      const empty = document.createElement("span");
+      empty.textContent =
+        loadedThreadPosts.length === 0 ? "cargando..." : "calculando...";
+      strip.append(empty);
+      summary.append(strip);
+      return;
+    }
 
     for (const author of topAuthors) {
       const button = document.createElement("button");
@@ -2435,16 +2643,30 @@
   /**
    * @param {number} pageNumber
    */
+  function setPageFilter(pageNumber) {
+    if (!isThreadPage()) {
+      return;
+    }
+
+    activePageFilter = pageNumber;
+    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+  }
+
+  /**
+   * @param {number} pageNumber
+   */
   function togglePageFilter(pageNumber) {
     if (!isThreadPage()) {
       return;
     }
 
-    activePageFilter = activePageFilter === pageNumber ? null : pageNumber;
-    applyPageFilter();
-    renderThreadPageLinks(document.getElementById(THREAD_SUMMARY_ID));
-    renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
-    refreshNavigation({ reset: true, persist: false });
+    if (activePageFilter === pageNumber) {
+      clearPageFilter();
+      return;
+    }
+
+    setPageFilter(pageNumber);
   }
 
   function clearPageFilter() {
@@ -2453,10 +2675,55 @@
     }
 
     activePageFilter = null;
-    applyPageFilter();
-    renderThreadPageLinks(document.getElementById(THREAD_SUMMARY_ID));
-    renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
-    refreshNavigation({ reset: true, persist: false });
+    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+  }
+
+  /**
+   * @param {number} totalPages
+   * @param {number | null} currentPage
+   * @returns {number[]}
+   */
+  function getVisibleThreadPageNumbers(totalPages, currentPage) {
+    if (totalPages <= 11) {
+      return Array.from({ length: totalPages }, (_value, index) => index + 1);
+    }
+
+    const page = currentPage || 1;
+    const maxVisible = 11;
+    const halfWindow = Math.floor(maxVisible / 2);
+    const start = Math.max(1, Math.min(page - halfWindow, totalPages - maxVisible + 1));
+
+    return Array.from({ length: maxVisible }, (_value, index) => start + index);
+  }
+
+  /**
+   * @param {string} text
+   * @param {string} className
+   * @param {boolean} pressed
+   * @param {boolean} enabled
+   * @param {() => void} onClick
+   * @returns {HTMLTableCellElement}
+   */
+  function createThreadPageNavCell(text, className, pressed, enabled, onClick) {
+    const cell = document.createElement("td");
+    cell.className = className;
+
+    if (pressed) {
+      cell.setAttribute("aria-current", text === "Todas" ? "true" : "page");
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.disabled = !enabled;
+
+    if (enabled) {
+      button.addEventListener("click", onClick);
+    }
+
+    cell.append(button);
+    return cell;
   }
 
   /**
@@ -2498,16 +2765,17 @@
   function renderThreadPageLinks(summary) {
     document.getElementById(THREAD_PAGES_ID)?.remove();
 
-    if (!summary || loadedThreadPosts.length === 0) {
+    if (!summary || threadPages.length <= 1) {
       return;
     }
 
     const pages = getPageSummaries(loadedThreadPosts);
-
-    if (pages.length <= 1) {
-      applyPageFilter();
-      return;
-    }
+    const countByPage = new Map(
+      pages.map((page) => [page.pageNumber, page.count]),
+    );
+    const totalPages = threadPages.length;
+    const currentPage = activePageFilter || null;
+    const visiblePages = getVisibleThreadPageNumbers(totalPages, currentPage);
 
     const strip = document.createElement("div");
     strip.id = THREAD_PAGES_ID;
@@ -2516,27 +2784,73 @@
     label.textContent = "Paginas:";
     strip.append(label);
 
-    const allButton = document.createElement("button");
-    allButton.type = "button";
-    allButton.textContent = `Todas (${loadedThreadPosts.length})`;
-    allButton.setAttribute("aria-pressed", String(!activePageFilter));
-    allButton.addEventListener("click", clearPageFilter);
-    strip.append(allButton);
+    const nav = document.createElement("table");
+    nav.className = "tborder fc-premium-page-nav";
+    nav.cellPadding = "3";
+    nav.cellSpacing = "1";
+    nav.border = "0";
 
-    for (const page of pages) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = `Pag. ${page.pageNumber} (${page.count})`;
-      button.setAttribute(
-        "aria-pressed",
-        String(activePageFilter === page.pageNumber),
+    const body = document.createElement("tbody");
+    const row = document.createElement("tr");
+    const statusCell = document.createElement("td");
+    statusCell.className = "vbmenu_control";
+    statusCell.style.fontWeight = "normal";
+    statusCell.textContent = activePageFilter
+      ? `Pag ${activePageFilter} de ${totalPages}`
+      : `Pag 1 de ${totalPages}`;
+    row.append(statusCell);
+
+    row.append(
+      createThreadPageNavCell(
+        "Todas",
+        activePageFilter ? "alt1" : "alt2",
+        !activePageFilter,
+        true,
+        clearPageFilter,
+      ),
+    );
+
+    for (const pageNumber of visiblePages) {
+      const count = countByPage.get(pageNumber);
+      const title = count
+        ? `Pagina ${pageNumber}: ${count} mensajes cargados`
+        : `Pagina ${pageNumber}: pendiente de cargar`;
+      const cell = createThreadPageNavCell(
+        String(pageNumber),
+        activePageFilter === pageNumber ? "alt2" : "alt1",
+        activePageFilter === pageNumber,
+        true,
+        () => setPageFilter(pageNumber),
       );
-      button.addEventListener("click", () => {
-        togglePageFilter(page.pageNumber);
-      });
-      strip.append(button);
+      cell.title = title;
+      row.append(cell);
     }
 
+    const nextPage = activePageFilter
+      ? Math.min(activePageFilter + 1, totalPages)
+      : 1;
+    row.append(
+      createThreadPageNavCell(
+        ">",
+        "alt1",
+        false,
+        Boolean(activePageFilter && activePageFilter < totalPages),
+        () => setPageFilter(nextPage),
+      ),
+    );
+    row.append(
+      createThreadPageNavCell(
+        "Ultimo »",
+        "alt1",
+        activePageFilter === totalPages,
+        true,
+        () => setPageFilter(totalPages),
+      ),
+    );
+
+    body.append(row);
+    nav.append(body);
+    strip.append(nav);
     summary.append(strip);
     applyPageFilter();
   }
@@ -2566,14 +2880,8 @@
 
     activeAuthorFilter = null;
     activePageFilter = null;
-    applyAuthorFilter();
-    applyPageFilter();
-
-    const summary = document.getElementById(THREAD_SUMMARY_ID);
-    renderAuthorFilterBar();
-    renderThreadPageLinks(summary);
-    renderThreadFilterActions(summary);
-    refreshNavigation({ reset: true, persist: false });
+    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
 
   /**
@@ -2835,6 +3143,80 @@
   }
 
   /**
+   * @param {PostRecord[]} posts
+   * @returns {PostRecord[]}
+   */
+  function sortPostsChronologically(posts) {
+    return posts
+      .slice()
+      .sort((left, right) => left.originalIndex - right.originalIndex);
+  }
+
+  /**
+   * @param {PostRecord[]} posts
+   * @returns {PostRecord | null}
+   */
+  function getTopCitedPost(posts) {
+    return sortPosts(posts).find((post) => post.replyCount > 0) || null;
+  }
+
+  /**
+   * @param {PostRecord[]} posts
+   * @returns {PostRecord | null}
+   */
+  function getPromotedCitedPost(posts) {
+    const firstPost = sortPostsChronologically(posts)[0];
+
+    return (
+      sortPosts(posts).find(
+        (post) => post.replyCount > 0 && post.id !== firstPost?.id,
+      ) || null
+    );
+  }
+
+  /**
+   * @param {PostRecord[]} posts
+   * @returns {PostRecord[]}
+   */
+  function getFeaturedChronologicalPosts(posts) {
+    const chronologicalPosts = sortPostsChronologically(posts);
+
+    if (activePageFilter) {
+      return chronologicalPosts;
+    }
+
+    const firstPost = chronologicalPosts[0];
+    const topCitedPost = getPromotedCitedPost(posts);
+
+    if (!firstPost || !topCitedPost || topCitedPost.id === firstPost.id) {
+      return chronologicalPosts;
+    }
+
+    return [
+      firstPost,
+      topCitedPost,
+      ...chronologicalPosts.filter(
+        (post) => post.id !== firstPost.id && post.id !== topCitedPost.id,
+      ),
+    ];
+  }
+
+  /**
+   * @param {PostRecord} post
+   * @returns {string}
+   */
+  function getPostTextSnippet(post) {
+    const template = document.createElement("template");
+    template.innerHTML = post.html;
+
+    const message =
+      template.content.querySelector(`#post_message_${post.id}`) ||
+      template.content.querySelector("[id^='post_message_']");
+
+    return normalizeText(message?.textContent).slice(0, 260);
+  }
+
+  /**
    * @param {ThreadViewMode} mode
    * @returns {string}
    */
@@ -2856,17 +3238,9 @@
    * @returns {PostRecord[]}
    */
   function getPostsForView(posts, mode) {
-    if (mode === "original") {
-      return posts
-        .slice()
-        .sort((left, right) => left.originalIndex - right.originalIndex);
-    }
+    void mode;
 
-    if (mode === "cited") {
-      return sortPosts(posts.filter((post) => post.replyCount > 0));
-    }
-
-    return sortPosts(posts);
+    return getFeaturedChronologicalPosts(posts);
   }
 
   /**
@@ -3055,6 +3429,64 @@
   }
 
   /**
+   * @param {PostRecord[]} posts
+   * @param {Map<string, PostRecord>} postById
+   * @returns {HTMLElement | null}
+   */
+  function renderTopCitedReplyPreviews(posts, postById) {
+    if (activePageFilter) {
+      return null;
+    }
+
+    const topPost = getPromotedCitedPost(posts) || getTopCitedPost(posts);
+
+    if (!topPost || topPost.replyingPostIds.length === 0) {
+      return null;
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.id = TOP_CITED_REPLIES_ID;
+
+    const heading = document.createElement("strong");
+    heading.textContent = `Respuestas al mensaje destacado #${topPost.postNumber}`;
+    wrapper.append(heading);
+
+    const list = document.createElement("div");
+    list.className = "fc-premium-reply-preview-list";
+
+    for (const replyId of topPost.replyingPostIds.slice(0, 8)) {
+      const reply = postById.get(replyId);
+
+      if (!reply) {
+        continue;
+      }
+
+      const item = document.createElement("div");
+      item.className = "fc-premium-reply-preview";
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `#${reply.postNumber} ${reply.author || "mensaje"}`;
+      button.addEventListener("click", () => {
+        jumpToLoadedPost(reply.id);
+      });
+      item.append(button);
+
+      const text = document.createElement("p");
+      text.textContent = getPostTextSnippet(reply);
+      item.append(text);
+      list.append(item);
+    }
+
+    if (list.childElementCount === 0) {
+      return null;
+    }
+
+    wrapper.append(list);
+    return wrapper;
+  }
+
+  /**
    * @param {PostRecord} post
    * @param {number} rank
    * @param {Map<string, PostRecord>} postById
@@ -3192,12 +3624,20 @@
       return;
     }
 
-    const savedPostId = getSavedSelectedPostId();
+    const selectedPostId =
+      getPostIdFromNavigationElement(
+        navigationItems[selectedNavigationIndex]?.element,
+      ) || getSavedSelectedPostId();
     postsElement.textContent = "";
 
     const fragment = document.createDocumentFragment();
     const postById = new Map(posts.map((post) => [post.id, post]));
     const rankByPostId = getReplyRankByPostId(posts);
+    const preview = renderTopCitedReplyPreviews(posts, postById);
+
+    if (preview) {
+      fragment.append(preview);
+    }
 
     for (const post of getPostsForView(posts, mode)) {
       fragment.append(
@@ -3211,8 +3651,16 @@
     applyPageFilter();
     refreshNavigation({ reset: true, persist: false });
 
-    if (savedPostId) {
-      selectPostById(savedPostId);
+    if (selectedPostId) {
+      const selectedTable = document.getElementById(`post${selectedPostId}`);
+      const selectedWrapper = selectedTable?.closest(".fc-premium-post-wrapper");
+
+      if (
+        selectedWrapper instanceof HTMLElement &&
+        isVisible(selectedWrapper)
+      ) {
+        selectPostById(selectedPostId);
+      }
     }
   }
 
@@ -3222,6 +3670,7 @@
   async function enhanceThreadPage() {
     ensureStyle();
 
+    const currentPageDocument = parseHtml(document.documentElement.outerHTML);
     const summary = ensureThreadSummary();
     const allPages = getThreadPages();
     const currentPageNumber = getPageNumber(new URL(location.href));
@@ -3232,53 +3681,59 @@
     const allPosts = [];
     let pageOffset = 0;
 
-    setSummary(
-      summary,
-      `<strong>Forocoches Premium:</strong> cargando ${pages.length}/${allPages.length} paginas para ordenar por citas...`,
-    );
+    threadPages = allPages;
+    loadedThreadPosts = [];
+    loadedThreadPageNumbers = new Set();
+    threadLoadState = {
+      loadedPages: 0,
+      targetPages: pages.length,
+      totalPages: allPages.length,
+      loadedPosts: 0,
+      isLoading: pages.length > 0,
+    };
+
+    if (summary) {
+      summary.textContent = "";
+    }
+
+    renderThreadSummaryMenu(summary);
 
     for (const page of pages) {
       const doc =
         page.pageNumber === currentPageNumber
-          ? document
+          ? currentPageDocument
           : await fetchThreadDocument(page.url);
       const pagePosts = collectPosts(doc, page.pageNumber, pageOffset);
       allPosts.push(...pagePosts);
       pageOffset += pagePosts.length;
+      loadedThreadPageNumbers.add(page.pageNumber);
 
-      setSummary(
-        summary,
-        `<strong>Forocoches Premium:</strong> cargadas ${allPosts.length} mensajes de ${pages.length}/${allPages.length} paginas.`,
-      );
+      applyReplyCounts(allPosts);
+      applyOriginalPosterFlags(allPosts);
+      loadedThreadPosts = allPosts.slice();
+      threadLoadState = {
+        ...threadLoadState,
+        loadedPages: loadedThreadPageNumbers.size,
+        loadedPosts: loadedThreadPosts.length,
+        isLoading: true,
+      };
+
+      renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+      renderThreadSummaryMenu(summary);
 
       if (page.pageNumber !== pages[pages.length - 1].pageNumber) {
         await sleep(PAGE_LOAD_DELAY_MS);
       }
     }
 
-    applyReplyCounts(allPosts);
-    applyOriginalPosterFlags(allPosts);
-    loadedThreadPosts = allPosts;
+    threadLoadState = {
+      ...threadLoadState,
+      loadedPages: loadedThreadPageNumbers.size,
+      loadedPosts: loadedThreadPosts.length,
+      isLoading: false,
+    };
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
-
-    const quotedPosts = allPosts.filter((post) => post.replyCount > 0).length;
-    const totalReplies = allPosts.reduce(
-      (total, post) => total + post.replyCount,
-      0,
-    );
-
-    setSummary(
-      summary,
-      `<strong>Forocoches Premium:</strong> ${allPosts.length} mensajes de ${pages.length}/${allPages.length} paginas. ${quotedPosts} mensajes tienen citas (${totalReplies} citas en total) y se han movido arriba.`,
-    );
-    renderTopCitedLinks(summary);
-    renderTopAuthorLinks(summary);
-    renderThreadPageLinks(summary);
-    renderThreadControls(summary);
-    renderAuthorFilterBar();
-    renderThreadFilterActions(summary);
-    renderNavigationStatus(navigationItems[selectedNavigationIndex] || null);
-    renderQuoteReturnControl(summary);
+    renderThreadSummaryMenu(summary);
   }
 
   /**
