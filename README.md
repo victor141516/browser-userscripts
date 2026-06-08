@@ -53,6 +53,7 @@ Thread pages include view controls:
 - `Top citados` links jump directly to the most quoted posts.
 - `Top autores` buttons filter to the most active repeated authors in the
   loaded thread.
+- `Paginas` buttons filter the rendered posts by their original thread page.
 - `Citas` sorts every loaded post by quote count.
 - `Original` restores chronological thread order while keeping citation badges.
 - `Solo citados` shows only posts that were quoted by another post.
@@ -95,7 +96,7 @@ On thread pages:
 - After the quote-ranking pass finishes, the first sorted post is selected.
 - Arrow Up and Arrow Down move between sorted posts.
 - Home and End jump to the first or last rendered post.
-- Escape clears an active author filter.
+- Escape clears an active author or page filter.
 - Enter opens the selected post permalink.
 
 Keyboard handling ignores inputs, textareas, selects, and contenteditable

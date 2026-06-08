@@ -19,6 +19,7 @@
   const AUTHOR_FILTER_BAR_ID = "fc-premium-author-filter-bar";
   const TOP_CITED_ID = "fc-premium-top-cited";
   const TOP_AUTHORS_ID = "fc-premium-top-authors";
+  const THREAD_PAGES_ID = "fc-premium-thread-pages";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
@@ -35,6 +36,7 @@
     "a[id^='thread_title_'][href*='showthread.php?t=']";
   const HIDDEN_THREAD_ATTRIBUTE = "data-fc-premium-tag-hidden";
   const HIDDEN_POST_ATTRIBUTE = "data-fc-premium-author-hidden";
+  const HIDDEN_POST_PAGE_ATTRIBUTE = "data-fc-premium-page-hidden";
   const PAGE_LOAD_DELAY_MS = 250;
   const TAG_PATTERN = /\+([A-Za-z0-9_-]+)/g;
   const THREAD_VIEW_MODES = ["ranked", "original", "cited"];
@@ -78,6 +80,12 @@
    * @property {number} firstIndex
    */
 
+  /**
+   * @typedef {object} PageSummary
+   * @property {number} pageNumber
+   * @property {number} count
+   */
+
   /** @type {NavigationItem[]} */
   let navigationItems = [];
   let selectedNavigationIndex = -1;
@@ -92,6 +100,8 @@
   let activeTagFilter = null;
   /** @type {string | null} */
   let activeAuthorFilter = null;
+  /** @type {number | null} */
+  let activePageFilter = null;
 
   /**
    * @param {string | null | undefined} text
@@ -342,7 +352,8 @@
       }
 
       #${TOP_CITED_ID},
-      #${TOP_AUTHORS_ID} {
+      #${TOP_AUTHORS_ID},
+      #${THREAD_PAGES_ID} {
         align-items: center;
         display: flex;
         flex-wrap: wrap;
@@ -351,12 +362,14 @@
       }
 
       #${TOP_CITED_ID} span,
-      #${TOP_AUTHORS_ID} span {
+      #${TOP_AUTHORS_ID} span,
+      #${THREAD_PAGES_ID} span {
         font-weight: 700;
       }
 
       #${TOP_CITED_ID} a,
-      #${TOP_AUTHORS_ID} button {
+      #${TOP_AUTHORS_ID} button,
+      #${THREAD_PAGES_ID} button {
         background: #fff;
         border: 1px solid #b7d1ff;
         border-radius: 999px;
@@ -369,10 +382,18 @@
       }
 
       #${TOP_CITED_ID} a:hover,
-      #${TOP_AUTHORS_ID} button:hover {
+      #${TOP_AUTHORS_ID} button:hover,
+      #${THREAD_PAGES_ID} button:hover {
         border-color: #0b57d0;
         text-decoration: underline;
         text-underline-offset: 2px;
+      }
+
+      #${THREAD_PAGES_ID} button[aria-pressed="true"] {
+        background: #0b57d0;
+        border-color: #0b57d0;
+        color: #fff;
+        text-decoration: none;
       }
 
       #${TAG_FILTER_BAR_ID} {
@@ -430,6 +451,10 @@
       }
 
       .fc-premium-post-wrapper[${HIDDEN_POST_ATTRIBUTE}] {
+        display: none !important;
+      }
+
+      .fc-premium-post-wrapper[${HIDDEN_POST_PAGE_ATTRIBUTE}] {
         display: none !important;
       }
 
@@ -1094,6 +1119,9 @@
     } else if (event.key === "Escape" && activeAuthorFilter) {
       event.preventDefault();
       clearAuthorFilter();
+    } else if (event.key === "Escape" && activePageFilter) {
+      event.preventDefault();
+      clearPageFilter();
     } else if (event.key === "Enter") {
       event.preventDefault();
       openSelectedNavigationItem();
@@ -1560,6 +1588,140 @@
   }
 
   /**
+   * @param {PostRecord[]} posts
+   * @returns {PageSummary[]}
+   */
+  function getPageSummaries(posts) {
+    /** @type {Map<number, PageSummary>} */
+    const summariesByPage = new Map();
+
+    for (const post of posts) {
+      const summary = summariesByPage.get(post.pageNumber);
+
+      if (summary) {
+        summary.count += 1;
+      } else {
+        summariesByPage.set(post.pageNumber, {
+          pageNumber: post.pageNumber,
+          count: 1,
+        });
+      }
+    }
+
+    return Array.from(summariesByPage.values()).sort(
+      (left, right) => left.pageNumber - right.pageNumber,
+    );
+  }
+
+  /**
+   * @param {number} pageNumber
+   */
+  function togglePageFilter(pageNumber) {
+    if (!isThreadPage()) {
+      return;
+    }
+
+    activePageFilter =
+      activePageFilter === pageNumber ? null : pageNumber;
+    applyPageFilter();
+    renderThreadPageLinks(document.getElementById(THREAD_SUMMARY_ID));
+    refreshNavigation({ reset: true, persist: false });
+  }
+
+  function clearPageFilter() {
+    if (!activePageFilter) {
+      return;
+    }
+
+    activePageFilter = null;
+    applyPageFilter();
+    renderThreadPageLinks(document.getElementById(THREAD_SUMMARY_ID));
+    refreshNavigation({ reset: true, persist: false });
+  }
+
+  /**
+   * @returns {{ total: number, visible: number }}
+   */
+  function applyPageFilter() {
+    const posts = getPostsElement();
+    let total = 0;
+    let visible = 0;
+
+    if (!posts) {
+      return { total, visible };
+    }
+
+    for (const wrapper of posts.querySelectorAll(".fc-premium-post-wrapper")) {
+      if (!(wrapper instanceof HTMLElement)) {
+        continue;
+      }
+
+      const pageNumber = Number(wrapper.dataset.fcPremiumOriginalPage || "0");
+      const matches = !activePageFilter || pageNumber === activePageFilter;
+
+      total += 1;
+
+      if (matches) {
+        visible += 1;
+        wrapper.removeAttribute(HIDDEN_POST_PAGE_ATTRIBUTE);
+      } else {
+        wrapper.setAttribute(HIDDEN_POST_PAGE_ATTRIBUTE, "true");
+      }
+    }
+
+    return { total, visible };
+  }
+
+  /**
+   * @param {HTMLElement | null} summary
+   */
+  function renderThreadPageLinks(summary) {
+    document.getElementById(THREAD_PAGES_ID)?.remove();
+
+    if (!summary || loadedThreadPosts.length === 0) {
+      return;
+    }
+
+    const pages = getPageSummaries(loadedThreadPosts);
+
+    if (pages.length <= 1) {
+      applyPageFilter();
+      return;
+    }
+
+    const strip = document.createElement("div");
+    strip.id = THREAD_PAGES_ID;
+
+    const label = document.createElement("span");
+    label.textContent = "Paginas:";
+    strip.append(label);
+
+    const allButton = document.createElement("button");
+    allButton.type = "button";
+    allButton.textContent = `Todas (${loadedThreadPosts.length})`;
+    allButton.setAttribute("aria-pressed", String(!activePageFilter));
+    allButton.addEventListener("click", clearPageFilter);
+    strip.append(allButton);
+
+    for (const page of pages) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `Pag. ${page.pageNumber} (${page.count})`;
+      button.setAttribute(
+        "aria-pressed",
+        String(activePageFilter === page.pageNumber),
+      );
+      button.addEventListener("click", () => {
+        togglePageFilter(page.pageNumber);
+      });
+      strip.append(button);
+    }
+
+    summary.append(strip);
+    applyPageFilter();
+  }
+
+  /**
    * @param {string} authorKey
    * @returns {string}
    */
@@ -2021,6 +2183,7 @@
 
     postsElement.append(fragment);
     renderAuthorFilterBar();
+    applyPageFilter();
     refreshNavigation({ reset: true, persist: false });
 
     if (savedPostId) {
@@ -2085,6 +2248,7 @@
     );
     renderTopCitedLinks(summary);
     renderTopAuthorLinks(summary);
+    renderThreadPageLinks(summary);
     renderThreadControls(summary);
     renderAuthorFilterBar();
   }
