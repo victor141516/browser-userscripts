@@ -30,6 +30,7 @@
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   const TOP_CITED_REPLIES_ID = "fc-premium-top-cited-replies";
+  const GLOBAL_COMPACT_TOGGLE_ID = "fc-premium-global-compact-toggle";
   const FORUM_SIDEBAR_HIDDEN_CLASS = "fc-premium-forum-sidebar-hidden";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
   const COMPACT_MODE_STORAGE_KEY = "fcPremiumCompactMode";
@@ -106,6 +107,26 @@
    * @property {boolean} isLoading
    */
 
+  /**
+   * @typedef {object} ThreadGraph
+   * @property {Map<string, PostRecord>} postById
+   * @property {Map<string, Set<string>>} quotedByPostId
+   * @property {Map<string, Set<string>>} quotingByPostId
+   * @property {Map<string, Set<string>>} neighborsByPostId
+   * @property {Map<string, string | null>} chronologicalNextByPostId
+   */
+
+  /**
+   * @typedef {"quoted-sources" | "quoted-by" | "conversation"} GraphViewType
+   */
+
+  /**
+   * @typedef {object} ActiveGraphView
+   * @property {GraphViewType} type
+   * @property {string} rootPostId
+   * @property {string | null} relatedPostId
+   */
+
   /** @type {NavigationItem[]} */
   let navigationItems = [];
   let selectedNavigationIndex = -1;
@@ -123,6 +144,10 @@
     loadedPosts: 0,
     isLoading: false,
   };
+  /** @type {ThreadGraph} */
+  let threadGraph = createEmptyThreadGraph();
+  /** @type {ActiveGraphView | null} */
+  let activeGraphView = null;
   /** @type {ThreadViewMode} */
   let currentThreadViewMode = getSavedThreadViewMode();
   let compactModeEnabled = getSavedCompactMode();
@@ -137,6 +162,8 @@
   let activePageFilter = null;
   /** @type {string | null} */
   let quoteReturnPostId = null;
+  /** @type {string | null} */
+  let quoteReturnQuotedPostId = null;
 
   /**
    * @param {string | null | undefined} text
@@ -262,10 +289,57 @@
     compactModeEnabled = enabled;
     localStorage.setItem(COMPACT_MODE_STORAGE_KEY, String(enabled));
     applyCompactMode();
+    updateGlobalCompactToggle();
   }
 
   function applyCompactMode() {
     document.body.classList.toggle(COMPACT_MODE_CLASS, compactModeEnabled);
+  }
+
+  function updateGlobalCompactToggle() {
+    const toggle = document.getElementById(GLOBAL_COMPACT_TOGGLE_ID);
+
+    if (!(toggle instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    toggle.textContent = compactModeEnabled ? "Compacto ON" : "Compacto";
+    toggle.title = compactModeEnabled
+      ? "Desactivar modo compacto"
+      : "Activar modo compacto";
+    toggle.setAttribute("aria-pressed", String(compactModeEnabled));
+  }
+
+  function installGlobalCompactToggle() {
+    if (document.getElementById(GLOBAL_COMPACT_TOGGLE_ID)) {
+      updateGlobalCompactToggle();
+      return;
+    }
+
+    const toggle = document.createElement("button");
+    toggle.id = GLOBAL_COMPACT_TOGGLE_ID;
+    toggle.type = "button";
+    toggle.addEventListener("click", () => {
+      setSavedCompactMode(!compactModeEnabled);
+    });
+
+    const topMenuRow =
+      document.querySelector("div.tborder table tr[align='center']") ||
+      document.querySelector("div.tborder table tr");
+
+    if (topMenuRow instanceof HTMLTableRowElement) {
+      const cell = document.createElement("td");
+      cell.className = "vbmenu_control";
+      cell.append(toggle);
+      topMenuRow.insertBefore(cell, topMenuRow.firstElementChild);
+    } else {
+      const bar = document.createElement("div");
+      bar.id = "fc-premium-global-compact-bar";
+      bar.append(toggle);
+      document.body.prepend(bar);
+    }
+
+    updateGlobalCompactToggle();
   }
 
   /**
@@ -424,6 +498,20 @@
       #${THREAD_CONTROLS_ID} button[aria-pressed="true"] {
         background: #0b57d0;
         border-color: #0b57d0;
+        color: #fff;
+      }
+
+      #${GLOBAL_COMPACT_TOGGLE_ID} {
+        background: transparent;
+        border: 0;
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        padding: 0;
+      }
+
+      #${GLOBAL_COMPACT_TOGGLE_ID}[aria-pressed="true"] {
         color: #fff;
       }
 
@@ -678,6 +766,32 @@
         padding: 5px 8px;
       }
 
+      .fc-premium-quote-actions {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 5px;
+      }
+
+      .fc-premium-quote-actions button,
+      .fc-premium-reply-badge button {
+        background: #fff;
+        border: 1px solid #b7d1ff;
+        border-radius: 999px;
+        color: #0b57d0;
+        cursor: pointer;
+        font: 700 10px/1 Verdana, Arial, sans-serif;
+        padding: 4px 7px;
+      }
+
+      .fc-premium-quote-actions button:hover,
+      .fc-premium-reply-badge button:hover {
+        border-color: #0b57d0;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
       tr[${HIDDEN_THREAD_ATTRIBUTE}] {
         display: none !important;
       }
@@ -848,6 +962,23 @@
         opacity: 0.92;
       }
 
+      .fc-premium-compact-author-meta {
+        color: #3c4043;
+        display: none;
+        font-weight: 700;
+        margin-left: 8px;
+      }
+
+      .fc-premium-compact-author-meta a {
+        color: #0b57d0;
+        text-decoration: none;
+      }
+
+      .fc-premium-compact-author-meta a:hover {
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
       a[data-fc-premium-quote-target] {
         outline-offset: 2px;
       }
@@ -916,9 +1047,7 @@
       }
 
       body.${COMPACT_MODE_CLASS} #posts td[width="175"] {
-        max-width: 105px !important;
-        padding: 4px !important;
-        width: 105px !important;
+        display: none !important;
       }
 
       body.${COMPACT_MODE_CLASS} #posts td[width="175"][rowspan] .smallfont {
@@ -940,7 +1069,65 @@
       }
 
       body.${COMPACT_MODE_CLASS} .fc-premium-post-wrapper {
-        margin-bottom: 7px;
+        margin-bottom: 6px;
+      }
+
+      body.${COMPACT_MODE_CLASS} #${THREAD_SUMMARY_ID} {
+        font-size: 11px;
+        margin: 6px auto;
+        padding: 6px 8px;
+      }
+
+      body.${COMPACT_MODE_CLASS} #${TOP_TAGS_ID},
+      body.${COMPACT_MODE_CLASS} #${TAG_FILTER_BAR_ID},
+      body.${COMPACT_MODE_CLASS} #${FORUM_SIDEBAR_TOGGLE_BAR_ID} {
+        margin-bottom: 5px;
+        margin-top: 5px;
+        padding: 5px 8px;
+      }
+
+      body.${COMPACT_MODE_CLASS} #${THREAD_CONTROLS_ID},
+      body.${COMPACT_MODE_CLASS} #${TOP_CITED_ID},
+      body.${COMPACT_MODE_CLASS} #${TOP_AUTHORS_ID},
+      body.${COMPACT_MODE_CLASS} #${THREAD_PAGES_ID},
+      body.${COMPACT_MODE_CLASS} #${NAVIGATION_STATUS_ID} {
+        gap: 4px;
+        margin-top: 5px;
+      }
+
+      body.${COMPACT_MODE_CLASS} #posts table[id^="post"] {
+        font-size: 12px !important;
+      }
+
+      body.${COMPACT_MODE_CLASS} #posts table[id^="post"] .alt1,
+      body.${COMPACT_MODE_CLASS} #posts table[id^="post"] .alt2 {
+        padding-left: 6px !important;
+        padding-right: 6px !important;
+      }
+
+      body.${COMPACT_MODE_CLASS} #threadslist td {
+        padding-bottom: 2px !important;
+        padding-top: 2px !important;
+      }
+
+      body.${COMPACT_MODE_CLASS} #threadslist,
+      body.${COMPACT_MODE_CLASS} #threadslist .mfont,
+      body.${COMPACT_MODE_CLASS} #threadslist .smallfont {
+        font-size: 12px !important;
+      }
+
+      body.${COMPACT_MODE_CLASS} .fc-premium-compact-author-meta {
+        display: inline;
+      }
+
+      body.${COMPACT_MODE_CLASS} table.tborder:has(td.navbar),
+      body.${COMPACT_MODE_CLASS} table.tborder:has(.navbar),
+      body.${COMPACT_MODE_CLASS} #threadtools_menu,
+      body.${COMPACT_MODE_CLASS} #threadsearch_menu,
+      body.${COMPACT_MODE_CLASS} #threadrating_menu,
+      body.${COMPACT_MODE_CLASS} #forumtools_menu,
+      body.${COMPACT_MODE_CLASS} #forumsearch_menu {
+        display: none !important;
       }
     `;
 
@@ -2060,7 +2247,7 @@
       clearTagFilter();
     } else if (
       event.key === "Escape" &&
-      (activeAuthorFilter || activePageFilter)
+      (activeAuthorFilter || activePageFilter || activeGraphView)
     ) {
       event.preventDefault();
       clearThreadFilters();
@@ -2444,16 +2631,6 @@
     const controls = document.createElement("div");
     controls.id = THREAD_CONTROLS_ID;
 
-    const compactButton = document.createElement("button");
-    compactButton.type = "button";
-    compactButton.textContent = "Compacto";
-    compactButton.setAttribute("aria-pressed", String(compactModeEnabled));
-    compactButton.addEventListener("click", () => {
-      setSavedCompactMode(!compactModeEnabled);
-      renderThreadControls(summary);
-    });
-    controls.append(compactButton);
-
     const compactQuotesButton = document.createElement("button");
     compactQuotesButton.type = "button";
     compactQuotesButton.textContent = "Citas compactas";
@@ -2649,6 +2826,7 @@
     }
 
     activePageFilter = pageNumber;
+    activeGraphView = null;
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
@@ -2862,6 +3040,10 @@
     /** @type {string[]} */
     const labels = [];
 
+    if (activeGraphView) {
+      labels.push(`vista ${getGraphViewLabel(activeGraphView)}`);
+    }
+
     if (activeAuthorFilter) {
       labels.push(`autor ${getAuthorFilterLabel(activeAuthorFilter)}`);
     }
@@ -2874,12 +3056,13 @@
   }
 
   function clearThreadFilters() {
-    if (!activeAuthorFilter && !activePageFilter) {
+    if (!activeAuthorFilter && !activePageFilter && !activeGraphView) {
       return;
     }
 
     activeAuthorFilter = null;
     activePageFilter = null;
+    activeGraphView = null;
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
@@ -2922,7 +3105,7 @@
 
     if (
       !(summary instanceof HTMLElement) ||
-      (!activeAuthorFilter && !activePageFilter)
+      (!activeAuthorFilter && !activePageFilter && !activeGraphView)
     ) {
       return;
     }
@@ -3111,6 +3294,176 @@
   }
 
   /**
+   * @returns {ThreadGraph}
+   */
+  function createEmptyThreadGraph() {
+    return {
+      postById: new Map(),
+      quotedByPostId: new Map(),
+      quotingByPostId: new Map(),
+      neighborsByPostId: new Map(),
+      chronologicalNextByPostId: new Map(),
+    };
+  }
+
+  /**
+   * @param {Map<string, Set<string>>} map
+   * @param {string} key
+   * @returns {Set<string>}
+   */
+  function ensureGraphSet(map, key) {
+    if (!map.has(key)) {
+      map.set(key, new Set());
+    }
+
+    return map.get(key);
+  }
+
+  /**
+   * @param {PostRecord[]} posts
+   * @returns {ThreadGraph}
+   */
+  function buildThreadGraph(posts) {
+    const graph = createEmptyThreadGraph();
+    const chronologicalPosts = sortPostsChronologically(posts);
+
+    for (const post of chronologicalPosts) {
+      graph.postById.set(post.id, post);
+      ensureGraphSet(graph.quotedByPostId, post.id);
+      ensureGraphSet(graph.quotingByPostId, post.id);
+      ensureGraphSet(graph.neighborsByPostId, post.id);
+    }
+
+    for (let index = 0; index < chronologicalPosts.length; index += 1) {
+      const post = chronologicalPosts[index];
+      const nextPost = chronologicalPosts[index + 1] || null;
+      graph.chronologicalNextByPostId.set(post.id, nextPost?.id || null);
+    }
+
+    for (const post of chronologicalPosts) {
+      for (const quotedPostId of post.quotedPostIds) {
+        if (!graph.postById.has(quotedPostId)) {
+          continue;
+        }
+
+        ensureGraphSet(graph.quotedByPostId, quotedPostId).add(post.id);
+        ensureGraphSet(graph.quotingByPostId, post.id).add(quotedPostId);
+        ensureGraphSet(graph.neighborsByPostId, quotedPostId).add(post.id);
+        ensureGraphSet(graph.neighborsByPostId, post.id).add(quotedPostId);
+      }
+    }
+
+    return graph;
+  }
+
+  /**
+   * @param {string[]} postIds
+   * @returns {PostRecord[]}
+   */
+  function getChronologicalGraphPosts(postIds) {
+    const ids = new Set(postIds);
+
+    return sortPostsChronologically(loadedThreadPosts).filter((post) =>
+      ids.has(post.id),
+    );
+  }
+
+  /**
+   * @param {ActiveGraphView} view
+   * @returns {PostRecord[]}
+   */
+  function getPostsForGraphView(view) {
+    const root = threadGraph.postById.get(view.rootPostId);
+
+    if (!root) {
+      return [];
+    }
+
+    if (view.type === "quoted-sources") {
+      return getChronologicalGraphPosts([...root.quotedPostIds, root.id]);
+    }
+
+    if (view.type === "quoted-by") {
+      return getChronologicalGraphPosts([
+        root.id,
+        ...Array.from(threadGraph.quotedByPostId.get(root.id) || []),
+      ]);
+    }
+
+    const queue = [root.id];
+    const seen = new Set(queue);
+
+    if (view.relatedPostId && threadGraph.postById.has(view.relatedPostId)) {
+      queue.push(view.relatedPostId);
+      seen.add(view.relatedPostId);
+    }
+
+    for (let index = 0; index < queue.length; index += 1) {
+      const postId = queue[index];
+
+      for (const nextId of threadGraph.neighborsByPostId.get(postId) || []) {
+        if (seen.has(nextId)) {
+          continue;
+        }
+
+        seen.add(nextId);
+        queue.push(nextId);
+      }
+    }
+
+    return getChronologicalGraphPosts(Array.from(seen));
+  }
+
+  /**
+   * @param {ActiveGraphView} view
+   * @returns {string}
+   */
+  function getGraphViewLabel(view) {
+    const root = threadGraph.postById.get(view.rootPostId);
+    const rootLabel = root ? `#${root.postNumber}` : `#${view.rootPostId}`;
+
+    if (view.type === "quoted-sources") {
+      return `citas usadas por ${rootLabel}`;
+    }
+
+    if (view.type === "quoted-by") {
+      return `${rootLabel} y sus citadores`;
+    }
+
+    return `conversacion de ${rootLabel}`;
+  }
+
+  /**
+   * @param {GraphViewType} type
+   * @param {string} rootPostId
+   * @param {string | null} [relatedPostId]
+   */
+  function setActiveGraphView(type, rootPostId, relatedPostId = null) {
+    if (!threadGraph.postById.has(rootPostId)) {
+      return;
+    }
+
+    activeGraphView = {
+      type,
+      rootPostId,
+      relatedPostId,
+    };
+    activePageFilter = null;
+    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+  }
+
+  function clearActiveGraphView() {
+    if (!activeGraphView) {
+      return;
+    }
+
+    activeGraphView = null;
+    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+  }
+
+  /**
    * @param {PostRecord[]} posts
    */
   function applyOriginalPosterFlags(posts) {
@@ -3240,6 +3593,10 @@
   function getPostsForView(posts, mode) {
     void mode;
 
+    if (activeGraphView) {
+      return getPostsForGraphView(activeGraphView);
+    }
+
     return getFeaturedChronologicalPosts(posts);
   }
 
@@ -3313,9 +3670,11 @@
 
   /**
    * @param {string | null} postId
+   * @param {string | null} [quotedPostId]
    */
-  function setQuoteReturnPostId(postId) {
+  function setQuoteReturnPostId(postId, quotedPostId = null) {
     quoteReturnPostId = postId;
+    quoteReturnQuotedPostId = quotedPostId;
     renderQuoteReturnControl(document.getElementById(THREAD_SUMMARY_ID));
   }
 
@@ -3347,6 +3706,28 @@
     });
     bar.append(returnButton);
 
+    const allQuotesButton = document.createElement("button");
+    allQuotesButton.type = "button";
+    allQuotesButton.textContent = "Ver citas";
+    allQuotesButton.addEventListener("click", () => {
+      setActiveGraphView("quoted-sources", targetPostId);
+    });
+    bar.append(allQuotesButton);
+
+    if (quoteReturnQuotedPostId) {
+      const conversationButton = document.createElement("button");
+      conversationButton.type = "button";
+      conversationButton.textContent = "Conversacion";
+      conversationButton.addEventListener("click", () => {
+        setActiveGraphView(
+          "conversation",
+          targetPostId,
+          quoteReturnQuotedPostId,
+        );
+      });
+      bar.append(conversationButton);
+    }
+
     const dismissButton = document.createElement("button");
     dismissButton.type = "button";
     dismissButton.textContent = "Cerrar";
@@ -3360,6 +3741,8 @@
    * @param {HTMLElement} wrapper
    */
   function enhanceQuoteLinks(wrapper) {
+    const sourcePostId = getPostIdFromNavigationElement(wrapper);
+
     for (const link of wrapper.querySelectorAll(
       "a[href*='showthread.php?p='][href*='#post']",
     )) {
@@ -3377,7 +3760,7 @@
 
       link.dataset.fcPremiumQuoteTarget = quotedPostId;
       link.title = "Ir al mensaje citado";
-      markQuoteBlock(link, quotedPostId);
+      markQuoteBlock(link, quotedPostId, sourcePostId);
       link.addEventListener("click", (event) => {
         const target = document.getElementById(`post${quotedPostId}`);
 
@@ -3392,7 +3775,7 @@
           const sourcePostId = getPostIdFromNavigationElement(sourceWrapper);
 
           if (sourcePostId && sourcePostId !== quotedPostId) {
-            setQuoteReturnPostId(sourcePostId);
+            setQuoteReturnPostId(sourcePostId, quotedPostId);
           }
         }
 
@@ -3404,8 +3787,9 @@
   /**
    * @param {HTMLAnchorElement} link
    * @param {string} quotedPostId
+   * @param {string | null} sourcePostId
    */
-  function markQuoteBlock(link, quotedPostId) {
+  function markQuoteBlock(link, quotedPostId, sourcePostId) {
     const quoteTable = link.closest("table");
     const quoteWrapper = quoteTable?.parentElement;
 
@@ -3414,6 +3798,7 @@
     }
 
     quoteWrapper.dataset.fcPremiumQuoteBlock = quotedPostId;
+    renderQuoteBlockActions(quoteWrapper, sourcePostId, quotedPostId);
 
     const quoteCell = quoteTable.querySelector("td");
     const body = Array.from(quoteCell?.children || []).find(
@@ -3429,12 +3814,101 @@
   }
 
   /**
+   * @param {HTMLElement} quoteWrapper
+   * @param {string | null} sourcePostId
+   * @param {string} quotedPostId
+   */
+  function renderQuoteBlockActions(quoteWrapper, sourcePostId, quotedPostId) {
+    if (
+      !sourcePostId ||
+      quoteWrapper.querySelector(".fc-premium-quote-actions")
+    ) {
+      return;
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "fc-premium-quote-actions";
+
+    const viewQuoteButton = document.createElement("button");
+    viewQuoteButton.type = "button";
+    viewQuoteButton.textContent = "Ver cita";
+    viewQuoteButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      jumpToLoadedPost(quotedPostId);
+    });
+    actions.append(viewQuoteButton);
+
+    const allQuotesButton = document.createElement("button");
+    allQuotesButton.type = "button";
+    allQuotesButton.textContent = "Ver citas";
+    allQuotesButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setActiveGraphView("quoted-sources", sourcePostId);
+    });
+    actions.append(allQuotesButton);
+
+    const conversationButton = document.createElement("button");
+    conversationButton.type = "button";
+    conversationButton.textContent = "Conversacion";
+    conversationButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setActiveGraphView("conversation", sourcePostId, quotedPostId);
+    });
+    actions.append(conversationButton);
+    quoteWrapper.append(actions);
+  }
+
+  /**
+   * @param {HTMLElement} wrapper
+   * @param {PostRecord} post
+   */
+  function enhanceCompactPostHeader(wrapper, post) {
+    if (wrapper.querySelector(".fc-premium-compact-author-meta")) {
+      return;
+    }
+
+    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
+    const postCountLink = table?.querySelector(`a[id='postcount${post.id}']`);
+    const headerCell = postCountLink?.closest("tr")?.querySelector("td");
+
+    if (!(headerCell instanceof HTMLElement)) {
+      return;
+    }
+
+    const authorCell = table?.querySelector("td[width='175'][rowspan]");
+    const authorLink = authorCell?.querySelector(".bigusername");
+    const messageCount = normalizeText(authorCell?.textContent).match(
+      /([\d.]+)\s+Mens\./,
+    )?.[1];
+    const meta = document.createElement("span");
+    meta.className = "fc-premium-compact-author-meta";
+
+    if (authorLink instanceof HTMLAnchorElement) {
+      const link = document.createElement("a");
+      link.href = authorLink.href;
+      link.textContent = post.author || normalizeText(authorLink.textContent);
+      meta.append(link);
+    } else {
+      meta.textContent = post.author;
+    }
+
+    if (messageCount) {
+      meta.append(document.createTextNode(` - ${messageCount} mens.`));
+    }
+
+    headerCell.append(meta);
+  }
+
+  /**
    * @param {PostRecord[]} posts
    * @param {Map<string, PostRecord>} postById
    * @returns {HTMLElement | null}
    */
   function renderTopCitedReplyPreviews(posts, postById) {
-    if (activePageFilter) {
+    if (activePageFilter || activeGraphView) {
       return null;
     }
 
@@ -3506,6 +3980,7 @@
     wrapper.dataset.fcPremiumOriginalPage = String(post.pageNumber);
     enhanceQuoteLinks(wrapper);
     enhanceAuthorFilterButton(wrapper, post.author);
+    enhanceCompactPostHeader(wrapper, post);
     const badges = document.createElement("div");
     badges.className = "fc-premium-post-badges";
 
@@ -3611,6 +4086,16 @@
       remaining.textContent = ` +${post.replyingPostIds.length - visibleReplyIds.length}`;
       badge.append(remaining);
     }
+
+    const quotedByButton = document.createElement("button");
+    quotedByButton.type = "button";
+    quotedByButton.textContent = "Ver citadores";
+    quotedByButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setActiveGraphView("quoted-by", post.id);
+    });
+    badge.append(quotedByButton);
   }
 
   /**
@@ -3684,6 +4169,8 @@
     threadPages = allPages;
     loadedThreadPosts = [];
     loadedThreadPageNumbers = new Set();
+    threadGraph = createEmptyThreadGraph();
+    activeGraphView = null;
     threadLoadState = {
       loadedPages: 0,
       targetPages: pages.length,
@@ -3711,6 +4198,7 @@
       applyReplyCounts(allPosts);
       applyOriginalPosterFlags(allPosts);
       loadedThreadPosts = allPosts.slice();
+      threadGraph = buildThreadGraph(loadedThreadPosts);
       threadLoadState = {
         ...threadLoadState,
         loadedPages: loadedThreadPageNumbers.size,
@@ -3750,6 +4238,8 @@
     enhanceThreadTitleTags();
 
     if (isForumDisplayPage() || isThreadPage()) {
+      ensureStyle();
+      installGlobalCompactToggle();
       installKeyboardNavigation();
     }
 
