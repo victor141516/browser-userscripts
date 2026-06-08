@@ -18,6 +18,7 @@
   const TAG_FILTER_BAR_ID = "fc-premium-tag-filter-bar";
   const AUTHOR_FILTER_BAR_ID = "fc-premium-author-filter-bar";
   const TOP_CITED_ID = "fc-premium-top-cited";
+  const TOP_AUTHORS_ID = "fc-premium-top-authors";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
@@ -67,6 +68,14 @@
 
   /**
    * @typedef {"ranked" | "original" | "cited"} ThreadViewMode
+   */
+
+  /**
+   * @typedef {object} AuthorSummary
+   * @property {string} key
+   * @property {string} label
+   * @property {number} count
+   * @property {number} firstIndex
    */
 
   /** @type {NavigationItem[]} */
@@ -332,7 +341,8 @@
         color: #fff;
       }
 
-      #${TOP_CITED_ID} {
+      #${TOP_CITED_ID},
+      #${TOP_AUTHORS_ID} {
         align-items: center;
         display: flex;
         flex-wrap: wrap;
@@ -340,22 +350,26 @@
         margin-top: 8px;
       }
 
-      #${TOP_CITED_ID} span {
+      #${TOP_CITED_ID} span,
+      #${TOP_AUTHORS_ID} span {
         font-weight: 700;
       }
 
-      #${TOP_CITED_ID} a {
+      #${TOP_CITED_ID} a,
+      #${TOP_AUTHORS_ID} button {
         background: #fff;
         border: 1px solid #b7d1ff;
         border-radius: 999px;
         color: #0b57d0;
+        cursor: pointer;
         display: inline-block;
         font: 700 11px/1 Verdana, Arial, sans-serif;
         padding: 5px 8px;
         text-decoration: none;
       }
 
-      #${TOP_CITED_ID} a:hover {
+      #${TOP_CITED_ID} a:hover,
+      #${TOP_AUTHORS_ID} button:hover {
         border-color: #0b57d0;
         text-decoration: underline;
         text-underline-offset: 2px;
@@ -1467,6 +1481,85 @@
   }
 
   /**
+   * @param {PostRecord[]} posts
+   * @param {number} limit
+   * @returns {AuthorSummary[]}
+   */
+  function getTopAuthors(posts, limit) {
+    /** @type {Map<string, AuthorSummary>} */
+    const summariesByAuthor = new Map();
+
+    for (const post of posts) {
+      const key = normalizeAuthorName(post.author);
+
+      if (!key) {
+        continue;
+      }
+
+      const summary = summariesByAuthor.get(key);
+
+      if (summary) {
+        summary.count += 1;
+      } else {
+        summariesByAuthor.set(key, {
+          key,
+          label: post.author,
+          count: 1,
+          firstIndex: post.originalIndex,
+        });
+      }
+    }
+
+    return Array.from(summariesByAuthor.values())
+      .filter((summary) => summary.count > 1)
+      .sort((left, right) => {
+        if (left.count !== right.count) {
+          return right.count - left.count;
+        }
+
+        return left.firstIndex - right.firstIndex;
+      })
+      .slice(0, limit);
+  }
+
+  /**
+   * @param {HTMLElement | null} summary
+   */
+  function renderTopAuthorLinks(summary) {
+    if (!summary || loadedThreadPosts.length === 0) {
+      return;
+    }
+
+    document.getElementById(TOP_AUTHORS_ID)?.remove();
+
+    const topAuthors = getTopAuthors(loadedThreadPosts, 5);
+
+    if (topAuthors.length === 0) {
+      return;
+    }
+
+    const strip = document.createElement("div");
+    strip.id = TOP_AUTHORS_ID;
+
+    const label = document.createElement("span");
+    label.textContent = "Top autores:";
+    strip.append(label);
+
+    for (const author of topAuthors) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `${author.label} (${author.count})`;
+      button.title = `Filtrar mensajes de ${author.label}`;
+      button.addEventListener("click", () => {
+        toggleAuthorFilter(author.label);
+      });
+      strip.append(button);
+    }
+
+    summary.append(strip);
+  }
+
+  /**
    * @param {string} authorKey
    * @returns {string}
    */
@@ -1991,6 +2084,7 @@
       `<strong>Forocoches Premium:</strong> ${allPosts.length} mensajes de ${pages.length}/${allPages.length} paginas. ${quotedPosts} mensajes tienen citas (${totalReplies} citas en total) y se han movido arriba.`,
     );
     renderTopCitedLinks(summary);
+    renderTopAuthorLinks(summary);
     renderThreadControls(summary);
     renderAuthorFilterBar();
   }

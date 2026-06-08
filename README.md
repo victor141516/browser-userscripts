@@ -51,6 +51,8 @@ filter directly to the thread author's posts.
 Thread pages include view controls:
 
 - `Top citados` links jump directly to the most quoted posts.
+- `Top autores` buttons filter to the most active repeated authors in the
+  loaded thread.
 - `Citas` sorts every loaded post by quote count.
 - `Original` restores chronological thread order while keeping citation badges.
 - `Solo citados` shows only posts that were quoted by another post.
