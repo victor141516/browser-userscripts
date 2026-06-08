@@ -366,6 +366,14 @@
         opacity: 0.92;
       }
 
+      a[data-fc-premium-quote-target] {
+        outline-offset: 2px;
+      }
+
+      a[data-fc-premium-quote-target]:focus-visible {
+        outline: 2px solid #1a73e8;
+      }
+
       .fc-premium-tag-chip {
         background: var(--fc-premium-tag-bg);
         border: 1px solid var(--fc-premium-tag-border);
@@ -1342,6 +1350,52 @@
   }
 
   /**
+   * @param {string} postId
+   */
+  function selectPostById(postId) {
+    const table = document.getElementById(`post${postId}`);
+    const wrapper = table?.closest(".fc-premium-post-wrapper");
+
+    if (!(wrapper instanceof HTMLElement)) {
+      return;
+    }
+
+    selectNavigationElement(wrapper);
+  }
+
+  /**
+   * @param {HTMLElement} wrapper
+   */
+  function enhanceQuoteLinks(wrapper) {
+    for (const link of wrapper.querySelectorAll(
+      "a[href*='showthread.php?p='][href*='#post']",
+    )) {
+      if (!(link instanceof HTMLAnchorElement)) {
+        continue;
+      }
+
+      const quotedPostId = getQuotedPostId(link.getAttribute("href") || link.href);
+
+      if (!quotedPostId) {
+        continue;
+      }
+
+      link.dataset.fcPremiumQuoteTarget = quotedPostId;
+      link.title = "Ir al mensaje citado";
+      link.addEventListener("click", (event) => {
+        const target = document.getElementById(`post${quotedPostId}`);
+
+        if (!target) {
+          return;
+        }
+
+        event.preventDefault();
+        selectPostById(quotedPostId);
+      });
+    }
+  }
+
+  /**
    * @param {PostRecord} post
    * @param {number} rank
    * @param {Map<string, PostRecord>} postById
@@ -1359,6 +1413,7 @@
 
     wrapper.classList.add("fc-premium-post-wrapper");
     wrapper.dataset.fcPremiumOriginalPage = String(post.pageNumber);
+    enhanceQuoteLinks(wrapper);
     const badges = document.createElement("div");
     badges.className = "fc-premium-post-badges";
 
@@ -1423,15 +1478,12 @@
       ).href;
       link.textContent = `#${reply?.postNumber || replyingPostId}`;
       link.addEventListener("click", (event) => {
-        const table = document.getElementById(`post${replyingPostId}`);
-        const wrapper = table?.closest(".fc-premium-post-wrapper");
-
-        if (!(wrapper instanceof HTMLElement)) {
+        if (!document.getElementById(`post${replyingPostId}`)) {
           return;
         }
 
         event.preventDefault();
-        wrapper.scrollIntoView({ behavior: "smooth", block: "center" });
+        selectPostById(replyingPostId);
       });
       badge.append(link);
       badge.append(document.createTextNode(" "));
