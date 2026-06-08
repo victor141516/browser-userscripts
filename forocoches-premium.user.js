@@ -24,6 +24,7 @@
   const COMPACT_QUOTES_CLASS = "fc-premium-compact-quotes";
   const COMPACT_QUOTES_STORAGE_KEY = "fcPremiumCompactQuotes";
   const LOAD_ALL_PAGES_STORAGE_KEY = "fcPremiumLoadAllPages";
+  const LAST_SELECTED_POST_STORAGE_PREFIX = "fcPremiumLastPost:";
   const THREAD_VIEW_MODE_STORAGE_KEY = "fcPremiumThreadViewMode";
   const SELECTED_ATTRIBUTE = "data-fc-premium-selected";
   const POSTS_SELECTOR = "#posts";
@@ -234,6 +235,35 @@
   function setSavedLoadAllPages(enabled) {
     loadAllPagesEnabled = enabled;
     localStorage.setItem(LOAD_ALL_PAGES_STORAGE_KEY, String(enabled));
+  }
+
+  /**
+   * @returns {string | null}
+   */
+  function getCurrentThreadPositionKey() {
+    const threadId = getThreadId(new URL(location.href));
+
+    return threadId ? `${LAST_SELECTED_POST_STORAGE_PREFIX}${threadId}` : null;
+  }
+
+  /**
+   * @returns {string | null}
+   */
+  function getSavedSelectedPostId() {
+    const key = getCurrentThreadPositionKey();
+
+    return key ? localStorage.getItem(key) : null;
+  }
+
+  /**
+   * @param {string} postId
+   */
+  function setSavedSelectedPostId(postId) {
+    const key = getCurrentThreadPositionKey();
+
+    if (key) {
+      localStorage.setItem(key, postId);
+    }
   }
 
   function ensureStyle() {
@@ -829,7 +859,7 @@
   }
 
   /**
-   * @param {{ reset?: boolean, scroll?: boolean }} [options]
+   * @param {{ reset?: boolean, scroll?: boolean, persist?: boolean }} [options]
    */
   function refreshNavigation(options = {}) {
     const previousElement = navigationItems[selectedNavigationIndex]?.element;
@@ -854,7 +884,7 @@
   }
 
   /**
-   * @param {{ scroll?: boolean }} [options]
+   * @param {{ scroll?: boolean, persist?: boolean }} [options]
    */
   function renderNavigationSelection(options = {}) {
     for (const selected of document.querySelectorAll(`[${SELECTED_ATTRIBUTE}]`)) {
@@ -869,12 +899,31 @@
 
     selected.element.setAttribute(SELECTED_ATTRIBUTE, "true");
 
+    if (options.persist !== false && isThreadPage()) {
+      const postId = getPostIdFromNavigationElement(selected.element);
+
+      if (postId) {
+        setSavedSelectedPostId(postId);
+      }
+    }
+
     if (options.scroll) {
       selected.element.scrollIntoView({
         behavior: "smooth",
         block: "nearest",
       });
     }
+  }
+
+  /**
+   * @param {HTMLElement} element
+   * @returns {string | null}
+   */
+  function getPostIdFromNavigationElement(element) {
+    const postTable = element.querySelector(POST_TABLE_SELECTOR);
+    const postId = postTable?.id.match(/^post(\d+)$/)?.[1];
+
+    return postId || null;
   }
 
   /**
@@ -1648,6 +1697,7 @@
       return;
     }
 
+    const savedPostId = getSavedSelectedPostId();
     postsElement.textContent = "";
 
     const fragment = document.createDocumentFragment();
@@ -1661,7 +1711,11 @@
     }
 
     postsElement.append(fragment);
-    refreshNavigation({ reset: true });
+    refreshNavigation({ reset: true, persist: false });
+
+    if (savedPostId) {
+      selectPostById(savedPostId);
+    }
   }
 
   /**

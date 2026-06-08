@@ -59,6 +59,8 @@ The summary and controls stay sticky while scrolling through a thread.
 
 The selected view, compact settings, and page-loading mode are saved in
 localStorage and reused on later thread pages.
+The script also remembers the last selected post per thread and restores it
+when that thread is opened again.
 
 ### Tags
 
