@@ -1324,6 +1324,45 @@
     renderNavigationSelection({ scroll: true });
   }
 
+  /**
+   * @param {number} direction
+   * @returns {boolean}
+   */
+  function moveCitedPostNavigation(direction) {
+    if (!isThreadPage()) {
+      return false;
+    }
+
+    if (navigationItems.length === 0) {
+      refreshNavigation({ reset: true });
+    }
+
+    if (navigationItems.length === 0) {
+      return false;
+    }
+
+    const startIndex = Math.min(
+      Math.max(selectedNavigationIndex, 0),
+      navigationItems.length - 1,
+    );
+
+    for (
+      let index = startIndex + direction;
+      index >= 0 && index < navigationItems.length;
+      index += direction
+    ) {
+      const item = navigationItems[index];
+
+      if (item.element.hasAttribute("data-fc-premium-reply-count")) {
+        selectedNavigationIndex = index;
+        renderNavigationSelection({ scroll: true });
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   function openSelectedNavigationItem() {
     const selected = navigationItems[selectedNavigationIndex];
 
@@ -1352,6 +1391,30 @@
     }
 
     return null;
+  }
+
+  /**
+   * @param {KeyboardEvent} event
+   * @returns {boolean}
+   */
+  function handleCitedPostShortcut(event) {
+    if (
+      !isThreadPage() ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      loadedThreadPosts.length === 0
+    ) {
+      return false;
+    }
+
+    if (event.key !== "[" && event.key !== "]") {
+      return false;
+    }
+
+    event.preventDefault();
+    moveCitedPostNavigation(event.key === "]" ? 1 : -1);
+    return true;
   }
 
   /**
@@ -1403,6 +1466,8 @@
         refreshNavigation({ reset: true });
       }
       selectNavigationIndex(navigationItems.length - 1);
+    } else if (handleCitedPostShortcut(event)) {
+      return;
     } else if (handleThreadViewShortcut(event)) {
       return;
     } else if (event.key === "Escape" && activeTagFilter) {
