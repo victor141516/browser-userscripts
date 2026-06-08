@@ -20,6 +20,7 @@
   const TOP_CITED_ID = "fc-premium-top-cited";
   const TOP_AUTHORS_ID = "fc-premium-top-authors";
   const THREAD_PAGES_ID = "fc-premium-thread-pages";
+  const NAVIGATION_STATUS_ID = "fc-premium-navigation-status";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
@@ -394,6 +395,24 @@
         border-color: #0b57d0;
         color: #fff;
         text-decoration: none;
+      }
+
+      #${NAVIGATION_STATUS_ID} {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      #${NAVIGATION_STATUS_ID} span {
+        background: #e8f0fe;
+        border: 1px solid #b7d1ff;
+        border-radius: 999px;
+        color: #17324d;
+        display: inline-block;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 5px 8px;
       }
 
       #${TAG_FILTER_BAR_ID} {
@@ -995,10 +1014,12 @@
     const selected = navigationItems[selectedNavigationIndex];
 
     if (!selected) {
+      renderNavigationStatus(null);
       return;
     }
 
     selected.element.setAttribute(SELECTED_ATTRIBUTE, "true");
+    renderNavigationStatus(selected);
 
     if (options.persist !== false && isThreadPage()) {
       const postId = getPostIdFromNavigationElement(selected.element);
@@ -1014,6 +1035,61 @@
         block: "nearest",
       });
     }
+  }
+
+  /**
+   * @param {NavigationItem | null} selected
+   */
+  function renderNavigationStatus(selected) {
+    if (!isThreadPage()) {
+      return;
+    }
+
+    const summary = document.getElementById(THREAD_SUMMARY_ID);
+
+    if (!(summary instanceof HTMLElement)) {
+      return;
+    }
+
+    let status = document.getElementById(NAVIGATION_STATUS_ID);
+
+    if (!(status instanceof HTMLElement)) {
+      status = document.createElement("div");
+      status.id = NAVIGATION_STATUS_ID;
+      summary.append(status);
+    }
+
+    status.textContent = "";
+
+    const chip = document.createElement("span");
+
+    if (!selected || navigationItems.length === 0) {
+      chip.textContent = "Seleccion: 0/0 mensajes visibles";
+      status.append(chip);
+      return;
+    }
+
+    const postId = getPostIdFromNavigationElement(selected.element);
+    const postNumber =
+      postId &&
+      normalizeText(
+        selected.element.querySelector(`#postcount${postId}`)?.textContent,
+      );
+    const pageNumber = selected.element.dataset.fcPremiumOriginalPage;
+    const parts = [
+      `Seleccion: ${selectedNavigationIndex + 1}/${navigationItems.length}`,
+    ];
+
+    if (postNumber) {
+      parts.push(postNumber);
+    }
+
+    if (pageNumber) {
+      parts.push(`pagina ${pageNumber}`);
+    }
+
+    chip.textContent = parts.join(" - ");
+    status.append(chip);
   }
 
   /**
@@ -2251,6 +2327,7 @@
     renderThreadPageLinks(summary);
     renderThreadControls(summary);
     renderAuthorFilterBar();
+    renderNavigationStatus(navigationItems[selectedNavigationIndex] || null);
   }
 
   /**

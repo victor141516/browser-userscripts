@@ -64,6 +64,8 @@ Thread pages include view controls:
   the current page. It is enabled by default.
 
 The summary and controls stay sticky while scrolling through a thread.
+The sticky summary also shows the currently selected visible post, including
+its position in the keyboard navigation list and original page.
 
 The selected view, compact settings, and page-loading mode are saved in
 localStorage and reused on later thread pages.
