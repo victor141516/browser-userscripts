@@ -22,6 +22,7 @@
   const TOP_AUTHORS_ID = "fc-premium-top-authors";
   const THREAD_PAGES_ID = "fc-premium-thread-pages";
   const NAVIGATION_STATUS_ID = "fc-premium-navigation-status";
+  const QUOTE_RETURN_ID = "fc-premium-quote-return";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
@@ -104,6 +105,8 @@
   let activeAuthorFilter = null;
   /** @type {number | null} */
   let activePageFilter = null;
+  /** @type {string | null} */
+  let quoteReturnPostId = null;
 
   /**
    * @param {string | null | undefined} text
@@ -486,6 +489,31 @@
         border: 1px solid #80868b;
         border-radius: 5px;
         color: #3c4043;
+        cursor: pointer;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 5px 8px;
+      }
+
+      #${QUOTE_RETURN_ID} {
+        align-items: center;
+        background: #fff7d6;
+        border: 1px solid #f0c36d;
+        border-radius: 6px;
+        box-sizing: border-box;
+        color: #4d3417;
+        display: flex;
+        flex-wrap: wrap;
+        font: 12px/1.4 Verdana, Arial, sans-serif;
+        gap: 8px;
+        margin-top: 8px;
+        padding: 8px 10px;
+      }
+
+      #${QUOTE_RETURN_ID} button {
+        background: #fff;
+        border: 1px solid #d79721;
+        border-radius: 5px;
+        color: #4d3417;
         cursor: pointer;
         font: 700 11px/1 Verdana, Arial, sans-serif;
         padding: 5px 8px;
@@ -2158,6 +2186,81 @@
   }
 
   /**
+   * @param {string} postId
+   * @returns {string}
+   */
+  function getPostJumpLabel(postId) {
+    const table = document.getElementById(`post${postId}`);
+    const wrapper = table?.closest(".fc-premium-post-wrapper");
+    const postNumber = normalizeText(
+      wrapper?.querySelector(`#postcount${postId}`)?.textContent,
+    );
+    const author = normalizeText(wrapper?.querySelector(".bigusername")?.textContent);
+    const pageNumber =
+      wrapper instanceof HTMLElement ? wrapper.dataset.fcPremiumOriginalPage : "";
+    const parts = [];
+
+    if (postNumber) {
+      parts.push(`#${postNumber}`);
+    }
+
+    if (author) {
+      parts.push(author);
+    }
+
+    if (pageNumber) {
+      parts.push(`pagina ${pageNumber}`);
+    }
+
+    return parts.join(" - ") || `#${postId}`;
+  }
+
+  /**
+   * @param {string | null} postId
+   */
+  function setQuoteReturnPostId(postId) {
+    quoteReturnPostId = postId;
+    renderQuoteReturnControl(document.getElementById(THREAD_SUMMARY_ID));
+  }
+
+  function clearQuoteReturnPostId() {
+    setQuoteReturnPostId(null);
+  }
+
+  /**
+   * @param {HTMLElement | null} summary
+   */
+  function renderQuoteReturnControl(summary) {
+    document.getElementById(QUOTE_RETURN_ID)?.remove();
+
+    if (!(summary instanceof HTMLElement) || !quoteReturnPostId) {
+      return;
+    }
+
+    const targetPostId = quoteReturnPostId;
+    const bar = document.createElement("div");
+    bar.id = QUOTE_RETURN_ID;
+    bar.textContent = "Salto de cita:";
+
+    const returnButton = document.createElement("button");
+    returnButton.type = "button";
+    returnButton.textContent = `Volver a ${getPostJumpLabel(targetPostId)}`;
+    returnButton.addEventListener("click", () => {
+      clearQuoteReturnPostId();
+      selectPostById(targetPostId);
+    });
+    bar.append(returnButton);
+
+    const dismissButton = document.createElement("button");
+    dismissButton.type = "button";
+    dismissButton.textContent = "Cerrar";
+    dismissButton.addEventListener("click", clearQuoteReturnPostId);
+    bar.append(dismissButton);
+
+    summary.append(bar);
+  }
+
+  /**
    * @param {HTMLElement} wrapper
    */
   function enhanceQuoteLinks(wrapper) {
@@ -2185,6 +2288,16 @@
         }
 
         event.preventDefault();
+        const sourceWrapper = link.closest(".fc-premium-post-wrapper");
+
+        if (sourceWrapper instanceof HTMLElement) {
+          const sourcePostId = getPostIdFromNavigationElement(sourceWrapper);
+
+          if (sourcePostId && sourcePostId !== quotedPostId) {
+            setQuoteReturnPostId(sourcePostId);
+          }
+        }
+
         selectPostById(quotedPostId);
       });
     }
@@ -2311,6 +2424,9 @@
         }
 
         event.preventDefault();
+        if (replyingPostId !== post.id) {
+          setQuoteReturnPostId(post.id);
+        }
         selectPostById(replyingPostId);
       });
       badge.append(link);
@@ -2422,6 +2538,7 @@
     renderAuthorFilterBar();
     renderThreadFilterActions(summary);
     renderNavigationStatus(navigationItems[selectedNavigationIndex] || null);
+    renderQuoteReturnControl(summary);
   }
 
   /**

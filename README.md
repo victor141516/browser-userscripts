@@ -41,7 +41,9 @@ as `7 citas - pagina 1`, plus compact links to the posts that quoted them.
 Posts without quote replies remain after the highlighted group in their original
 order. Posts written by the thread author get an `OP` badge so they remain easy
 to identify after sorting. Quote links inside posts select and scroll to the
-quoted post when it is present in the enhanced view.
+quoted post when it is present in the enhanced view. After following a quote or
+`citado por` link, the sticky summary shows a `Volver` control to jump back to
+the post you came from.
 
 Each rendered post also gets a small `filtrar` button beside the username.
 Clicking it temporarily shows only posts by that author, and the sticky summary
