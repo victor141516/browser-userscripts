@@ -29,10 +29,12 @@
    * @property {string} id
    * @property {string} html
    * @property {string} author
+   * @property {string} postNumber
    * @property {number} pageNumber
    * @property {number} pageIndex
    * @property {number} originalIndex
    * @property {string[]} quotedPostIds
+   * @property {string[]} replyingPostIds
    * @property {number} replyCount
    */
 
@@ -181,11 +183,24 @@
         padding: 5px 8px;
       }
 
+      .fc-premium-reply-badge a {
+        color: #fff;
+        font-weight: 700;
+        margin-left: 4px;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
       .fc-premium-original-position {
         color: #17324d;
         font-weight: 400;
         margin-left: 6px;
         opacity: 0.8;
+      }
+
+      .fc-premium-reply-badge .fc-premium-original-position {
+        color: #e8f0fe;
+        opacity: 0.92;
       }
 
       .fc-premium-tag-chip {
@@ -667,15 +682,20 @@
         doc.querySelector(`#postmenu_${id} .bigusername`)?.textContent ||
           doc.querySelector(`#postmenu_${id}`)?.textContent,
       );
+      const postNumber =
+        normalizeText(doc.querySelector(`#postcount${id}`)?.textContent) ||
+        String(pageOffset + posts.length + 1);
 
       posts.push({
         id,
         html: wrapper.outerHTML,
         author,
+        postNumber,
         pageNumber,
         pageIndex: posts.length,
         originalIndex: pageOffset + posts.length,
         quotedPostIds: getQuotedPostIds(doc, id),
+        replyingPostIds: [],
         replyCount: 0,
       });
     }
@@ -767,7 +787,8 @@
     }
 
     for (const post of posts) {
-      post.replyCount = repliesByPostId.get(post.id)?.size || 0;
+      post.replyingPostIds = Array.from(repliesByPostId.get(post.id) || []);
+      post.replyCount = post.replyingPostIds.length;
     }
   }
 
@@ -788,9 +809,10 @@
   /**
    * @param {PostRecord} post
    * @param {number} rank
+   * @param {Map<string, PostRecord>} postById
    * @returns {HTMLElement}
    */
-  function renderPost(post, rank) {
+  function renderPost(post, rank, postById) {
     const template = document.createElement("template");
     template.innerHTML = post.html;
 
@@ -816,10 +838,47 @@
       originalPosition.className = "fc-premium-original-position";
       originalPosition.textContent = ` - pagina ${post.pageNumber}`;
       badge.append(originalPosition);
+      appendReplyLinks(badge, post, postById);
       wrapper.prepend(badge);
     }
 
     return wrapper;
+  }
+
+  /**
+   * @param {HTMLElement} badge
+   * @param {PostRecord} post
+   * @param {Map<string, PostRecord>} postById
+   */
+  function appendReplyLinks(badge, post, postById) {
+    const maxLinks = 8;
+    const visibleReplyIds = post.replyingPostIds.slice(0, maxLinks);
+
+    if (visibleReplyIds.length === 0) {
+      return;
+    }
+
+    const label = document.createElement("span");
+    label.className = "fc-premium-original-position";
+    label.textContent = " - citado por ";
+    badge.append(label);
+
+    for (const replyingPostId of visibleReplyIds) {
+      const reply = postById.get(replyingPostId);
+      const link = document.createElement("a");
+
+      link.href = `#post${replyingPostId}`;
+      link.textContent = `#${reply?.postNumber || replyingPostId}`;
+      badge.append(link);
+      badge.append(document.createTextNode(" "));
+    }
+
+    if (post.replyingPostIds.length > visibleReplyIds.length) {
+      const remaining = document.createElement("span");
+      remaining.className = "fc-premium-original-position";
+      remaining.textContent = ` +${post.replyingPostIds.length - visibleReplyIds.length}`;
+      badge.append(remaining);
+    }
   }
 
   /**
@@ -835,6 +894,7 @@
     postsElement.textContent = "";
 
     const fragment = document.createDocumentFragment();
+    const postById = new Map(posts.map((post) => [post.id, post]));
     let rank = 0;
 
     for (const post of sortPosts(posts)) {
@@ -842,7 +902,7 @@
         rank += 1;
       }
 
-      fragment.append(renderPost(post, rank));
+      fragment.append(renderPost(post, rank, postById));
     }
 
     postsElement.append(fragment);
