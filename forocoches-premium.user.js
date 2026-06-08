@@ -1335,6 +1335,52 @@
   }
 
   /**
+   * @param {string} key
+   * @returns {ThreadViewMode | null}
+   */
+  function getThreadViewModeShortcut(key) {
+    if (key === "1") {
+      return "ranked";
+    }
+
+    if (key === "2") {
+      return "original";
+    }
+
+    if (key === "3") {
+      return "cited";
+    }
+
+    return null;
+  }
+
+  /**
+   * @param {KeyboardEvent} event
+   * @returns {boolean}
+   */
+  function handleThreadViewShortcut(event) {
+    if (
+      !isThreadPage() ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      loadedThreadPosts.length === 0
+    ) {
+      return false;
+    }
+
+    const mode = getThreadViewModeShortcut(event.key);
+
+    if (!mode) {
+      return false;
+    }
+
+    event.preventDefault();
+    switchThreadViewMode(mode);
+    return true;
+  }
+
+  /**
    * @param {KeyboardEvent} event
    */
   function onNavigationKeyDown(event) {
@@ -1357,6 +1403,8 @@
         refreshNavigation({ reset: true });
       }
       selectNavigationIndex(navigationItems.length - 1);
+    } else if (handleThreadViewShortcut(event)) {
+      return;
     } else if (event.key === "Escape" && activeTagFilter) {
       event.preventDefault();
       clearTagFilter();
@@ -1636,6 +1684,25 @@
   }
 
   /**
+   * @param {ThreadViewMode} mode
+   * @returns {boolean}
+   */
+  function switchThreadViewMode(mode) {
+    if (!isThreadViewMode(mode) || loadedThreadPosts.length === 0) {
+      return false;
+    }
+
+    if (currentThreadViewMode !== mode) {
+      setSavedThreadViewMode(mode);
+      renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    }
+
+    const summary = document.getElementById(THREAD_SUMMARY_ID);
+    renderThreadControls(summary instanceof HTMLElement ? summary : null);
+    return true;
+  }
+
+  /**
    * @param {HTMLElement | null} summary
    */
   function renderThreadControls(summary) {
@@ -1661,9 +1728,7 @@
         String(mode === currentThreadViewMode),
       );
       button.addEventListener("click", () => {
-        setSavedThreadViewMode(mode);
-        renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
-        renderThreadControls(summary);
+        switchThreadViewMode(mode);
       });
       controls.append(button);
     }

@@ -105,6 +105,7 @@ On thread pages:
 - After the quote-ranking pass finishes, the first sorted post is selected.
 - Arrow Up and Arrow Down move between sorted posts.
 - Home and End jump to the first or last rendered post.
+- `1`, `2`, and `3` switch between `Citas`, `Original`, and `Solo citados`.
 - Escape clears all active author and page filters.
 - Enter opens the selected post permalink.
 
