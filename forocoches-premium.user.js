@@ -576,6 +576,16 @@
         padding: 5px 8px;
       }
 
+      .fc-premium-page-badge {
+        background: #e8f0fe;
+        border: 1px solid #b7d1ff;
+        border-radius: 999px;
+        color: #17324d;
+        display: inline-block;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 5px 8px;
+      }
+
       .fc-premium-op-badge[data-fc-premium-author-filter],
       .fc-premium-author-filter-button {
         cursor: pointer;
@@ -2367,6 +2377,11 @@
       badges.append(opBadge);
     }
 
+    const pageBadge = document.createElement("div");
+    pageBadge.className = "fc-premium-page-badge";
+    pageBadge.textContent = `Pag. ${post.pageNumber}`;
+    badges.append(pageBadge);
+
     if (post.replyCount > 0) {
       wrapper.dataset.fcPremiumReplyCount = String(post.replyCount);
       wrapper.dataset.fcPremiumRank = String(rank);
@@ -2375,11 +2390,6 @@
       badge.className = "fc-premium-reply-badge";
       badge.textContent =
         post.replyCount === 1 ? "1 cita" : `${post.replyCount} citas`;
-
-      const originalPosition = document.createElement("span");
-      originalPosition.className = "fc-premium-original-position";
-      originalPosition.textContent = ` - pagina ${post.pageNumber}`;
-      badge.append(originalPosition);
       appendReplyLinks(badge, post, postById);
       badges.append(badge);
     }
