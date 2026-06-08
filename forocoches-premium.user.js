@@ -611,6 +611,7 @@
       }
 
       .fc-premium-op-badge[data-fc-premium-author-filter],
+      .fc-premium-page-badge[role="button"],
       .fc-premium-author-filter-button {
         cursor: pointer;
       }
@@ -2613,7 +2614,22 @@
 
     const pageBadge = document.createElement("div");
     pageBadge.className = "fc-premium-page-badge";
+    pageBadge.role = "button";
+    pageBadge.tabIndex = 0;
     pageBadge.textContent = `Pag. ${post.pageNumber}`;
+    pageBadge.title = `Filtrar mensajes de la pagina ${post.pageNumber}`;
+    pageBadge.addEventListener("click", () => {
+      togglePageFilter(post.pageNumber);
+    });
+    pageBadge.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      togglePageFilter(post.pageNumber);
+    });
     badges.append(pageBadge);
 
     if (post.replyCount > 0) {
