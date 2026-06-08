@@ -2622,8 +2622,9 @@
 
       const badge = document.createElement("div");
       badge.className = "fc-premium-reply-badge";
-      badge.textContent =
-        post.replyCount === 1 ? "1 cita" : `${post.replyCount} citas`;
+      badge.textContent = `#${rank} - ${
+        post.replyCount === 1 ? "1 cita" : `${post.replyCount} citas`
+      }`;
       appendReplyLinks(badge, post, postById);
       badges.append(badge);
     }
