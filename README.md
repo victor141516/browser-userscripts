@@ -43,6 +43,11 @@ order. Posts written by the thread author get an `OP` badge so they remain easy
 to identify after sorting. Quote links inside posts select and scroll to the
 quoted post when it is present in the enhanced view.
 
+Each rendered post also gets a small `filtrar` button beside the username.
+Clicking it temporarily shows only posts by that author, and the sticky summary
+shows a clearable author filter count. The `OP` badge can also be clicked to
+filter directly to the thread author's posts.
+
 Thread pages include view controls:
 
 - `Top citados` links jump directly to the most quoted posts.
@@ -88,6 +93,7 @@ On thread pages:
 - After the quote-ranking pass finishes, the first sorted post is selected.
 - Arrow Up and Arrow Down move between sorted posts.
 - Home and End jump to the first or last rendered post.
+- Escape clears an active author filter.
 - Enter opens the selected post permalink.
 
 Keyboard handling ignores inputs, textareas, selects, and contenteditable
