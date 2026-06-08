@@ -1163,17 +1163,12 @@
       }
 
       .fc-premium-reply-badge {
-        align-items: center;
-        background: #0b57d0;
-        border-radius: 999px;
-        color: #fff;
-        display: inline-flex;
-        flex-wrap: wrap;
-        font: 700 10px/1 Verdana, Arial, sans-serif;
-        gap: 4px;
-        margin-left: 8px;
-        padding: 4px 7px;
-        vertical-align: 1px;
+        color: #3c4043;
+        display: inline;
+        font: 700 9px/1 Verdana, Arial, sans-serif;
+        margin-left: 6px;
+        vertical-align: baseline;
+        white-space: nowrap;
       }
 
       .fc-premium-author-filter-button {
@@ -1197,8 +1192,9 @@
       }
 
       .fc-premium-reply-badge a {
-        color: #fff;
+        color: inherit;
         font-weight: 700;
+        margin-left: 3px;
         text-decoration: underline;
         text-underline-offset: 2px;
       }
@@ -1211,14 +1207,33 @@
       }
 
       .fc-premium-reply-badge .fc-premium-original-position {
-        color: #e8f0fe;
-        opacity: 0.92;
+        color: inherit;
+        margin-left: 4px;
+        opacity: 0.72;
+      }
+
+      .fc-premium-reply-badge button {
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        color: inherit;
+        cursor: pointer;
+        font: 700 9px/1 Verdana, Arial, sans-serif;
+        margin-left: 4px;
+        padding: 0;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      .fc-premium-reply-badge button:hover {
+        color: #0b57d0;
       }
 
       .fc-premium-header-author {
+        color: #3c4043;
         display: none;
-        font-weight: 700;
-        margin-left: 8px;
+        font: 700 10px/1 Verdana, Arial, sans-serif;
+        margin-left: 6px;
         position: relative;
         white-space: nowrap;
       }
