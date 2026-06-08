@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Search keyboard navigation 2
 // @namespace    http://tampermonkey.net/
-// @version      2026-06-08-1
+// @version      2026-06-08-5
 // @description  bring back the keyboard navigation in Google Search
 // @author       victor141516
 // @match        https://www.google.com/search?q=*
@@ -15,9 +15,15 @@
 (function () {
   "use strict";
 
-  const MARKER_ID = "google-keyboard-navigation-marker";
+  const LEGACY_MARKER_ID = "google-keyboard-navigation-marker";
+  const INSTANCE_ABORT_KEY = "__googleKeyboardNavigationAbortController";
   const STYLE_ID = "google-keyboard-navigation-style";
   const SELECTED_ATTRIBUTE = "data-google-keyboard-navigation-selected";
+  const ANIMATING_RESULT_ATTRIBUTE =
+    "data-google-keyboard-navigation-animating-result";
+  const SELECTED_RESULT_ATTRIBUTE =
+    "data-google-keyboard-navigation-selected-result";
+  const SELECTION_ANIMATION_MS = 180;
 
   const SELECTORS = {
     root: ["#rcnt", "#search", "#rso"],
@@ -64,6 +70,17 @@
    * @property {string} kind
    */
 
+  /**
+   * @typedef {object} CandidateMatch
+   * @property {HTMLAnchorElement} link
+   * @property {Element} owner
+   * @property {string} href
+   * @property {string} text
+   * @property {string} ownerText
+   * @property {number} linkTop
+   * @property {number} ownerTop
+   */
+
   /** @type {ResultCandidate[]} */
   let candidates = [];
   let selectedIndex = -1;
@@ -100,6 +117,14 @@
       style.display !== "none" &&
       style.visibility !== "hidden"
     );
+  }
+
+  /**
+   * @param {Element} element
+   * @returns {number}
+   */
+  function getDocumentTop(element) {
+    return element.getBoundingClientRect().top + window.scrollY;
   }
 
   /**
@@ -181,6 +206,10 @@
   function isInsideAiOverview(element) {
     if (element.closest(SELECTORS.aiOverview.join(","))) {
       return true;
+    }
+
+    if (element.closest(SELECTORS.primaryResults)) {
+      return false;
     }
 
     for (
@@ -318,6 +347,76 @@
 
   /**
    * @param {HTMLAnchorElement} link
+   * @returns {boolean}
+   */
+  function isNestedSitelink(link) {
+    return Boolean(link.closest("table, td, th"));
+  }
+
+  /**
+   * @param {Element} element
+   * @returns {HTMLAnchorElement[]}
+   */
+  function getVisibleTitleLinks(element) {
+    /** @type {HTMLAnchorElement[]} */
+    const links = [];
+
+    if (element instanceof HTMLAnchorElement) {
+      links.push(element);
+    }
+
+    links.push(...Array.from(element.querySelectorAll("a[href]")));
+
+    return links.filter(
+      (link, index, allLinks) =>
+        link instanceof HTMLAnchorElement &&
+        allLinks.indexOf(link) === index &&
+        isVisible(link) &&
+        isTitleLink(link) &&
+        hasUsefulResultUrl(link),
+    );
+  }
+
+  /**
+   * Some Google modules, such as video and recipe groups, put several real
+   * results under one data-rpos owner. Split those into per-card owners while
+   * leaving table-based sitelinks attached to their main result.
+   *
+   * @param {HTMLAnchorElement} link
+   * @param {Element} semanticOwner
+   * @returns {Element}
+   */
+  function getCandidateOwner(link, semanticOwner) {
+    if (
+      isNestedSitelink(link) ||
+      getVisibleTitleLinks(semanticOwner).length <= 1
+    ) {
+      return semanticOwner;
+    }
+
+    let cardOwner = null;
+
+    for (
+      let element = link;
+      element && element !== semanticOwner;
+      element = element.parentElement
+    ) {
+      if (!isVisible(element)) {
+        continue;
+      }
+
+      const titleLinks = getVisibleTitleLinks(element);
+
+      if (titleLinks.length === 1 && titleLinks[0] === link) {
+        cardOwner = element;
+      }
+    }
+
+    return cardOwner || semanticOwner;
+  }
+
+  /**
+   * @param {HTMLAnchorElement} link
    * @returns {number}
    */
   function scoreEquivalentLink(link) {
@@ -407,6 +506,48 @@
   }
 
   /**
+   * @param {ResultCandidate} candidate
+   * @returns {CandidateMatch}
+   */
+  function getCandidateMatch(candidate) {
+    return {
+      link: candidate.link,
+      owner: candidate.owner,
+      href: candidate.link.href,
+      text: getLinkText(candidate.link),
+      ownerText: normalizeText(candidate.owner.textContent).slice(0, 200),
+      linkTop: Math.round(getDocumentTop(candidate.link)),
+      ownerTop: Math.round(getDocumentTop(candidate.owner)),
+    };
+  }
+
+  /**
+   * @param {ResultCandidate} candidate
+   * @param {CandidateMatch} previous
+   * @returns {boolean}
+   */
+  function isSameCandidate(candidate, previous) {
+    if (candidate.link === previous.link || candidate.owner === previous.owner) {
+      return true;
+    }
+
+    if (candidate.link.href !== previous.href) {
+      return false;
+    }
+
+    const linkTop = Math.round(getDocumentTop(candidate.link));
+    const ownerTop = Math.round(getDocumentTop(candidate.owner));
+    const text = getLinkText(candidate.link);
+    const ownerText = normalizeText(candidate.owner.textContent).slice(0, 200);
+
+    return (
+      (text === previous.text && Math.abs(linkTop - previous.linkTop) <= 4) ||
+      (ownerText === previous.ownerText &&
+        Math.abs(ownerTop - previous.ownerTop) <= 4)
+    );
+  }
+
+  /**
    * @returns {ResultCandidate[]}
    */
   function collectResultCandidates() {
@@ -440,7 +581,8 @@
         continue;
       }
 
-      const owner = getResultOwner(rawLink);
+      const semanticOwner = getResultOwner(rawLink);
+      const owner = getCandidateOwner(rawLink, semanticOwner);
 
       if (kind === "title") {
         if (titleOwners.has(owner)) {
@@ -484,42 +626,31 @@
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-      #${MARKER_ID} {
-        border-bottom: 7px solid transparent;
-        border-left: 11px solid #1a73e8;
-        border-top: 7px solid transparent;
-        display: none;
-        height: 0;
-        left: 0;
-        pointer-events: none;
-        position: fixed;
-        top: 0;
-        width: 0;
-        z-index: 2147483647;
+      [${ANIMATING_RESULT_ATTRIBUTE}],
+      [${SELECTED_RESULT_ATTRIBUTE}] {
+        border-radius: 8px !important;
+        transform-origin: center center !important;
+        transition:
+          outline-offset 180ms ease,
+          transform 180ms ease !important;
+      }
+
+      [${ANIMATING_RESULT_ATTRIBUTE}]:not([${SELECTED_RESULT_ATTRIBUTE}]) {
+        transform: scale(1) !important;
+      }
+
+      [${SELECTED_RESULT_ATTRIBUTE}] {
+        outline: 2px solid #1a73e8 !important;
+        outline-offset: 5px !important;
+        transform: scale(1.01) !important;
       }
     `;
 
     document.head.appendChild(style);
   }
 
-  /**
-   * @returns {HTMLElement}
-   */
-  function ensureMarker() {
-    ensureStyle();
-
-    const existing = document.getElementById(MARKER_ID);
-
-    if (isHTMLElement(existing)) {
-      return existing;
-    }
-
-    const marker = document.createElement("div");
-    marker.id = MARKER_ID;
-    marker.setAttribute("aria-hidden", "true");
-    document.body.appendChild(marker);
-
-    return marker;
+  function removeLegacyMarker() {
+    document.getElementById(LEGACY_MARKER_ID)?.remove();
   }
 
   function clearSelectedAttributes() {
@@ -527,27 +658,19 @@
       element.removeAttribute(SELECTED_ATTRIBUTE);
       element.removeAttribute("aria-current");
     }
-  }
 
-  function positionMarker() {
-    const selected = candidates[selectedIndex];
-    const marker = ensureMarker();
+    for (
+      const element of document.querySelectorAll(`[${SELECTED_RESULT_ATTRIBUTE}]`)
+    ) {
+      element.removeAttribute(SELECTED_RESULT_ATTRIBUTE);
+      element.setAttribute(ANIMATING_RESULT_ATTRIBUTE, "true");
 
-    if (!selected || !document.contains(selected.link)) {
-      marker.style.display = "none";
-      return;
+      window.setTimeout(() => {
+        if (!element.hasAttribute(SELECTED_RESULT_ATTRIBUTE)) {
+          element.removeAttribute(ANIMATING_RESULT_ATTRIBUTE);
+        }
+      }, SELECTION_ANIMATION_MS);
     }
-
-    const rect = selected.titleElement.getBoundingClientRect();
-
-    if (rect.width <= 0 || rect.height <= 0) {
-      marker.style.display = "none";
-      return;
-    }
-
-    marker.style.display = "block";
-    marker.style.left = `${Math.max(4, rect.left - 20)}px`;
-    marker.style.top = `${Math.max(4, rect.top + Math.min(rect.height, 28) / 2 - 7)}px`;
   }
 
   /**
@@ -559,26 +682,32 @@
     const selected = candidates[selectedIndex];
 
     if (!selected) {
-      ensureMarker().style.display = "none";
       return;
     }
 
     selected.link.setAttribute(SELECTED_ATTRIBUTE, "true");
     selected.link.setAttribute("aria-current", "true");
+    selected.owner.setAttribute(ANIMATING_RESULT_ATTRIBUTE, "true");
+    selected.owner.setAttribute(SELECTED_RESULT_ATTRIBUTE, "true");
 
     if (options.scroll) {
       scrollSelectedIntoView(selected);
     }
+  }
 
-    positionMarker();
-    requestAnimationFrame(positionMarker);
+  /**
+   * @param {ResultCandidate} selected
+   * @returns {Element}
+   */
+  function getSelectionFrameElement(selected) {
+    return isVisible(selected.owner) ? selected.owner : selected.titleElement;
   }
 
   /**
    * @param {ResultCandidate} selected
    */
   function scrollSelectedIntoView(selected) {
-    const rect = selected.titleElement.getBoundingClientRect();
+    const rect = getSelectionFrameElement(selected).getBoundingClientRect();
     const margin = 80;
 
     if (rect.top < margin) {
@@ -599,6 +728,7 @@
    */
   function refreshCandidates(options = {}) {
     const previous = candidates[selectedIndex];
+    const previousMatch = previous ? getCandidateMatch(previous) : null;
     candidates = collectResultCandidates();
 
     if (candidates.length === 0) {
@@ -610,13 +740,22 @@
     if (options.reset || !previous) {
       selectedIndex = 0;
     } else {
-      const matchingIndex = candidates.findIndex(
-        (candidate) =>
-          candidate.link === previous.link ||
-          candidate.link.href === previous.link.href,
-      );
+      const matchingIndex = previousMatch
+        ? candidates.findIndex((candidate) =>
+            isSameCandidate(candidate, previousMatch),
+          )
+        : -1;
 
-      selectedIndex = matchingIndex >= 0 ? matchingIndex : 0;
+      selectedIndex =
+        matchingIndex >= 0
+          ? matchingIndex
+          : candidates.findIndex(
+              (candidate) => candidate.link.href === previous.link.href,
+            );
+
+      if (selectedIndex < 0) {
+        selectedIndex = 0;
+      }
     }
 
     renderSelection();
@@ -634,9 +773,7 @@
    * @param {number} direction
    */
   function moveSelection(direction) {
-    if (candidates.length === 0) {
-      refreshCandidates({ reset: true });
-    }
+    refreshCandidates({ reset: candidates.length === 0 });
 
     if (candidates.length === 0) {
       return;
@@ -651,6 +788,8 @@
   }
 
   function openSelectedResult() {
+    refreshCandidates({ reset: candidates.length === 0 });
+
     const selected = candidates[selectedIndex];
 
     if (!selected) {
@@ -700,27 +839,34 @@
       return;
     }
 
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
     if (event.key === "ArrowDown") {
-      event.preventDefault();
       moveSelection(1);
       return;
     }
 
     if (event.key === "ArrowUp") {
-      event.preventDefault();
       moveSelection(-1);
       return;
     }
 
-    event.preventDefault();
     openSelectedResult();
   }
 
-  function observeResults() {
+  /**
+   * @param {AbortSignal} signal
+   */
+  function observeResults(signal) {
     const observer = new MutationObserver(() => {
       const reset = knownUrl !== location.href;
       knownUrl = location.href;
       queueRefresh({ reset });
+    });
+
+    signal.addEventListener("abort", () => observer.disconnect(), {
+      once: true,
     });
 
     observer.observe(document.body, {
@@ -730,13 +876,26 @@
   }
 
   function init() {
-    ensureMarker();
+    const existingController = window[INSTANCE_ABORT_KEY];
+
+    if (existingController instanceof AbortController) {
+      existingController.abort();
+    }
+
+    const controller = new AbortController();
+    window[INSTANCE_ABORT_KEY] = controller;
+
+    removeLegacyMarker();
+    ensureStyle();
     refreshCandidates({ reset: true });
-    observeResults();
-    document.addEventListener("keydown", handleKeydown, true);
-    window.addEventListener("scroll", positionMarker, { passive: true });
-    window.addEventListener("resize", positionMarker);
-    window.addEventListener("pageshow", () => queueRefresh({ reset: true }));
+    observeResults(controller.signal);
+    window.addEventListener("keydown", handleKeydown, {
+      capture: true,
+      signal: controller.signal,
+    });
+    window.addEventListener("pageshow", () => queueRefresh({ reset: true }), {
+      signal: controller.signal,
+    });
   }
 
   if (document.readyState === "loading") {
