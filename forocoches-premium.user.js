@@ -29,7 +29,6 @@
   const QUOTE_RETURN_ID = "fc-premium-quote-return";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
-  const TOP_CITED_REPLIES_ID = "fc-premium-top-cited-replies";
   const GLOBAL_COMPACT_TOGGLE_ID = "fc-premium-global-compact-toggle";
   const FORUM_SIDEBAR_HIDDEN_CLASS = "fc-premium-forum-sidebar-hidden";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
@@ -1000,63 +999,6 @@
       .fc-premium-post-wrapper[data-fc-premium-rank="1"] {
         background: #fff0bd;
         box-shadow: 0 0 0 3px #d79721;
-      }
-
-      #${TOP_CITED_REPLIES_ID} {
-        background: #fffdfa;
-        border: 1px solid #f0c36d;
-        border-radius: 6px;
-        box-sizing: border-box;
-        color: #4d3417;
-        font: 12px/1.35 Verdana, Arial, sans-serif;
-        margin: 0 0 10px;
-        padding: 8px;
-      }
-
-      #${TOP_CITED_REPLIES_ID} strong {
-        color: #9a5a00;
-        display: block;
-        margin-bottom: 6px;
-      }
-
-      .fc-premium-reply-preview-list {
-        display: grid;
-        gap: 6px;
-      }
-
-      .fc-premium-reply-preview {
-        background: #fff;
-        border: 1px solid #f0c36d;
-        border-radius: 5px;
-        box-sizing: border-box;
-        cursor: pointer;
-        max-height: 32px;
-        overflow: hidden;
-        padding: 6px 8px;
-        transition:
-          background-color 140ms ease,
-          max-height 180ms ease;
-      }
-
-      .fc-premium-reply-preview:hover,
-      .fc-premium-reply-preview:focus-within {
-        background: #fff7d6;
-        max-height: 180px;
-      }
-
-      .fc-premium-reply-preview button {
-        background: transparent;
-        border: 0;
-        color: #0b57d0;
-        cursor: pointer;
-        font: 700 11px/1 Verdana, Arial, sans-serif;
-        margin: 0 6px 0 0;
-        padding: 0;
-      }
-
-      .fc-premium-reply-preview p {
-        color: #3c4043;
-        margin: 5px 0 0;
       }
 
       .fc-premium-post-badges {
@@ -3752,16 +3694,16 @@
 
   /**
    * @param {PostRecord[]} posts
-   * @returns {PostRecord | null}
+   * @param {number} limit
+   * @returns {PostRecord[]}
    */
-  function getPromotedCitedPost(posts) {
+  function getPromotedCitedPosts(posts, limit) {
     const firstPost = sortPostsChronologically(posts)[0];
 
-    return (
-      sortPosts(posts).find(
-        (post) => post.replyCount > 0 && post.id !== firstPost?.id,
-      ) || null
-    );
+    return sortPosts(posts)
+      .filter((post) => post.replyCount > 0)
+      .slice(0, limit)
+      .filter((post) => post.id !== firstPost?.id);
   }
 
   /**
@@ -3776,34 +3718,21 @@
     }
 
     const firstPost = chronologicalPosts[0];
-    const topCitedPost = getPromotedCitedPost(posts);
+    const promotedPosts = getPromotedCitedPosts(posts, 3);
 
-    if (!firstPost || !topCitedPost || topCitedPost.id === firstPost.id) {
+    if (!firstPost || promotedPosts.length === 0) {
       return chronologicalPosts;
     }
 
+    const promotedPostIds = new Set(promotedPosts.map((post) => post.id));
+
     return [
       firstPost,
-      topCitedPost,
+      ...promotedPosts,
       ...chronologicalPosts.filter(
-        (post) => post.id !== firstPost.id && post.id !== topCitedPost.id,
+        (post) => post.id !== firstPost.id && !promotedPostIds.has(post.id),
       ),
     ];
-  }
-
-  /**
-   * @param {PostRecord} post
-   * @returns {string}
-   */
-  function getPostTextSnippet(post) {
-    const template = document.createElement("template");
-    template.innerHTML = post.html;
-
-    const message =
-      template.content.querySelector(`#post_message_${post.id}`) ||
-      template.content.querySelector("[id^='post_message_']");
-
-    return normalizeText(message?.textContent).slice(0, 260);
   }
 
   /**
@@ -4140,64 +4069,6 @@
   }
 
   /**
-   * @param {PostRecord[]} posts
-   * @param {Map<string, PostRecord>} postById
-   * @returns {HTMLElement | null}
-   */
-  function renderTopCitedReplyPreviews(posts, postById) {
-    if (activePageFilter || activeGraphView) {
-      return null;
-    }
-
-    const topPost = getPromotedCitedPost(posts) || getTopCitedPost(posts);
-
-    if (!topPost || topPost.replyingPostIds.length === 0) {
-      return null;
-    }
-
-    const wrapper = document.createElement("div");
-    wrapper.id = TOP_CITED_REPLIES_ID;
-
-    const heading = document.createElement("strong");
-    heading.textContent = `Respuestas al mensaje destacado #${topPost.postNumber}`;
-    wrapper.append(heading);
-
-    const list = document.createElement("div");
-    list.className = "fc-premium-reply-preview-list";
-
-    for (const replyId of topPost.replyingPostIds.slice(0, 8)) {
-      const reply = postById.get(replyId);
-
-      if (!reply) {
-        continue;
-      }
-
-      const item = document.createElement("div");
-      item.className = "fc-premium-reply-preview";
-
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = `#${reply.postNumber} ${reply.author || "mensaje"}`;
-      button.addEventListener("click", () => {
-        jumpToLoadedPost(reply.id);
-      });
-      item.append(button);
-
-      const text = document.createElement("p");
-      text.textContent = getPostTextSnippet(reply);
-      item.append(text);
-      list.append(item);
-    }
-
-    if (list.childElementCount === 0) {
-      return null;
-    }
-
-    wrapper.append(list);
-    return wrapper;
-  }
-
-  /**
    * @param {PostRecord} post
    * @param {number} rank
    * @param {Map<string, PostRecord>} postById
@@ -4355,11 +4226,6 @@
     const fragment = document.createDocumentFragment();
     const postById = new Map(posts.map((post) => [post.id, post]));
     const rankByPostId = getReplyRankByPostId(posts);
-    const preview = renderTopCitedReplyPreviews(posts, postById);
-
-    if (preview) {
-      fragment.append(preview);
-    }
 
     for (const post of getPostsForView(posts, mode)) {
       fragment.append(
