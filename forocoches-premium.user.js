@@ -41,6 +41,14 @@
   const THREAD_CACHE_STORAGE_PREFIX = "fcPremiumThreadCache:";
   const THREAD_VIEW_MODE_STORAGE_KEY = "fcPremiumThreadViewMode";
   const THREAD_CACHE_VERSION = 1;
+  const THREAD_STATE_QUERY_PARAMS = {
+    mode: "fcp_mode",
+    graphType: "fcp_graph",
+    graphRoot: "fcp_root",
+    graphRelated: "fcp_related",
+    pageFilter: "fcp_page",
+    authorFilter: "fcp_author",
+  };
   const SELECTED_ATTRIBUTE = "data-fc-premium-selected";
   const FORUM_LAYOUT_HIDDEN_ATTRIBUTE = "data-fc-premium-layout-hidden";
   const POSTS_SELECTOR = "#posts";
@@ -53,6 +61,7 @@
   const PAGE_LOAD_DELAY_MS = 250;
   const TAG_PATTERN = /\+([A-Za-z0-9_-]+)/g;
   const THREAD_VIEW_MODES = ["ranked", "original", "cited"];
+  const GRAPH_VIEW_TYPES = ["quoted-sources", "quoted-by", "conversation"];
 
   /**
    * @typedef {object} PostRecord
@@ -132,6 +141,14 @@
    */
 
   /**
+   * @typedef {object} ThreadQueryState
+   * @property {ThreadViewMode | null} mode
+   * @property {ActiveGraphView | null} graphView
+   * @property {number | null} pageFilter
+   * @property {string | null} authorFilter
+   */
+
+  /**
    * @typedef {object} ActiveGraphView
    * @property {GraphViewType} type
    * @property {string} rootPostId
@@ -158,20 +175,24 @@
   let threadCacheUsed = false;
   /** @type {ThreadGraph} */
   let threadGraph = createEmptyThreadGraph();
+  const initialThreadQueryState = readThreadQueryState();
   /** @type {ActiveGraphView | null} */
   let activeGraphView = null;
+  /** @type {ActiveGraphView | null} */
+  let pendingGraphView = initialThreadQueryState.graphView;
   /** @type {ThreadViewMode} */
-  let currentThreadViewMode = getSavedThreadViewMode();
+  let currentThreadViewMode =
+    initialThreadQueryState.mode || getSavedThreadViewMode();
   let compactModeEnabled = getSavedCompactMode();
   let compactQuotesEnabled = getSavedCompactQuotes();
   let forumSidebarHidden = getSavedForumSidebarHidden();
   let loadAllPagesEnabled = getSavedLoadAllPages();
   /** @type {string | null} */
   let activeTagFilter = null;
-  /** @type {string | null} */
-  let activeAuthorFilter = null;
   /** @type {number | null} */
-  let activePageFilter = null;
+  let activePageFilter = initialThreadQueryState.pageFilter;
+  /** @type {string | null} */
+  let activeAuthorFilter = initialThreadQueryState.authorFilter;
   /** @type {string | null} */
   let quoteReturnPostId = null;
   /** @type {string | null} */
@@ -269,6 +290,141 @@
    */
   function isThreadViewMode(mode) {
     return THREAD_VIEW_MODES.includes(mode || "");
+  }
+
+  /**
+   * @param {string | null} type
+   * @returns {type is GraphViewType}
+   */
+  function isGraphViewType(type) {
+    return GRAPH_VIEW_TYPES.includes(type || "");
+  }
+
+  /**
+   * @param {URL} url
+   * @returns {boolean}
+   */
+  function isThreadUrl(url) {
+    return (
+      url.pathname.endsWith("/showthread.php") && Boolean(getThreadId(url))
+    );
+  }
+
+  /**
+   * @param {URL} url
+   */
+  function clearThreadStateQueryParams(url) {
+    for (const param of Object.values(THREAD_STATE_QUERY_PARAMS)) {
+      url.searchParams.delete(param);
+    }
+  }
+
+  /**
+   * @param {URL} [url]
+   * @returns {ThreadQueryState}
+   */
+  function readThreadQueryState(url = new URL(location.href)) {
+    const emptyState = {
+      mode: null,
+      graphView: null,
+      pageFilter: null,
+      authorFilter: null,
+    };
+
+    if (!isThreadUrl(url)) {
+      return emptyState;
+    }
+
+    const mode = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.mode);
+    const graphType = url.searchParams.get(
+      THREAD_STATE_QUERY_PARAMS.graphType,
+    );
+    const graphRoot = url.searchParams.get(
+      THREAD_STATE_QUERY_PARAMS.graphRoot,
+    );
+    const graphRelated = url.searchParams.get(
+      THREAD_STATE_QUERY_PARAMS.graphRelated,
+    );
+    const pageFilter = Number(
+      url.searchParams.get(THREAD_STATE_QUERY_PARAMS.pageFilter) || "",
+    );
+    const authorFilter = normalizeAuthorName(
+      url.searchParams.get(THREAD_STATE_QUERY_PARAMS.authorFilter),
+    );
+
+    const graphView =
+      isGraphViewType(graphType) && graphRoot
+        ? {
+            type: graphType,
+            rootPostId: graphRoot,
+            relatedPostId: graphRelated || null,
+          }
+        : null;
+
+    return {
+      mode: isThreadViewMode(mode) ? mode : null,
+      graphView,
+      pageFilter:
+        !graphView && Number.isFinite(pageFilter) && pageFilter > 0
+          ? pageFilter
+          : null,
+      authorFilter: authorFilter || null,
+    };
+  }
+
+  /**
+   * @param {URL} url
+   */
+  function writeCurrentThreadStateQueryParams(url) {
+    clearThreadStateQueryParams(url);
+
+    if (currentThreadViewMode !== "ranked") {
+      url.searchParams.set(
+        THREAD_STATE_QUERY_PARAMS.mode,
+        currentThreadViewMode,
+      );
+    }
+
+    const graphView = activeGraphView || pendingGraphView;
+
+    if (graphView) {
+      url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphType, graphView.type);
+      url.searchParams.set(
+        THREAD_STATE_QUERY_PARAMS.graphRoot,
+        graphView.rootPostId,
+      );
+
+      if (graphView.relatedPostId) {
+        url.searchParams.set(
+          THREAD_STATE_QUERY_PARAMS.graphRelated,
+          graphView.relatedPostId,
+        );
+      }
+    }
+
+    if (activePageFilter) {
+      url.searchParams.set(
+        THREAD_STATE_QUERY_PARAMS.pageFilter,
+        String(activePageFilter),
+      );
+    }
+
+    if (activeAuthorFilter) {
+      url.searchParams.set(
+        THREAD_STATE_QUERY_PARAMS.authorFilter,
+        activeAuthorFilter,
+      );
+    }
+  }
+
+  function syncThreadStateUrl() {
+    if (!isThreadPage()) {
+      return;
+    }
+
+    const url = new URL(location.href);
+    writeCurrentThreadStateQueryParams(url);
+    window.history.replaceState(window.history.state, "", url.href);
   }
 
   /**
@@ -990,6 +1146,10 @@
         transition: transform 160ms ease;
       }
 
+      .fc-premium-post-wrapper[data-fc-premium-reply-indent] {
+        margin-left: 28px;
+      }
+
       .fc-premium-post-wrapper[data-fc-premium-reply-count] {
         background: #fff7d6;
         box-shadow: 0 0 0 2px #f0c36d;
@@ -1181,6 +1341,16 @@
 
       body.${COMPACT_MODE_CLASS} .fc-premium-post-wrapper {
         margin-bottom: 6px;
+      }
+
+      body.${COMPACT_MODE_CLASS} .fc-premium-post-wrapper[data-fc-premium-reply-indent] {
+        margin-left: 18px;
+      }
+
+      @media (max-width: 700px) {
+        .fc-premium-post-wrapper[data-fc-premium-reply-indent] {
+          margin-left: 14px;
+        }
       }
 
       body.${COMPACT_MODE_CLASS} #${THREAD_SUMMARY_ID} {
@@ -2111,6 +2281,7 @@
       url.searchParams.set("page", String(post.pageNumber));
     }
 
+    writeCurrentThreadStateQueryParams(url);
     url.hash = `post${postId}`;
     window.history.replaceState(window.history.state, "", url.href);
   }
@@ -2745,7 +2916,10 @@
 
     if (currentThreadViewMode !== mode) {
       setSavedThreadViewMode(mode);
+      syncThreadStateUrl();
       renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    } else {
+      syncThreadStateUrl();
     }
 
     const summary = document.getElementById(THREAD_SUMMARY_ID);
@@ -2780,6 +2954,7 @@
 
     if (post) {
       activePageFilter = post.pageNumber;
+      syncThreadStateUrl();
       renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
       renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
     }
@@ -3006,6 +3181,8 @@
 
     activePageFilter = pageNumber;
     activeGraphView = null;
+    pendingGraphView = null;
+    syncThreadStateUrl();
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
@@ -3032,6 +3209,7 @@
     }
 
     activePageFilter = null;
+    syncThreadStateUrl();
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
@@ -3242,6 +3420,8 @@
     activeAuthorFilter = null;
     activePageFilter = null;
     activeGraphView = null;
+    pendingGraphView = null;
+    syncThreadStateUrl();
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
@@ -3331,6 +3511,7 @@
     }
 
     activeAuthorFilter = activeAuthorFilter === authorKey ? null : authorKey;
+    syncThreadStateUrl();
     applyAuthorFilter();
     renderAuthorFilterBar();
     renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
@@ -3343,6 +3524,7 @@
     }
 
     activeAuthorFilter = null;
+    syncThreadStateUrl();
     applyAuthorFilter();
     renderAuthorFilterBar();
     renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
@@ -3548,6 +3730,54 @@
   }
 
   /**
+   * @param {PostRecord} post
+   * @param {string | null} preferredPostId
+   * @returns {string | null}
+   */
+  function getConversationParentPostId(post, preferredPostId) {
+    if (
+      preferredPostId &&
+      post.quotedPostIds.includes(preferredPostId) &&
+      threadGraph.postById.has(preferredPostId)
+    ) {
+      return preferredPostId;
+    }
+
+    return (
+      post.quotedPostIds.find((postId) => threadGraph.postById.has(postId)) ||
+      null
+    );
+  }
+
+  /**
+   * @param {ActiveGraphView} view
+   * @returns {PostRecord[]}
+   */
+  function getConversationChainPosts(view) {
+    const chain = [];
+    const seen = new Set();
+    let currentPost = threadGraph.postById.get(view.rootPostId) || null;
+    let preferredParentPostId = view.relatedPostId;
+
+    while (currentPost && !seen.has(currentPost.id)) {
+      chain.push(currentPost);
+      seen.add(currentPost.id);
+
+      const parentPostId = getConversationParentPostId(
+        currentPost,
+        preferredParentPostId,
+      );
+
+      preferredParentPostId = null;
+      currentPost = parentPostId
+        ? threadGraph.postById.get(parentPostId) || null
+        : null;
+    }
+
+    return chain.reverse();
+  }
+
+  /**
    * @param {ActiveGraphView} view
    * @returns {PostRecord[]}
    */
@@ -3569,28 +3799,7 @@
       ]);
     }
 
-    const queue = [root.id];
-    const seen = new Set(queue);
-
-    if (view.relatedPostId && threadGraph.postById.has(view.relatedPostId)) {
-      queue.push(view.relatedPostId);
-      seen.add(view.relatedPostId);
-    }
-
-    for (let index = 0; index < queue.length; index += 1) {
-      const postId = queue[index];
-
-      for (const nextId of threadGraph.neighborsByPostId.get(postId) || []) {
-        if (seen.has(nextId)) {
-          continue;
-        }
-
-        seen.add(nextId);
-        queue.push(nextId);
-      }
-    }
-
-    return getChronologicalGraphPosts(Array.from(seen));
+    return getConversationChainPosts(view);
   }
 
   /**
@@ -3627,9 +3836,25 @@
       rootPostId,
       relatedPostId,
     };
+    pendingGraphView = null;
     activePageFilter = null;
+    syncThreadStateUrl();
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+  }
+
+  function activatePendingGraphView() {
+    if (
+      !pendingGraphView ||
+      activeGraphView ||
+      !threadGraph.postById.has(pendingGraphView.rootPostId)
+    ) {
+      return;
+    }
+
+    activeGraphView = pendingGraphView;
+    pendingGraphView = null;
+    activePageFilter = null;
   }
 
   function clearActiveGraphView() {
@@ -3638,6 +3863,8 @@
     }
 
     activeGraphView = null;
+    pendingGraphView = null;
+    syncThreadStateUrl();
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
@@ -3764,6 +3991,31 @@
     }
 
     return getFeaturedChronologicalPosts(posts);
+  }
+
+  /**
+   * @param {PostRecord} post
+   * @param {number} index
+   * @returns {number}
+   */
+  function getReplyIndentDepth(post, index) {
+    if (!activeGraphView) {
+      return 0;
+    }
+
+    if (activeGraphView.type === "quoted-by") {
+      return post.id === activeGraphView.rootPostId ? 0 : 1;
+    }
+
+    if (activeGraphView.type === "conversation") {
+      return index === 0 ? 0 : 1;
+    }
+
+    if (activeGraphView.type === "quoted-sources") {
+      return post.id === activeGraphView.rootPostId ? 1 : 0;
+    }
+
+    return 0;
   }
 
   /**
@@ -4072,9 +4324,10 @@
    * @param {PostRecord} post
    * @param {number} rank
    * @param {Map<string, PostRecord>} postById
+   * @param {number} replyIndentDepth
    * @returns {HTMLElement}
    */
-  function renderPost(post, rank, postById) {
+  function renderPost(post, rank, postById, replyIndentDepth) {
     const template = document.createElement("template");
     template.innerHTML = post.html;
 
@@ -4086,6 +4339,11 @@
 
     wrapper.classList.add("fc-premium-post-wrapper");
     wrapper.dataset.fcPremiumOriginalPage = String(post.pageNumber);
+
+    if (replyIndentDepth > 0) {
+      wrapper.dataset.fcPremiumReplyIndent = String(replyIndentDepth);
+    }
+
     enhanceQuoteLinks(wrapper);
     enhanceAuthorFilterButton(wrapper, post.author);
     enhanceCompactPostHeader(wrapper, post);
@@ -4226,10 +4484,16 @@
     const fragment = document.createDocumentFragment();
     const postById = new Map(posts.map((post) => [post.id, post]));
     const rankByPostId = getReplyRankByPostId(posts);
+    const viewPosts = getPostsForView(posts, mode);
 
-    for (const post of getPostsForView(posts, mode)) {
+    for (const [index, post] of viewPosts.entries()) {
       fragment.append(
-        renderPost(post, rankByPostId.get(post.id) || 0, postById),
+        renderPost(
+          post,
+          rankByPostId.get(post.id) || 0,
+          postById,
+          getReplyIndentDepth(post, index),
+        ),
       );
     }
 
@@ -4260,6 +4524,7 @@
     applyOriginalPosterFlags(posts);
     loadedThreadPosts = posts.slice();
     threadGraph = buildThreadGraph(loadedThreadPosts);
+    activatePendingGraphView();
   }
 
   /**
@@ -4269,6 +4534,7 @@
     ensureStyle();
 
     const summary = ensureThreadSummary();
+    const queryState = readThreadQueryState();
     const allPages = getThreadPages();
     const currentPageNumber = getPageNumber(new URL(location.href));
     const pages = loadAllPagesEnabled
@@ -4283,6 +4549,11 @@
     loadedThreadPageNumbers = new Set();
     threadGraph = createEmptyThreadGraph();
     activeGraphView = null;
+    pendingGraphView = queryState.graphView;
+    activePageFilter = queryState.pageFilter;
+    activeAuthorFilter = queryState.authorFilter;
+    currentThreadViewMode = queryState.mode || currentThreadViewMode;
+    syncThreadStateUrl();
     threadCacheUsed = false;
     threadLoadState = {
       loadedPages: 0,
