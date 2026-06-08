@@ -21,6 +21,7 @@
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
   const COMPACT_MODE_STORAGE_KEY = "fcPremiumCompactMode";
+  const LOAD_ALL_PAGES_STORAGE_KEY = "fcPremiumLoadAllPages";
   const THREAD_VIEW_MODE_STORAGE_KEY = "fcPremiumThreadViewMode";
   const SELECTED_ATTRIBUTE = "data-fc-premium-selected";
   const POSTS_SELECTOR = "#posts";
@@ -71,6 +72,7 @@
   /** @type {ThreadViewMode} */
   let currentThreadViewMode = getSavedThreadViewMode();
   let compactModeEnabled = getSavedCompactMode();
+  let loadAllPagesEnabled = getSavedLoadAllPages();
   /** @type {string | null} */
   let activeTagFilter = null;
 
@@ -194,6 +196,21 @@
 
   function applyCompactMode() {
     document.body.classList.toggle(COMPACT_MODE_CLASS, compactModeEnabled);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  function getSavedLoadAllPages() {
+    return localStorage.getItem(LOAD_ALL_PAGES_STORAGE_KEY) !== "false";
+  }
+
+  /**
+   * @param {boolean} enabled
+   */
+  function setSavedLoadAllPages(enabled) {
+    loadAllPagesEnabled = enabled;
+    localStorage.setItem(LOAD_ALL_PAGES_STORAGE_KEY, String(enabled));
   }
 
   function ensureStyle() {
@@ -1189,6 +1206,16 @@
     });
     controls.append(compactButton);
 
+    const loadAllButton = document.createElement("button");
+    loadAllButton.type = "button";
+    loadAllButton.textContent = "Todas paginas";
+    loadAllButton.setAttribute("aria-pressed", String(loadAllPagesEnabled));
+    loadAllButton.addEventListener("click", () => {
+      setSavedLoadAllPages(!loadAllPagesEnabled);
+      location.reload();
+    });
+    controls.append(loadAllButton);
+
     summary.append(controls);
   }
 
@@ -1531,15 +1558,18 @@
     ensureStyle();
 
     const summary = ensureThreadSummary();
-    const pages = getThreadPages();
+    const allPages = getThreadPages();
     const currentPageNumber = getPageNumber(new URL(location.href));
+    const pages = loadAllPagesEnabled
+      ? allPages
+      : allPages.filter((page) => page.pageNumber === currentPageNumber);
     /** @type {PostRecord[]} */
     const allPosts = [];
     let pageOffset = 0;
 
     setSummary(
       summary,
-      `<strong>Forocoches Premium:</strong> cargando ${pages.length} paginas para ordenar por citas...`,
+      `<strong>Forocoches Premium:</strong> cargando ${pages.length}/${allPages.length} paginas para ordenar por citas...`,
     );
 
     for (const page of pages) {
@@ -1553,7 +1583,7 @@
 
       setSummary(
         summary,
-        `<strong>Forocoches Premium:</strong> cargadas ${page.pageNumber}/${pages.length} paginas; ${allPosts.length} mensajes encontrados.`,
+        `<strong>Forocoches Premium:</strong> cargadas ${allPosts.length} mensajes de ${pages.length}/${allPages.length} paginas.`,
       );
 
       if (page.pageNumber !== pages[pages.length - 1].pageNumber) {
@@ -1574,7 +1604,7 @@
 
     setSummary(
       summary,
-      `<strong>Forocoches Premium:</strong> ${allPosts.length} mensajes de ${pages.length} paginas. ${quotedPosts} mensajes tienen citas (${totalReplies} citas en total) y se han movido arriba.`,
+      `<strong>Forocoches Premium:</strong> ${allPosts.length} mensajes de ${pages.length}/${allPages.length} paginas. ${quotedPosts} mensajes tienen citas (${totalReplies} citas en total) y se han movido arriba.`,
     );
     renderTopCitedLinks(summary);
     renderThreadControls(summary);
