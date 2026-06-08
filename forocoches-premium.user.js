@@ -15,6 +15,7 @@
 
   const STYLE_ID = "fc-premium-style";
   const INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
+  const TAG_FILTER_BAR_ID = "fc-premium-tag-filter-bar";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
@@ -25,6 +26,7 @@
   const POST_TABLE_SELECTOR = "table[id^='post']";
   const THREAD_TITLE_SELECTOR =
     "a[id^='thread_title_'][href*='showthread.php?t=']";
+  const HIDDEN_THREAD_ATTRIBUTE = "data-fc-premium-tag-hidden";
   const PAGE_LOAD_DELAY_MS = 250;
   const TAG_PATTERN = /\+([A-Za-z0-9_-]+)/g;
   const THREAD_VIEW_MODES = ["ranked", "original", "cited"];
@@ -67,6 +69,8 @@
   /** @type {ThreadViewMode} */
   let currentThreadViewMode = getSavedThreadViewMode();
   let compactModeEnabled = getSavedCompactMode();
+  /** @type {string | null} */
+  let activeTagFilter = null;
 
   /**
    * @param {string | null | undefined} text
@@ -237,6 +241,35 @@
         color: #fff;
       }
 
+      #${TAG_FILTER_BAR_ID} {
+        align-items: center;
+        background: #fff7d6;
+        border: 1px solid #f0c36d;
+        border-radius: 6px;
+        box-sizing: border-box;
+        color: #4d3417;
+        display: flex;
+        flex-wrap: wrap;
+        font: 12px/1.4 Verdana, Arial, sans-serif;
+        gap: 8px;
+        margin: 10px auto;
+        padding: 8px 10px;
+      }
+
+      #${TAG_FILTER_BAR_ID} button {
+        background: #fff;
+        border: 1px solid #d79721;
+        border-radius: 5px;
+        color: #4d3417;
+        cursor: pointer;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 5px 8px;
+      }
+
+      tr[${HIDDEN_THREAD_ATTRIBUTE}] {
+        display: none !important;
+      }
+
       .fc-premium-post-wrapper {
         border-radius: 6px;
         margin: 0 0 12px;
@@ -296,6 +329,10 @@
         text-transform: uppercase;
         vertical-align: 1px;
         white-space: nowrap;
+      }
+
+      .fc-premium-tag-chip[role="button"] {
+        cursor: pointer;
       }
 
       [${SELECTED_ATTRIBUTE}] {
@@ -391,10 +428,28 @@
     const chip = document.createElement("span");
 
     chip.className = "fc-premium-tag-chip";
+    chip.dataset.fcPremiumTag = canonicalTag;
+    chip.role = "button";
+    chip.tabIndex = 0;
     chip.textContent = `+${tag}`;
+    chip.title = `Filtrar por +${tag}`;
     chip.style.setProperty("--fc-premium-tag-bg", colors.background);
     chip.style.setProperty("--fc-premium-tag-border", colors.border);
     chip.style.setProperty("--fc-premium-tag-color", colors.color);
+    chip.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleTagFilter(canonicalTag);
+    });
+    chip.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      toggleTagFilter(canonicalTag);
+    });
 
     return chip;
   }
@@ -448,6 +503,104 @@
         renderTaggedTitle(title);
       }
     }
+
+    if (isForumDisplayPage()) {
+      renderTagFilterBar();
+    }
+  }
+
+  /**
+   * @param {HTMLAnchorElement} title
+   * @returns {string[]}
+   */
+  function getTitleTags(title) {
+    const source = title.title || normalizeText(title.textContent);
+    const tags = new Set();
+
+    TAG_PATTERN.lastIndex = 0;
+
+    for (const match of source.matchAll(TAG_PATTERN)) {
+      tags.add(match[1].toLowerCase());
+    }
+
+    TAG_PATTERN.lastIndex = 0;
+    return Array.from(tags);
+  }
+
+  /**
+   * @param {string} tag
+   */
+  function toggleTagFilter(tag) {
+    if (!isForumDisplayPage()) {
+      return;
+    }
+
+    activeTagFilter = activeTagFilter === tag ? null : tag;
+    applyTagFilter();
+    renderTagFilterBar();
+    refreshNavigation({ reset: true });
+  }
+
+  /**
+   * @returns {{ total: number, visible: number }}
+   */
+  function applyTagFilter() {
+    let total = 0;
+    let visible = 0;
+
+    for (const title of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
+      if (!(title instanceof HTMLAnchorElement)) {
+        continue;
+      }
+
+      const row = getThreadNavigationOwner(title);
+      const matches =
+        !activeTagFilter || getTitleTags(title).includes(activeTagFilter);
+
+      total += 1;
+
+      if (matches) {
+        visible += 1;
+        row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
+      } else {
+        row.setAttribute(HIDDEN_THREAD_ATTRIBUTE, "true");
+      }
+    }
+
+    return { total, visible };
+  }
+
+  function renderTagFilterBar() {
+    document.getElementById(TAG_FILTER_BAR_ID)?.remove();
+
+    if (!activeTagFilter) {
+      applyTagFilter();
+      return;
+    }
+
+    const counts = applyTagFilter();
+    const firstTitle = document.querySelector(THREAD_TITLE_SELECTOR);
+    const table = firstTitle?.closest("table");
+
+    if (!table?.parentElement) {
+      return;
+    }
+
+    const bar = document.createElement("div");
+    bar.id = TAG_FILTER_BAR_ID;
+    bar.textContent = `Filtro +${activeTagFilter}: ${counts.visible}/${counts.total} hilos`;
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.textContent = "Limpiar";
+    clearButton.addEventListener("click", () => {
+      activeTagFilter = null;
+      applyTagFilter();
+      renderTagFilterBar();
+      refreshNavigation({ reset: true });
+    });
+    bar.append(clearButton);
+    table.before(bar);
   }
 
   /**

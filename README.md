@@ -58,6 +58,10 @@ On forum listing pages, thread title tags written with `+`, such as `+HD` or
 same tag always gets the same color, and matching is case-insensitive, so `+HD`,
 `+hd`, and `+Hd` share a color.
 
+Clicking a tag chip filters the forum listing to threads with that same tag.
+The filter bar shows how many threads match and includes a `Limpiar` button to
+show every thread again.
+
 ### Keyboard Navigation
 
 On forum listing pages:
