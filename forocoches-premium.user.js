@@ -622,9 +622,6 @@
         margin: 12px auto;
         max-width: 100%;
         padding: 10px 12px;
-        position: sticky;
-        top: 0;
-        z-index: 50;
       }
 
       #${THREAD_SUMMARY_ID}.fc-premium-summary-stuck {
@@ -1207,15 +1204,7 @@
         border-radius: 6px;
         outline: 2px solid #1a73e8 !important;
         outline-offset: 3px;
-        transition:
-          outline-offset 160ms ease,
-          transform 160ms ease;
-      }
-
-      .fc-premium-post-wrapper[${SELECTED_ATTRIBUTE}],
-      a[${SELECTED_ATTRIBUTE}] {
-        transform: scale(1.005);
-        transform-origin: center center;
+        transition: outline-offset 160ms ease;
       }
 
       tr[${SELECTED_ATTRIBUTE}] > td {
@@ -2086,7 +2075,7 @@
   }
 
   /**
-   * @param {{ reset?: boolean, scroll?: boolean, persist?: boolean }} [options]
+   * @param {{ reset?: boolean, scroll?: boolean, persist?: boolean, updateUrl?: boolean }} [options]
    */
   function refreshNavigation(options = {}) {
     const previousElement = navigationItems[selectedNavigationIndex]?.element;
@@ -2111,7 +2100,7 @@
   }
 
   /**
-   * @param {{ scroll?: boolean, persist?: boolean }} [options]
+   * @param {{ scroll?: boolean, persist?: boolean, updateUrl?: boolean }} [options]
    */
   function renderNavigationSelection(options = {}) {
     for (const selected of document.querySelectorAll(
@@ -2138,12 +2127,50 @@
       }
     }
 
+    if (options.updateUrl && isThreadPage()) {
+      updateSelectedPostUrl(selected);
+    }
+
     if (options.scroll) {
       selected.element.scrollIntoView({
         behavior: "smooth",
         block: "nearest",
       });
     }
+  }
+
+  /**
+   * @param {NavigationItem} selected
+   */
+  function updateSelectedPostUrl(selected) {
+    const postId = getPostIdFromNavigationElement(selected.element);
+
+    if (!postId) {
+      return;
+    }
+
+    const threadId =
+      getThreadId(new URL(location.href)) ||
+      threadPages
+        .map((page) => getThreadId(new URL(page.url)))
+        .find(Boolean) ||
+      null;
+
+    if (!threadId) {
+      return;
+    }
+
+    const post = loadedThreadPosts.find((item) => item.id === postId);
+    const url = new URL(location.href);
+    url.search = "";
+    url.searchParams.set("t", threadId);
+
+    if (post && post.pageNumber > 1) {
+      url.searchParams.set("page", String(post.pageNumber));
+    }
+
+    url.hash = `post${postId}`;
+    window.history.replaceState(window.history.state, "", url.href);
   }
 
   /**
@@ -2239,7 +2266,7 @@
       Math.max(selectedNavigationIndex + direction, 0),
       navigationItems.length - 1,
     );
-    renderNavigationSelection({ scroll: true });
+    renderNavigationSelection({ scroll: true, updateUrl: true });
   }
 
   /**
@@ -2258,7 +2285,7 @@
       Math.max(index, 0),
       navigationItems.length - 1,
     );
-    renderNavigationSelection({ scroll: true });
+    renderNavigationSelection({ scroll: true, updateUrl: true });
   }
 
   /**
@@ -2273,7 +2300,7 @@
     }
 
     selectedNavigationIndex = index;
-    renderNavigationSelection({ scroll: true });
+    renderNavigationSelection({ scroll: true, updateUrl: true });
   }
 
   /**
@@ -2307,7 +2334,7 @@
 
       if (item.element.hasAttribute("data-fc-premium-reply-count")) {
         selectedNavigationIndex = index;
-        renderNavigationSelection({ scroll: true });
+        renderNavigationSelection({ scroll: true, updateUrl: true });
         return true;
       }
     }
@@ -2316,6 +2343,16 @@
   }
 
   function openSelectedNavigationItem() {
+    if (isThreadPage()) {
+      const selected = navigationItems[selectedNavigationIndex];
+
+      if (selected) {
+        updateSelectedPostUrl(selected);
+      }
+
+      return;
+    }
+
     const selected = navigationItems[selectedNavigationIndex];
 
     if (!selected?.link) {
