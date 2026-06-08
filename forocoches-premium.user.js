@@ -16,6 +16,7 @@
   const STYLE_ID = "fc-premium-style";
   const INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
   const TAG_FILTER_BAR_ID = "fc-premium-tag-filter-bar";
+  const TOP_TAGS_ID = "fc-premium-top-tags";
   const AUTHOR_FILTER_BAR_ID = "fc-premium-author-filter-bar";
   const THREAD_FILTER_ACTIONS_ID = "fc-premium-thread-filter-actions";
   const TOP_CITED_ID = "fc-premium-top-cited";
@@ -444,6 +445,29 @@
         padding: 5px 8px;
       }
 
+      #${TOP_TAGS_ID} {
+        align-items: center;
+        background: #f7faff;
+        border: 1px solid #b7d1ff;
+        border-radius: 6px;
+        box-sizing: border-box;
+        color: #17324d;
+        display: flex;
+        flex-wrap: wrap;
+        font: 12px/1.4 Verdana, Arial, sans-serif;
+        gap: 6px;
+        margin: 10px auto;
+        padding: 8px 10px;
+      }
+
+      #${TOP_TAGS_ID} > span:first-child {
+        font-weight: 700;
+      }
+
+      #${TOP_TAGS_ID} .fc-premium-tag-chip[aria-pressed="true"] {
+        box-shadow: 0 0 0 2px #0b57d0;
+      }
+
       #${AUTHOR_FILTER_BAR_ID} {
         align-items: center;
         background: #eef7ee;
@@ -841,6 +865,7 @@
     }
 
     if (isForumDisplayPage()) {
+      renderTopTagBar();
       renderTagFilterBar();
     }
   }
@@ -873,6 +898,7 @@
 
     activeTagFilter = activeTagFilter === tag ? null : tag;
     applyTagFilter();
+    renderTopTagBar();
     renderTagFilterBar();
     refreshNavigation({ reset: true });
   }
@@ -884,8 +910,86 @@
 
     activeTagFilter = null;
     applyTagFilter();
+    renderTopTagBar();
     renderTagFilterBar();
     refreshNavigation({ reset: true });
+  }
+
+  /**
+   * @returns {{ tag: string, count: number, firstIndex: number }[]}
+   */
+  function getTopTitleTags() {
+    const tagsByName = new Map();
+    let titleIndex = 0;
+
+    for (const title of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
+      if (!(title instanceof HTMLAnchorElement)) {
+        continue;
+      }
+
+      for (const tag of getTitleTags(title)) {
+        const summary = tagsByName.get(tag);
+
+        if (summary) {
+          summary.count += 1;
+        } else {
+          tagsByName.set(tag, { tag, count: 1, firstIndex: titleIndex });
+        }
+      }
+
+      titleIndex += 1;
+    }
+
+    return Array.from(tagsByName.values())
+      .sort((left, right) => {
+        if (left.count !== right.count) {
+          return right.count - left.count;
+        }
+
+        return left.firstIndex - right.firstIndex;
+      })
+      .slice(0, 12);
+  }
+
+  function renderTopTagBar() {
+    document.getElementById(TOP_TAGS_ID)?.remove();
+
+    if (!isForumDisplayPage()) {
+      return;
+    }
+
+    const topTags = getTopTitleTags();
+
+    if (topTags.length === 0) {
+      return;
+    }
+
+    const firstTitle = document.querySelector(THREAD_TITLE_SELECTOR);
+    const table = firstTitle?.closest("table");
+
+    if (!table?.parentElement) {
+      return;
+    }
+
+    const bar = document.createElement("div");
+    bar.id = TOP_TAGS_ID;
+
+    const label = document.createElement("span");
+    label.textContent = "Top tags:";
+    bar.append(label);
+
+    for (const summary of topTags) {
+      const chip = createTagChip(summary.tag);
+      chip.textContent = `+${summary.tag} (${summary.count})`;
+      chip.title = `Filtrar ${summary.count} hilos con +${summary.tag}`;
+      chip.setAttribute(
+        "aria-pressed",
+        String(activeTagFilter === summary.tag),
+      );
+      bar.append(chip);
+    }
+
+    table.before(bar);
   }
 
   /**
