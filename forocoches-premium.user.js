@@ -462,6 +462,7 @@
 
   function applyCompactMode() {
     document.body.classList.toggle(COMPACT_MODE_CLASS, compactModeEnabled);
+    updateRenderedCompactPostLayouts();
   }
 
   function updateGlobalCompactToggle() {
@@ -1161,46 +1162,20 @@
         box-shadow: 0 0 0 3px #d79721;
       }
 
-      .fc-premium-post-badges {
-        align-items: center;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin: 0 0 6px;
-      }
-
       .fc-premium-reply-badge {
+        align-items: center;
         background: #0b57d0;
         border-radius: 999px;
         color: #fff;
-        display: inline-block;
-        font: 700 11px/1 Verdana, Arial, sans-serif;
-        margin: 0;
-        padding: 5px 8px;
+        display: inline-flex;
+        flex-wrap: wrap;
+        font: 700 10px/1 Verdana, Arial, sans-serif;
+        gap: 4px;
+        margin-left: 8px;
+        padding: 4px 7px;
+        vertical-align: 1px;
       }
 
-      .fc-premium-op-badge {
-        background: #e6f4ea;
-        border: 1px solid #34a853;
-        border-radius: 999px;
-        color: #137333;
-        display: inline-block;
-        font: 700 11px/1 Verdana, Arial, sans-serif;
-        padding: 5px 8px;
-      }
-
-      .fc-premium-page-badge {
-        background: #e8f0fe;
-        border: 1px solid #b7d1ff;
-        border-radius: 999px;
-        color: #17324d;
-        display: inline-block;
-        font: 700 11px/1 Verdana, Arial, sans-serif;
-        padding: 5px 8px;
-      }
-
-      .fc-premium-op-badge[data-fc-premium-author-filter],
-      .fc-premium-page-badge[role="button"],
       .fc-premium-author-filter-button {
         cursor: pointer;
       }
@@ -1224,7 +1199,6 @@
       .fc-premium-reply-badge a {
         color: #fff;
         font-weight: 700;
-        margin-left: 4px;
         text-decoration: underline;
         text-underline-offset: 2px;
       }
@@ -1241,21 +1215,58 @@
         opacity: 0.92;
       }
 
-      .fc-premium-compact-author-meta {
-        color: #3c4043;
+      .fc-premium-header-author {
         display: none;
         font-weight: 700;
         margin-left: 8px;
+        position: relative;
+        white-space: nowrap;
       }
 
-      .fc-premium-compact-author-meta a {
+      .fc-premium-header-author > a {
         color: #0b57d0;
         text-decoration: none;
       }
 
-      .fc-premium-compact-author-meta a:hover {
+      .fc-premium-header-author > a:hover {
         text-decoration: underline;
         text-underline-offset: 2px;
+      }
+
+      .fc-premium-author-hover-card {
+        background: #fff;
+        border: 1px solid #b7d1ff;
+        border-radius: 6px;
+        box-shadow: 0 8px 24px rgba(32, 33, 36, 0.22);
+        color: #202124;
+        display: none;
+        font: 11px/1.4 Verdana, Arial, sans-serif;
+        left: 0;
+        max-width: min(320px, 80vw);
+        min-width: 210px;
+        padding: 8px 10px;
+        position: absolute;
+        text-align: left;
+        top: calc(100% + 4px);
+        white-space: normal;
+        z-index: 9999;
+      }
+
+      .fc-premium-header-author:hover .fc-premium-author-hover-card,
+      .fc-premium-header-author:focus-within .fc-premium-author-hover-card {
+        display: block;
+      }
+
+      .fc-premium-author-hover-card strong {
+        color: #17324d;
+        display: block;
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+
+      .fc-premium-author-hover-card span {
+        display: block;
+        margin-top: 2px;
       }
 
       a[data-fc-premium-quote-target] {
@@ -1317,21 +1328,8 @@
         table-layout: auto !important;
       }
 
-      body.${COMPACT_MODE_CLASS} #posts td[width="175"] {
+      body.${COMPACT_MODE_CLASS} #posts .fc-premium-author-cell {
         display: none !important;
-      }
-
-      body.${COMPACT_MODE_CLASS} #posts td[width="175"][rowspan] .smallfont {
-        display: none !important;
-      }
-
-      body.${COMPACT_MODE_CLASS} #posts td[width="175"][rowspan] .bigusername {
-        display: inline-block;
-        font-size: 11px !important;
-        max-width: 96px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
 
       body.${COMPACT_MODE_CLASS} #posts table[id^="post"] td {
@@ -1397,8 +1395,8 @@
         font-size: 12px !important;
       }
 
-      body.${COMPACT_MODE_CLASS} .fc-premium-compact-author-meta {
-        display: inline;
+      body.${COMPACT_MODE_CLASS} .fc-premium-header-author {
+        display: inline-block;
       }
 
       body.${COMPACT_MODE_CLASS} table.tborder:has(td.navbar),
@@ -4280,29 +4278,55 @@
   }
 
   /**
-   * @param {HTMLElement} wrapper
-   * @param {PostRecord} post
+   * @param {HTMLElement} authorCell
+   * @returns {string[]}
    */
-  function enhanceCompactPostHeader(wrapper, post) {
-    if (wrapper.querySelector(".fc-premium-compact-author-meta")) {
-      return;
+  function getAuthorHoverLines(authorCell) {
+    const lines = [];
+    const seen = new Set();
+
+    /**
+     * @param {string | null | undefined} text
+     */
+    const addLine = (text) => {
+      const line = normalizeText(text).replace(/\s+filtrar$/, "");
+
+      if (!line || seen.has(line)) {
+        return;
+      }
+
+      seen.add(line);
+      lines.push(line);
+    };
+
+    for (const block of authorCell.querySelectorAll(".smallfont")) {
+      const childDivs = Array.from(block.children).filter(
+        (child) => child instanceof HTMLDivElement,
+      );
+
+      if (childDivs.length === 0) {
+        addLine(block.textContent);
+        continue;
+      }
+
+      for (const child of childDivs) {
+        addLine(child.textContent);
+      }
     }
 
-    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
-    const postCountLink = table?.querySelector(`a[id='postcount${post.id}']`);
-    const headerCell = postCountLink?.closest("tr")?.querySelector("td");
+    return lines.slice(0, 8);
+  }
 
-    if (!(headerCell instanceof HTMLElement)) {
-      return;
-    }
-
-    const authorCell = table?.querySelector("td[width='175'][rowspan]");
-    const authorLink = authorCell?.querySelector(".bigusername");
-    const messageCount = normalizeText(authorCell?.textContent).match(
-      /([\d.]+)\s+Mens\./,
-    )?.[1];
+  /**
+   * @param {PostRecord} post
+   * @param {HTMLElement | null} authorCell
+   * @returns {HTMLElement}
+   */
+  function createHeaderAuthorMeta(post, authorCell) {
     const meta = document.createElement("span");
-    meta.className = "fc-premium-compact-author-meta";
+    meta.className = "fc-premium-header-author";
+
+    const authorLink = authorCell?.querySelector(".bigusername");
 
     if (authorLink instanceof HTMLAnchorElement) {
       const link = document.createElement("a");
@@ -4313,11 +4337,142 @@
       meta.textContent = post.author;
     }
 
-    if (messageCount) {
-      meta.append(document.createTextNode(` - ${messageCount} mens.`));
+    if (authorCell instanceof HTMLElement) {
+      const card = document.createElement("span");
+      card.className = "fc-premium-author-hover-card";
+
+      const title = document.createElement("strong");
+      title.textContent = post.author || "Usuario";
+      card.append(title);
+
+      for (const line of getAuthorHoverLines(authorCell)) {
+        const detail = document.createElement("span");
+        detail.textContent = line;
+        card.append(detail);
+      }
+
+      meta.append(card);
     }
 
-    headerCell.append(meta);
+    return meta;
+  }
+
+  /**
+   * @param {HTMLTableCellElement} cell
+   */
+  function rememberCellColSpan(cell) {
+    if (!cell.dataset.fcPremiumOriginalColspan) {
+      cell.dataset.fcPremiumOriginalColspan = String(cell.colSpan || 1);
+    }
+  }
+
+  /**
+   * @param {HTMLTableCellElement} cell
+   */
+  function applyCompactColSpan(cell) {
+    rememberCellColSpan(cell);
+    cell.colSpan = Math.max(cell.colSpan, 2);
+  }
+
+  /**
+   * @param {HTMLTableCellElement} cell
+   */
+  function restoreOriginalColSpan(cell) {
+    const original = Number(cell.dataset.fcPremiumOriginalColspan || "1");
+    cell.colSpan = Number.isFinite(original) && original > 0 ? original : 1;
+  }
+
+  /**
+   * @param {HTMLElement} wrapper
+   */
+  function updatePostCompactLayout(wrapper) {
+    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
+
+    if (!(table instanceof HTMLTableElement)) {
+      return;
+    }
+
+    const authorCell = table.querySelector(".fc-premium-author-cell");
+    const headerRow = table.rows[0] || null;
+    const compact = compactModeEnabled;
+
+    for (const row of Array.from(table.rows)) {
+      if (row === headerRow) {
+        continue;
+      }
+
+      const rowHasAuthorCell = Array.from(row.cells).some((cell) =>
+        cell.classList.contains("fc-premium-author-cell"),
+      );
+      const shouldExpandRow = rowHasAuthorCell || row.cells.length === 1;
+
+      for (const cell of Array.from(row.cells)) {
+        if (
+          !(cell instanceof HTMLTableCellElement) ||
+          cell === authorCell ||
+          cell.classList.contains("fc-premium-author-cell")
+        ) {
+          continue;
+        }
+
+        if (compact && shouldExpandRow) {
+          applyCompactColSpan(cell);
+        } else {
+          restoreOriginalColSpan(cell);
+        }
+      }
+    }
+  }
+
+  function updateRenderedCompactPostLayouts() {
+    for (const wrapper of document.querySelectorAll(".fc-premium-post-wrapper")) {
+      if (wrapper instanceof HTMLElement) {
+        updatePostCompactLayout(wrapper);
+      }
+    }
+  }
+
+  /**
+   * @param {HTMLElement} wrapper
+   * @param {PostRecord} post
+   * @returns {{ numberCell: HTMLTableCellElement | null }}
+   */
+  function enhanceNativePostHeader(wrapper, post) {
+    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
+    const postCountLink = table?.querySelector(`a[id='postcount${post.id}']`);
+    const numberCell = postCountLink?.closest("td");
+    const headerRow = postCountLink?.closest("tr");
+    const dateCell =
+      Array.from(headerRow?.children || []).find(
+        (cell) => cell instanceof HTMLTableCellElement && cell !== numberCell,
+      ) || null;
+    const authorCell = table?.querySelector("td[width='175'][rowspan]");
+
+    if (authorCell instanceof HTMLElement) {
+      authorCell.classList.add("fc-premium-author-cell");
+    }
+
+    const messageCell = table?.querySelector(`#td_post_${post.id}`);
+
+    if (messageCell instanceof HTMLElement) {
+      messageCell.classList.add("fc-premium-message-cell");
+    }
+
+    if (
+      dateCell instanceof HTMLTableCellElement &&
+      !dateCell.querySelector(".fc-premium-header-author")
+    ) {
+      dateCell.classList.add("fc-premium-post-date-cell");
+      dateCell.append(createHeaderAuthorMeta(post, authorCell));
+    }
+
+    if (numberCell instanceof HTMLTableCellElement) {
+      numberCell.classList.add("fc-premium-post-number-cell");
+    }
+
+    return {
+      numberCell: numberCell instanceof HTMLTableCellElement ? numberCell : null,
+    };
   }
 
   /**
@@ -4346,61 +4501,26 @@
 
     enhanceQuoteLinks(wrapper);
     enhanceAuthorFilterButton(wrapper, post.author);
-    enhanceCompactPostHeader(wrapper, post);
-    const badges = document.createElement("div");
-    badges.className = "fc-premium-post-badges";
+    const header = enhanceNativePostHeader(wrapper, post);
 
     if (post.isOriginalPoster) {
       wrapper.dataset.fcPremiumOriginalPoster = "true";
-
-      const opBadge = document.createElement("div");
-      opBadge.className = "fc-premium-op-badge";
-      opBadge.dataset.fcPremiumAuthorFilter = normalizeAuthorName(post.author);
-      opBadge.title = `Filtrar mensajes de ${post.author}`;
-      opBadge.textContent = "OP";
-      opBadge.addEventListener("click", () => {
-        toggleAuthorFilter(post.author);
-      });
-      badges.append(opBadge);
     }
-
-    const pageBadge = document.createElement("div");
-    pageBadge.className = "fc-premium-page-badge";
-    pageBadge.role = "button";
-    pageBadge.tabIndex = 0;
-    pageBadge.textContent = `Pag. ${post.pageNumber}`;
-    pageBadge.title = `Filtrar mensajes de la pagina ${post.pageNumber}`;
-    pageBadge.addEventListener("click", () => {
-      togglePageFilter(post.pageNumber);
-    });
-    pageBadge.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      togglePageFilter(post.pageNumber);
-    });
-    badges.append(pageBadge);
 
     if (post.replyCount > 0) {
       wrapper.dataset.fcPremiumReplyCount = String(post.replyCount);
       wrapper.dataset.fcPremiumRank = String(rank);
 
-      const badge = document.createElement("div");
+      const badge = document.createElement("span");
       badge.className = "fc-premium-reply-badge";
-      badge.textContent = `#${rank} - ${
+      badge.textContent = `#${rank} · ${
         post.replyCount === 1 ? "1 cita" : `${post.replyCount} citas`
       }`;
       appendReplyLinks(badge, post, postById);
-      badges.append(badge);
+      header.numberCell?.append(badge);
     }
 
-    if (badges.childElementCount > 0) {
-      wrapper.prepend(badges);
-    }
-
+    updatePostCompactLayout(wrapper);
     return wrapper;
   }
 
@@ -4410,7 +4530,7 @@
    * @param {Map<string, PostRecord>} postById
    */
   function appendReplyLinks(badge, post, postById) {
-    const maxLinks = 8;
+    const maxLinks = 3;
     const visibleReplyIds = post.replyingPostIds.slice(0, maxLinks);
 
     if (visibleReplyIds.length === 0) {
@@ -4419,7 +4539,7 @@
 
     const label = document.createElement("span");
     label.className = "fc-premium-original-position";
-    label.textContent = " - citado por ";
+    label.textContent = "·";
     badge.append(label);
 
     for (const replyingPostId of visibleReplyIds) {
@@ -4455,7 +4575,8 @@
 
     const quotedByButton = document.createElement("button");
     quotedByButton.type = "button";
-    quotedByButton.textContent = "Ver citadores";
+    quotedByButton.textContent = "Ver";
+    quotedByButton.title = "Ver citadores";
     quotedByButton.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
