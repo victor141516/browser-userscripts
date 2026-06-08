@@ -541,6 +541,17 @@
     refreshNavigation({ reset: true });
   }
 
+  function clearTagFilter() {
+    if (!activeTagFilter) {
+      return;
+    }
+
+    activeTagFilter = null;
+    applyTagFilter();
+    renderTagFilterBar();
+    refreshNavigation({ reset: true });
+  }
+
   /**
    * @returns {{ total: number, visible: number }}
    */
@@ -593,12 +604,7 @@
     const clearButton = document.createElement("button");
     clearButton.type = "button";
     clearButton.textContent = "Limpiar";
-    clearButton.addEventListener("click", () => {
-      activeTagFilter = null;
-      applyTagFilter();
-      renderTagFilterBar();
-      refreshNavigation({ reset: true });
-    });
+    clearButton.addEventListener("click", clearTagFilter);
     bar.append(clearButton);
     table.before(bar);
   }
@@ -768,6 +774,25 @@
     renderNavigationSelection({ scroll: true });
   }
 
+  /**
+   * @param {number} index
+   */
+  function selectNavigationIndex(index) {
+    if (navigationItems.length === 0) {
+      refreshNavigation({ reset: true });
+    }
+
+    if (navigationItems.length === 0) {
+      return;
+    }
+
+    selectedNavigationIndex = Math.min(
+      Math.max(index, 0),
+      navigationItems.length - 1,
+    );
+    renderNavigationSelection({ scroll: true });
+  }
+
   function openSelectedNavigationItem() {
     const selected = navigationItems[selectedNavigationIndex];
 
@@ -792,6 +817,18 @@
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       moveNavigation(-1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      selectNavigationIndex(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      if (navigationItems.length === 0) {
+        refreshNavigation({ reset: true });
+      }
+      selectNavigationIndex(navigationItems.length - 1);
+    } else if (event.key === "Escape" && activeTagFilter) {
+      event.preventDefault();
+      clearTagFilter();
     } else if (event.key === "Enter") {
       event.preventDefault();
       openSelectedNavigationItem();

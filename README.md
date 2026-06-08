@@ -68,12 +68,15 @@ On forum listing pages:
 
 - The first visible thread is selected by default.
 - Arrow Up and Arrow Down move the selection between thread rows.
+- Home and End jump to the first or last selectable row.
+- Escape clears an active tag filter.
 - Enter opens the selected thread.
 
 On thread pages:
 
 - After the quote-ranking pass finishes, the first sorted post is selected.
 - Arrow Up and Arrow Down move between sorted posts.
+- Home and End jump to the first or last rendered post.
 - Enter opens the selected post permalink.
 
 Keyboard handling ignores inputs, textareas, selects, and contenteditable
