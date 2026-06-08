@@ -39,7 +39,9 @@
   const FORUM_SIDEBAR_STORAGE_KEY = "fcPremiumForumSidebarHidden";
   const LOAD_ALL_PAGES_STORAGE_KEY = "fcPremiumLoadAllPages";
   const LAST_SELECTED_POST_STORAGE_PREFIX = "fcPremiumLastPost:";
+  const THREAD_CACHE_STORAGE_PREFIX = "fcPremiumThreadCache:";
   const THREAD_VIEW_MODE_STORAGE_KEY = "fcPremiumThreadViewMode";
+  const THREAD_CACHE_VERSION = 1;
   const SELECTED_ATTRIBUTE = "data-fc-premium-selected";
   const FORUM_LAYOUT_HIDDEN_ATTRIBUTE = "data-fc-premium-layout-hidden";
   const POSTS_SELECTOR = "#posts";
@@ -108,6 +110,16 @@
    */
 
   /**
+   * @typedef {object} ThreadCacheRecord
+   * @property {number} version
+   * @property {string} threadId
+   * @property {number} totalPages
+   * @property {number[]} cachedPageNumbers
+   * @property {number} savedAt
+   * @property {PostRecord[]} posts
+   */
+
+  /**
    * @typedef {object} ThreadGraph
    * @property {Map<string, PostRecord>} postById
    * @property {Map<string, Set<string>>} quotedByPostId
@@ -144,6 +156,7 @@
     loadedPosts: 0,
     isLoading: false,
   };
+  let threadCacheUsed = false;
   /** @type {ThreadGraph} */
   let threadGraph = createEmptyThreadGraph();
   /** @type {ActiveGraphView | null} */
@@ -421,6 +434,173 @@
 
     if (key) {
       localStorage.setItem(key, postId);
+    }
+  }
+
+  /**
+   * @returns {string | null}
+   */
+  function getCurrentThreadCacheKey() {
+    const threadId = getThreadId(new URL(location.href));
+
+    return threadId ? `${THREAD_CACHE_STORAGE_PREFIX}${threadId}` : null;
+  }
+
+  /**
+   * @param {unknown} value
+   * @returns {value is PostRecord}
+   */
+  function isCachedPostRecord(value) {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+
+    const post = /** @type {PostRecord} */ (value);
+
+    return (
+      typeof post.id === "string" &&
+      typeof post.html === "string" &&
+      typeof post.author === "string" &&
+      typeof post.postNumber === "string" &&
+      Number.isFinite(post.pageNumber) &&
+      Number.isFinite(post.pageIndex) &&
+      Number.isFinite(post.originalIndex) &&
+      Array.isArray(post.quotedPostIds)
+    );
+  }
+
+  /**
+   * @param {PostRecord} post
+   * @returns {PostRecord}
+   */
+  function normalizeCachedPostRecord(post) {
+    return {
+      id: post.id,
+      html: post.html,
+      author: post.author,
+      postNumber: post.postNumber,
+      pageNumber: Number(post.pageNumber),
+      pageIndex: Number(post.pageIndex),
+      originalIndex: Number(post.originalIndex),
+      quotedPostIds: post.quotedPostIds.filter(Boolean),
+      replyingPostIds: [],
+      isOriginalPoster: false,
+      replyCount: 0,
+    };
+  }
+
+  /**
+   * @param {unknown} value
+   * @returns {ThreadCacheRecord | null}
+   */
+  function normalizeThreadCacheRecord(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    const record = /** @type {ThreadCacheRecord} */ (value);
+
+    if (
+      record.version !== THREAD_CACHE_VERSION ||
+      typeof record.threadId !== "string" ||
+      !Number.isFinite(record.totalPages) ||
+      !Array.isArray(record.cachedPageNumbers) ||
+      !Array.isArray(record.posts)
+    ) {
+      return null;
+    }
+
+    const posts = record.posts
+      .filter(isCachedPostRecord)
+      .map(normalizeCachedPostRecord);
+
+    if (posts.length === 0) {
+      return null;
+    }
+
+    return {
+      version: record.version,
+      threadId: record.threadId,
+      totalPages: Number(record.totalPages),
+      cachedPageNumbers: record.cachedPageNumbers
+        .map(Number)
+        .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0),
+      savedAt: Number(record.savedAt) || 0,
+      posts,
+    };
+  }
+
+  /**
+   * @returns {ThreadCacheRecord | null}
+   */
+  function readCurrentThreadCache() {
+    const key = getCurrentThreadCacheKey();
+
+    if (!key) {
+      return null;
+    }
+
+    try {
+      return normalizeThreadCacheRecord(JSON.parse(localStorage.getItem(key)));
+    } catch (error) {
+      console.warn("Forocoches Premium: cache corrupta", error);
+      localStorage.removeItem(key);
+      return null;
+    }
+  }
+
+  /**
+   * @param {ThreadCacheRecord} cache
+   * @returns {boolean}
+   */
+  function isCompleteThreadCache(cache) {
+    const cachedPages = new Set(cache.cachedPageNumbers);
+
+    return (
+      cache.totalPages > 0 &&
+      cachedPages.size >= cache.totalPages &&
+      cache.posts.length > 0
+    );
+  }
+
+  /**
+   * @param {PostRecord[]} posts
+   * @param {number} totalPages
+   * @param {Set<number>} cachedPageNumbers
+   */
+  function writeCurrentThreadCache(posts, totalPages, cachedPageNumbers) {
+    const key = getCurrentThreadCacheKey();
+    const threadId = getThreadId(new URL(location.href));
+
+    if (!key || !threadId || posts.length === 0 || cachedPageNumbers.size === 0) {
+      return;
+    }
+
+    /** @type {ThreadCacheRecord} */
+    const record = {
+      version: THREAD_CACHE_VERSION,
+      threadId,
+      totalPages,
+      cachedPageNumbers: Array.from(cachedPageNumbers).sort(
+        (left, right) => left - right,
+      ),
+      savedAt: Date.now(),
+      posts: posts.map(normalizeCachedPostRecord),
+    };
+
+    try {
+      localStorage.setItem(key, JSON.stringify(record));
+    } catch (error) {
+      console.warn("Forocoches Premium: no se pudo guardar la cache", error);
+      localStorage.removeItem(key);
+    }
+  }
+
+  function clearCurrentThreadCache() {
+    const key = getCurrentThreadCacheKey();
+
+    if (key) {
+      localStorage.removeItem(key);
     }
   }
 
@@ -2288,21 +2468,29 @@
   }
 
   /**
+   * @param {number} totalPages
    * @returns {ThreadPage[]}
    */
-  function getThreadPages() {
+  function getThreadPagesForTotal(totalPages) {
     const currentUrl = new URL(location.href);
-    const maxPage = getMaxThreadPage(document);
     /** @type {ThreadPage[]} */
     const pages = [];
 
-    for (let pageNumber = 1; pageNumber <= maxPage; pageNumber += 1) {
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
       const url = new URL(currentUrl.href);
       url.searchParams.set("page", String(pageNumber));
       pages.push({ pageNumber, url: url.href });
     }
 
     return pages;
+  }
+
+  /**
+   * @returns {ThreadPage[]}
+   */
+  function getThreadPages() {
+    const maxPage = getMaxThreadPage(document);
+    return getThreadPagesForTotal(maxPage);
   }
 
   /**
@@ -2535,9 +2723,11 @@
       0,
     );
     const pageLabel = `${state.loadedPages}/${state.targetPages}`;
-    const loadingText = state.isLoading
-      ? `cargando paginas ${pageLabel}`
-      : `${pageLabel} paginas cargadas`;
+    const loadingText = threadCacheUsed
+      ? `${pageLabel} paginas desde cache`
+      : state.isLoading
+        ? `cargando paginas ${pageLabel}`
+        : `${pageLabel} paginas cargadas`;
 
     text.innerHTML = `<strong>Forocoches Premium:</strong> ${loadingText}. ${state.loadedPosts} mensajes cargados. ${quotedPosts} mensajes tienen citas (${totalReplies} citas en total).`;
     progress.append(text);
@@ -2653,6 +2843,16 @@
       location.reload();
     });
     controls.append(loadAllButton);
+
+    const cacheButton = document.createElement("button");
+    cacheButton.type = "button";
+    cacheButton.textContent = "Actualizar cache";
+    cacheButton.title = "Borrar la cache de este hilo y volver a cargar paginas";
+    cacheButton.addEventListener("click", () => {
+      clearCurrentThreadCache();
+      location.reload();
+    });
+    controls.append(cacheButton);
 
     summary.append(controls);
   }
@@ -4150,12 +4350,21 @@
   }
 
   /**
+   * @param {PostRecord[]} posts
+   */
+  function hydrateThreadPosts(posts) {
+    applyReplyCounts(posts);
+    applyOriginalPosterFlags(posts);
+    loadedThreadPosts = posts.slice();
+    threadGraph = buildThreadGraph(loadedThreadPosts);
+  }
+
+  /**
    * @returns {Promise<void>}
    */
   async function enhanceThreadPage() {
     ensureStyle();
 
-    const currentPageDocument = parseHtml(document.documentElement.outerHTML);
     const summary = ensureThreadSummary();
     const allPages = getThreadPages();
     const currentPageNumber = getPageNumber(new URL(location.href));
@@ -4171,6 +4380,7 @@
     loadedThreadPageNumbers = new Set();
     threadGraph = createEmptyThreadGraph();
     activeGraphView = null;
+    threadCacheUsed = false;
     threadLoadState = {
       loadedPages: 0,
       targetPages: pages.length,
@@ -4185,6 +4395,28 @@
 
     renderThreadSummaryMenu(summary);
 
+    const cachedThread = loadAllPagesEnabled ? readCurrentThreadCache() : null;
+
+    if (cachedThread && isCompleteThreadCache(cachedThread)) {
+      const cachedPages = getThreadPagesForTotal(cachedThread.totalPages);
+      threadPages = cachedPages;
+      loadedThreadPageNumbers = new Set(cachedThread.cachedPageNumbers);
+      hydrateThreadPosts(cachedThread.posts);
+      threadCacheUsed = true;
+      threadLoadState = {
+        loadedPages: loadedThreadPageNumbers.size,
+        targetPages: cachedThread.totalPages,
+        totalPages: cachedThread.totalPages,
+        loadedPosts: loadedThreadPosts.length,
+        isLoading: false,
+      };
+      renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+      renderThreadSummaryMenu(summary);
+      return;
+    }
+
+    const currentPageDocument = parseHtml(document.documentElement.outerHTML);
+
     for (const page of pages) {
       const doc =
         page.pageNumber === currentPageNumber
@@ -4195,10 +4427,7 @@
       pageOffset += pagePosts.length;
       loadedThreadPageNumbers.add(page.pageNumber);
 
-      applyReplyCounts(allPosts);
-      applyOriginalPosterFlags(allPosts);
-      loadedThreadPosts = allPosts.slice();
-      threadGraph = buildThreadGraph(loadedThreadPosts);
+      hydrateThreadPosts(allPosts);
       threadLoadState = {
         ...threadLoadState,
         loadedPages: loadedThreadPageNumbers.size,
@@ -4222,6 +4451,14 @@
     };
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
     renderThreadSummaryMenu(summary);
+
+    if (loadAllPagesEnabled && loadedThreadPageNumbers.size >= pages.length) {
+      writeCurrentThreadCache(
+        loadedThreadPosts,
+        allPages.length,
+        loadedThreadPageNumbers,
+      );
+    }
   }
 
   /**
