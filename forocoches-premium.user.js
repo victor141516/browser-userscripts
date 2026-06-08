@@ -43,6 +43,7 @@
    * @property {number} originalIndex
    * @property {string[]} quotedPostIds
    * @property {string[]} replyingPostIds
+   * @property {boolean} isOriginalPoster
    * @property {number} replyCount
    */
 
@@ -317,13 +318,31 @@
         box-shadow: 0 0 0 3px #d79721;
       }
 
+      .fc-premium-post-badges {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0 0 6px;
+      }
+
       .fc-premium-reply-badge {
         background: #0b57d0;
         border-radius: 999px;
         color: #fff;
         display: inline-block;
         font: 700 11px/1 Verdana, Arial, sans-serif;
-        margin: 0 0 6px;
+        margin: 0;
+        padding: 5px 8px;
+      }
+
+      .fc-premium-op-badge {
+        background: #e6f4ea;
+        border: 1px solid #34a853;
+        border-radius: 999px;
+        color: #137333;
+        display: inline-block;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
         padding: 5px 8px;
       }
 
@@ -1044,6 +1063,7 @@
         originalIndex: pageOffset + posts.length,
         quotedPostIds: getQuotedPostIds(doc, id),
         replyingPostIds: [],
+        isOriginalPoster: false,
         replyCount: 0,
       });
     }
@@ -1236,6 +1256,24 @@
 
   /**
    * @param {PostRecord[]} posts
+   */
+  function applyOriginalPosterFlags(posts) {
+    const firstPost = posts
+      .slice()
+      .sort((left, right) => left.originalIndex - right.originalIndex)[0];
+    const originalPoster = firstPost?.author.toLowerCase();
+
+    if (!originalPoster) {
+      return;
+    }
+
+    for (const post of posts) {
+      post.isOriginalPoster = post.author.toLowerCase() === originalPoster;
+    }
+  }
+
+  /**
+   * @param {PostRecord[]} posts
    * @returns {PostRecord[]}
    */
   function sortPosts(posts) {
@@ -1321,6 +1359,17 @@
 
     wrapper.classList.add("fc-premium-post-wrapper");
     wrapper.dataset.fcPremiumOriginalPage = String(post.pageNumber);
+    const badges = document.createElement("div");
+    badges.className = "fc-premium-post-badges";
+
+    if (post.isOriginalPoster) {
+      wrapper.dataset.fcPremiumOriginalPoster = "true";
+
+      const opBadge = document.createElement("div");
+      opBadge.className = "fc-premium-op-badge";
+      opBadge.textContent = "OP";
+      badges.append(opBadge);
+    }
 
     if (post.replyCount > 0) {
       wrapper.dataset.fcPremiumReplyCount = String(post.replyCount);
@@ -1336,7 +1385,11 @@
       originalPosition.textContent = ` - pagina ${post.pageNumber}`;
       badge.append(originalPosition);
       appendReplyLinks(badge, post, postById);
-      wrapper.prepend(badge);
+      badges.append(badge);
+    }
+
+    if (badges.childElementCount > 0) {
+      wrapper.prepend(badges);
     }
 
     return wrapper;
@@ -1457,6 +1510,7 @@
     }
 
     applyReplyCounts(allPosts);
+    applyOriginalPosterFlags(allPosts);
     loadedThreadPosts = allPosts;
     renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
 

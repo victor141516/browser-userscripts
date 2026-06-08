@@ -39,7 +39,8 @@ After all pages are loaded, it rebuilds the post list so posts with the most
 quote replies appear first. Highlighted posts get a visible citation badge such
 as `7 citas - pagina 1`, plus compact links to the posts that quoted them.
 Posts without quote replies remain after the highlighted group in their original
-order.
+order. Posts written by the thread author get an `OP` badge so they remain easy
+to identify after sorting.
 
 Thread pages include view controls:
 
