@@ -71,7 +71,7 @@ The summary and controls stay sticky while scrolling through a thread.
 When author or page filters are active, the sticky summary shows a `Limpiar
 filtros` button to clear all thread filters at once.
 The sticky summary also shows the currently selected visible post, including
-its position in the keyboard navigation list and original page.
+its position in the keyboard navigation list, author, and original page.
 
 The selected view, compact settings, and page-loading mode are saved in
 localStorage and reused on later thread pages.

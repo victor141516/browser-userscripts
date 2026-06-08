@@ -1244,6 +1244,9 @@
       normalizeText(
         selected.element.querySelector(`#postcount${postId}`)?.textContent,
       );
+    const author = normalizeText(
+      selected.element.querySelector(".bigusername")?.textContent,
+    );
     const pageNumber = selected.element.dataset.fcPremiumOriginalPage;
     const parts = [
       `Seleccion: ${selectedNavigationIndex + 1}/${navigationItems.length}`,
@@ -1251,6 +1254,10 @@
 
     if (postNumber) {
       parts.push(postNumber);
+    }
+
+    if (author) {
+      parts.push(author);
     }
 
     if (pageNumber) {
