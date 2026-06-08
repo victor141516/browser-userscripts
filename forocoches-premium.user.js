@@ -18,7 +18,10 @@
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const POSTS_SELECTOR = "#posts";
   const POST_TABLE_SELECTOR = "table[id^='post']";
+  const THREAD_TITLE_SELECTOR =
+    "a[id^='thread_title_'][href*='showthread.php?t=']";
   const PAGE_LOAD_DELAY_MS = 250;
+  const TAG_PATTERN = /\+([A-Za-z0-9_-]+)/g;
 
   /**
    * @typedef {object} PostRecord
@@ -150,9 +153,120 @@
         margin-left: 6px;
         opacity: 0.8;
       }
+
+      .fc-premium-tag-chip {
+        background: var(--fc-premium-tag-bg);
+        border: 1px solid var(--fc-premium-tag-border);
+        border-radius: 999px;
+        color: var(--fc-premium-tag-color);
+        display: inline-block;
+        font: 700 10px/1 Verdana, Arial, sans-serif;
+        margin: 0 2px;
+        padding: 3px 6px;
+        text-transform: uppercase;
+        vertical-align: 1px;
+        white-space: nowrap;
+      }
     `;
 
     document.head.appendChild(style);
+  }
+
+  /**
+   * @param {string} value
+   * @returns {number}
+   */
+  function hashString(value) {
+    let hash = 0;
+
+    for (let index = 0; index < value.length; index += 1) {
+      hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+    }
+
+    return hash;
+  }
+
+  /**
+   * @param {string} tag
+   * @returns {{ background: string, border: string, color: string }}
+   */
+  function getTagColors(tag) {
+    const hue = hashString(tag.toLowerCase()) % 360;
+
+    return {
+      background: `hsl(${hue}, 82%, 92%)`,
+      border: `hsl(${hue}, 58%, 60%)`,
+      color: `hsl(${hue}, 70%, 24%)`,
+    };
+  }
+
+  /**
+   * @param {string} tag
+   * @returns {HTMLElement}
+   */
+  function createTagChip(tag) {
+    const canonicalTag = tag.toLowerCase();
+    const colors = getTagColors(canonicalTag);
+    const chip = document.createElement("span");
+
+    chip.className = "fc-premium-tag-chip";
+    chip.textContent = `+${tag}`;
+    chip.style.setProperty("--fc-premium-tag-bg", colors.background);
+    chip.style.setProperty("--fc-premium-tag-border", colors.border);
+    chip.style.setProperty("--fc-premium-tag-color", colors.color);
+
+    return chip;
+  }
+
+  /**
+   * @param {HTMLAnchorElement} title
+   */
+  function renderTaggedTitle(title) {
+    if (title.dataset.fcPremiumTagsRendered === "true") {
+      return;
+    }
+
+    const originalTitle = normalizeText(title.textContent);
+
+    if (!TAG_PATTERN.test(originalTitle)) {
+      TAG_PATTERN.lastIndex = 0;
+      return;
+    }
+
+    TAG_PATTERN.lastIndex = 0;
+    title.dataset.fcPremiumTagsRendered = "true";
+    title.title = originalTitle;
+    title.textContent = "";
+
+    let currentIndex = 0;
+
+    for (const match of originalTitle.matchAll(TAG_PATTERN)) {
+      const matchIndex = match.index || 0;
+      const tag = match[1];
+
+      if (matchIndex > currentIndex) {
+        title.append(
+          document.createTextNode(originalTitle.slice(currentIndex, matchIndex)),
+        );
+      }
+
+      title.append(createTagChip(tag));
+      currentIndex = matchIndex + match[0].length;
+    }
+
+    if (currentIndex < originalTitle.length) {
+      title.append(document.createTextNode(originalTitle.slice(currentIndex)));
+    }
+  }
+
+  function enhanceThreadTitleTags() {
+    ensureStyle();
+
+    for (const title of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
+      if (title instanceof HTMLAnchorElement) {
+        renderTaggedTitle(title);
+      }
+    }
   }
 
   /**
@@ -543,6 +657,7 @@
     }
 
     window[INSTANCE_KEY] = true;
+    enhanceThreadTitleTags();
 
     if (!isThreadPage()) {
       return;
