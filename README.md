@@ -43,6 +43,7 @@ order.
 
 Thread pages include view controls:
 
+- `Top citados` links jump directly to the most quoted posts.
 - `Citas` sorts every loaded post by quote count.
 - `Original` restores chronological thread order while keeping citation badges.
 - `Solo citados` shows only posts that were quoted by another post.

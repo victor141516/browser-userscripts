@@ -16,6 +16,7 @@
   const STYLE_ID = "fc-premium-style";
   const INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
   const TAG_FILTER_BAR_ID = "fc-premium-tag-filter-bar";
+  const TOP_CITED_ID = "fc-premium-top-cited";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
@@ -239,6 +240,35 @@
         background: #0b57d0;
         border-color: #0b57d0;
         color: #fff;
+      }
+
+      #${TOP_CITED_ID} {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      #${TOP_CITED_ID} span {
+        font-weight: 700;
+      }
+
+      #${TOP_CITED_ID} a {
+        background: #fff;
+        border: 1px solid #b7d1ff;
+        border-radius: 999px;
+        color: #0b57d0;
+        display: inline-block;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 5px 8px;
+        text-decoration: none;
+      }
+
+      #${TOP_CITED_ID} a:hover {
+        border-color: #0b57d0;
+        text-decoration: underline;
+        text-underline-offset: 2px;
       }
 
       #${TAG_FILTER_BAR_ID} {
@@ -793,6 +823,21 @@
     renderNavigationSelection({ scroll: true });
   }
 
+  /**
+   * @param {HTMLElement} element
+   */
+  function selectNavigationElement(element) {
+    const index = navigationItems.findIndex((item) => item.element === element);
+
+    if (index < 0) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    selectedNavigationIndex = index;
+    renderNavigationSelection({ scroll: true });
+  }
+
   function openSelectedNavigationItem() {
     const selected = navigationItems[selectedNavigationIndex];
 
@@ -1120,6 +1165,54 @@
   }
 
   /**
+   * @param {HTMLElement | null} summary
+   */
+  function renderTopCitedLinks(summary) {
+    if (!summary || loadedThreadPosts.length === 0) {
+      return;
+    }
+
+    document.getElementById(TOP_CITED_ID)?.remove();
+
+    const topPosts = sortPosts(loadedThreadPosts)
+      .filter((post) => post.replyCount > 0)
+      .slice(0, 5);
+
+    if (topPosts.length === 0) {
+      return;
+    }
+
+    const strip = document.createElement("div");
+    strip.id = TOP_CITED_ID;
+
+    const label = document.createElement("span");
+    label.textContent = "Top citados:";
+    strip.append(label);
+
+    for (const post of topPosts) {
+      const link = document.createElement("a");
+      link.href = `#post${post.id}`;
+      link.textContent = `#${post.postNumber} ${post.author || "mensaje"} (${
+        post.replyCount
+      })`;
+      link.addEventListener("click", (event) => {
+        const table = document.getElementById(`post${post.id}`);
+        const wrapper = table?.closest(".fc-premium-post-wrapper");
+
+        if (!(wrapper instanceof HTMLElement)) {
+          return;
+        }
+
+        event.preventDefault();
+        selectNavigationElement(wrapper);
+      });
+      strip.append(link);
+    }
+
+    summary.append(strip);
+  }
+
+  /**
    * @param {PostRecord[]} posts
    */
   function applyReplyCounts(posts) {
@@ -1377,6 +1470,7 @@
       summary,
       `<strong>Forocoches Premium:</strong> ${allPosts.length} mensajes de ${pages.length} paginas. ${quotedPosts} mensajes tienen citas (${totalReplies} citas en total) y se han movido arriba.`,
     );
+    renderTopCitedLinks(summary);
     renderThreadControls(summary);
   }
 
