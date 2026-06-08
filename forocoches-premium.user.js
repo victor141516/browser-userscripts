@@ -16,6 +16,8 @@
   const STYLE_ID = "fc-premium-style";
   const INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
+  const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
+  const THREAD_VIEW_MODE_STORAGE_KEY = "fcPremiumThreadViewMode";
   const SELECTED_ATTRIBUTE = "data-fc-premium-selected";
   const POSTS_SELECTOR = "#posts";
   const POST_TABLE_SELECTOR = "table[id^='post']";
@@ -23,6 +25,7 @@
     "a[id^='thread_title_'][href*='showthread.php?t=']";
   const PAGE_LOAD_DELAY_MS = 250;
   const TAG_PATTERN = /\+([A-Za-z0-9_-]+)/g;
+  const THREAD_VIEW_MODES = ["ranked", "original", "cited"];
 
   /**
    * @typedef {object} PostRecord
@@ -50,9 +53,17 @@
    * @property {string} url
    */
 
+  /**
+   * @typedef {"ranked" | "original" | "cited"} ThreadViewMode
+   */
+
   /** @type {NavigationItem[]} */
   let navigationItems = [];
   let selectedNavigationIndex = -1;
+  /** @type {PostRecord[]} */
+  let loadedThreadPosts = [];
+  /** @type {ThreadViewMode} */
+  let currentThreadViewMode = getSavedThreadViewMode();
 
   /**
    * @param {string | null | undefined} text
@@ -132,6 +143,30 @@
     return location.pathname.endsWith("/forumdisplay.php");
   }
 
+  /**
+   * @param {string | null} mode
+   * @returns {mode is ThreadViewMode}
+   */
+  function isThreadViewMode(mode) {
+    return THREAD_VIEW_MODES.includes(mode || "");
+  }
+
+  /**
+   * @returns {ThreadViewMode}
+   */
+  function getSavedThreadViewMode() {
+    const mode = localStorage.getItem(THREAD_VIEW_MODE_STORAGE_KEY);
+    return isThreadViewMode(mode) ? mode : "ranked";
+  }
+
+  /**
+   * @param {ThreadViewMode} mode
+   */
+  function setSavedThreadViewMode(mode) {
+    currentThreadViewMode = mode;
+    localStorage.setItem(THREAD_VIEW_MODE_STORAGE_KEY, mode);
+  }
+
   function ensureStyle() {
     if (document.getElementById(STYLE_ID)) {
       return;
@@ -154,6 +189,29 @@
 
       #${THREAD_SUMMARY_ID} strong {
         color: #0b57d0;
+      }
+
+      #${THREAD_CONTROLS_ID} {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      #${THREAD_CONTROLS_ID} button {
+        background: #fff;
+        border: 1px solid #b7d1ff;
+        border-radius: 5px;
+        color: #17324d;
+        cursor: pointer;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 6px 8px;
+      }
+
+      #${THREAD_CONTROLS_ID} button[aria-pressed="true"] {
+        background: #0b57d0;
+        border-color: #0b57d0;
+        color: #fff;
       }
 
       .fc-premium-post-wrapper {
@@ -771,6 +829,42 @@
   }
 
   /**
+   * @param {HTMLElement | null} summary
+   */
+  function renderThreadControls(summary) {
+    if (!summary || loadedThreadPosts.length === 0) {
+      return;
+    }
+
+    document.getElementById(THREAD_CONTROLS_ID)?.remove();
+
+    const controls = document.createElement("div");
+    controls.id = THREAD_CONTROLS_ID;
+
+    for (const mode of THREAD_VIEW_MODES) {
+      if (!isThreadViewMode(mode)) {
+        continue;
+      }
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = getThreadViewModeLabel(mode);
+      button.setAttribute(
+        "aria-pressed",
+        String(mode === currentThreadViewMode),
+      );
+      button.addEventListener("click", () => {
+        setSavedThreadViewMode(mode);
+        renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+        renderThreadControls(summary);
+      });
+      controls.append(button);
+    }
+
+    summary.append(controls);
+  }
+
+  /**
    * @param {PostRecord[]} posts
    */
   function applyReplyCounts(posts) {
@@ -804,6 +898,61 @@
 
       return left.originalIndex - right.originalIndex;
     });
+  }
+
+  /**
+   * @param {ThreadViewMode} mode
+   * @returns {string}
+   */
+  function getThreadViewModeLabel(mode) {
+    if (mode === "original") {
+      return "Original";
+    }
+
+    if (mode === "cited") {
+      return "Solo citados";
+    }
+
+    return "Citas";
+  }
+
+  /**
+   * @param {PostRecord[]} posts
+   * @param {ThreadViewMode} mode
+   * @returns {PostRecord[]}
+   */
+  function getPostsForView(posts, mode) {
+    if (mode === "original") {
+      return posts
+        .slice()
+        .sort((left, right) => left.originalIndex - right.originalIndex);
+    }
+
+    if (mode === "cited") {
+      return sortPosts(posts.filter((post) => post.replyCount > 0));
+    }
+
+    return sortPosts(posts);
+  }
+
+  /**
+   * @param {PostRecord[]} posts
+   * @returns {Map<string, number>}
+   */
+  function getReplyRankByPostId(posts) {
+    const rankByPostId = new Map();
+    let rank = 0;
+
+    for (const post of sortPosts(posts)) {
+      if (post.replyCount <= 0) {
+        continue;
+      }
+
+      rank += 1;
+      rankByPostId.set(post.id, rank);
+    }
+
+    return rankByPostId;
   }
 
   /**
@@ -867,8 +1016,22 @@
       const reply = postById.get(replyingPostId);
       const link = document.createElement("a");
 
-      link.href = `#post${replyingPostId}`;
+      link.href = new URL(
+        `showthread.php?p=${replyingPostId}#post${replyingPostId}`,
+        location.href,
+      ).href;
       link.textContent = `#${reply?.postNumber || replyingPostId}`;
+      link.addEventListener("click", (event) => {
+        const table = document.getElementById(`post${replyingPostId}`);
+        const wrapper = table?.closest(".fc-premium-post-wrapper");
+
+        if (!(wrapper instanceof HTMLElement)) {
+          return;
+        }
+
+        event.preventDefault();
+        wrapper.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
       badge.append(link);
       badge.append(document.createTextNode(" "));
     }
@@ -883,8 +1046,9 @@
 
   /**
    * @param {PostRecord[]} posts
+   * @param {ThreadViewMode} mode
    */
-  function renderSortedPosts(posts) {
+  function renderThreadPosts(posts, mode) {
     const postsElement = getPostsElement();
 
     if (!postsElement) {
@@ -895,14 +1059,12 @@
 
     const fragment = document.createDocumentFragment();
     const postById = new Map(posts.map((post) => [post.id, post]));
-    let rank = 0;
+    const rankByPostId = getReplyRankByPostId(posts);
 
-    for (const post of sortPosts(posts)) {
-      if (post.replyCount > 0) {
-        rank += 1;
-      }
-
-      fragment.append(renderPost(post, rank, postById));
+    for (const post of getPostsForView(posts, mode)) {
+      fragment.append(
+        renderPost(post, rankByPostId.get(post.id) || 0, postById),
+      );
     }
 
     postsElement.append(fragment);
@@ -947,7 +1109,8 @@
     }
 
     applyReplyCounts(allPosts);
-    renderSortedPosts(allPosts);
+    loadedThreadPosts = allPosts;
+    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
 
     const quotedPosts = allPosts.filter((post) => post.replyCount > 0).length;
     const totalReplies = allPosts.reduce(
@@ -959,6 +1122,7 @@
       summary,
       `<strong>Forocoches Premium:</strong> ${allPosts.length} mensajes de ${pages.length} paginas. ${quotedPosts} mensajes tienen citas (${totalReplies} citas en total) y se han movido arriba.`,
     );
+    renderThreadControls(summary);
   }
 
   /**

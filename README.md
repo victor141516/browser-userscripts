@@ -41,6 +41,14 @@ as `7 citas - pagina 1`, plus compact links to the posts that quoted them.
 Posts without quote replies remain after the highlighted group in their original
 order.
 
+Thread pages include view controls:
+
+- `Citas` sorts every loaded post by quote count.
+- `Original` restores chronological thread order while keeping citation badges.
+- `Solo citados` shows only posts that were quoted by another post.
+
+The selected view is saved in localStorage and reused on later thread pages.
+
 ### Tags
 
 On forum listing pages, thread title tags written with `+`, such as `+HD` or
