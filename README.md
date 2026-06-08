@@ -46,8 +46,10 @@ Thread pages include view controls:
 - `Citas` sorts every loaded post by quote count.
 - `Original` restores chronological thread order while keeping citation badges.
 - `Solo citados` shows only posts that were quoted by another post.
+- `Compacto` hides bulky author metadata and narrows the author column.
 
-The selected view is saved in localStorage and reused on later thread pages.
+The selected view and compact setting are saved in localStorage and reused on
+later thread pages.
 
 ### Tags
 

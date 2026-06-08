@@ -17,6 +17,8 @@
   const INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
+  const COMPACT_MODE_CLASS = "fc-premium-compact";
+  const COMPACT_MODE_STORAGE_KEY = "fcPremiumCompactMode";
   const THREAD_VIEW_MODE_STORAGE_KEY = "fcPremiumThreadViewMode";
   const SELECTED_ATTRIBUTE = "data-fc-premium-selected";
   const POSTS_SELECTOR = "#posts";
@@ -64,6 +66,7 @@
   let loadedThreadPosts = [];
   /** @type {ThreadViewMode} */
   let currentThreadViewMode = getSavedThreadViewMode();
+  let compactModeEnabled = getSavedCompactMode();
 
   /**
    * @param {string | null | undefined} text
@@ -165,6 +168,26 @@
   function setSavedThreadViewMode(mode) {
     currentThreadViewMode = mode;
     localStorage.setItem(THREAD_VIEW_MODE_STORAGE_KEY, mode);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  function getSavedCompactMode() {
+    return localStorage.getItem(COMPACT_MODE_STORAGE_KEY) === "true";
+  }
+
+  /**
+   * @param {boolean} enabled
+   */
+  function setSavedCompactMode(enabled) {
+    compactModeEnabled = enabled;
+    localStorage.setItem(COMPACT_MODE_STORAGE_KEY, String(enabled));
+    applyCompactMode();
+  }
+
+  function applyCompactMode() {
+    document.body.classList.toggle(COMPACT_MODE_CLASS, compactModeEnabled);
   }
 
   function ensureStyle() {
@@ -292,6 +315,38 @@
 
       tr[${SELECTED_ATTRIBUTE}] > td {
         background: #eef5ff !important;
+      }
+
+      body.${COMPACT_MODE_CLASS} #posts table[id^="post"] {
+        table-layout: auto !important;
+      }
+
+      body.${COMPACT_MODE_CLASS} #posts td[width="175"] {
+        max-width: 105px !important;
+        padding: 4px !important;
+        width: 105px !important;
+      }
+
+      body.${COMPACT_MODE_CLASS} #posts td[width="175"][rowspan] .smallfont {
+        display: none !important;
+      }
+
+      body.${COMPACT_MODE_CLASS} #posts td[width="175"][rowspan] .bigusername {
+        display: inline-block;
+        font-size: 11px !important;
+        max-width: 96px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      body.${COMPACT_MODE_CLASS} #posts table[id^="post"] td {
+        padding-bottom: 4px !important;
+        padding-top: 4px !important;
+      }
+
+      body.${COMPACT_MODE_CLASS} .fc-premium-post-wrapper {
+        margin-bottom: 7px;
       }
     `;
 
@@ -861,6 +916,16 @@
       controls.append(button);
     }
 
+    const compactButton = document.createElement("button");
+    compactButton.type = "button";
+    compactButton.textContent = "Compacto";
+    compactButton.setAttribute("aria-pressed", String(compactModeEnabled));
+    compactButton.addEventListener("click", () => {
+      setSavedCompactMode(!compactModeEnabled);
+      renderThreadControls(summary);
+    });
+    controls.append(compactButton);
+
     summary.append(controls);
   }
 
@@ -1134,6 +1199,7 @@
     }
 
     window[INSTANCE_KEY] = true;
+    applyCompactMode();
     enhanceThreadTitleTags();
 
     if (isForumDisplayPage() || isThreadPage()) {
