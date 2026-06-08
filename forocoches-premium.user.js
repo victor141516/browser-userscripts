@@ -19,6 +19,8 @@
   const TOP_TAGS_ID = "fc-premium-top-tags";
   const AUTHOR_FILTER_BAR_ID = "fc-premium-author-filter-bar";
   const THREAD_FILTER_ACTIONS_ID = "fc-premium-thread-filter-actions";
+  const FORUM_SIDEBAR_TOGGLE_BAR_ID = "fc-premium-forum-sidebar-toggle-bar";
+  const FORUM_SIDEBAR_TOGGLE_ID = "fc-premium-forum-sidebar-toggle";
   const TOP_CITED_ID = "fc-premium-top-cited";
   const TOP_AUTHORS_ID = "fc-premium-top-authors";
   const THREAD_PAGES_ID = "fc-premium-thread-pages";
@@ -26,14 +28,17 @@
   const QUOTE_RETURN_ID = "fc-premium-quote-return";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
+  const FORUM_SIDEBAR_HIDDEN_CLASS = "fc-premium-forum-sidebar-hidden";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
   const COMPACT_MODE_STORAGE_KEY = "fcPremiumCompactMode";
   const COMPACT_QUOTES_CLASS = "fc-premium-compact-quotes";
   const COMPACT_QUOTES_STORAGE_KEY = "fcPremiumCompactQuotes";
+  const FORUM_SIDEBAR_STORAGE_KEY = "fcPremiumForumSidebarHidden";
   const LOAD_ALL_PAGES_STORAGE_KEY = "fcPremiumLoadAllPages";
   const LAST_SELECTED_POST_STORAGE_PREFIX = "fcPremiumLastPost:";
   const THREAD_VIEW_MODE_STORAGE_KEY = "fcPremiumThreadViewMode";
   const SELECTED_ATTRIBUTE = "data-fc-premium-selected";
+  const FORUM_LAYOUT_HIDDEN_ATTRIBUTE = "data-fc-premium-layout-hidden";
   const POSTS_SELECTOR = "#posts";
   const POST_TABLE_SELECTOR = "table[id^='post']";
   const THREAD_TITLE_SELECTOR =
@@ -99,6 +104,7 @@
   let currentThreadViewMode = getSavedThreadViewMode();
   let compactModeEnabled = getSavedCompactMode();
   let compactQuotesEnabled = getSavedCompactQuotes();
+  let forumSidebarHidden = getSavedForumSidebarHidden();
   let loadAllPagesEnabled = getSavedLoadAllPages();
   /** @type {string | null} */
   let activeTagFilter = null;
@@ -257,6 +263,24 @@
 
   function applyCompactQuotes() {
     document.body.classList.toggle(COMPACT_QUOTES_CLASS, compactQuotesEnabled);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  function getSavedForumSidebarHidden() {
+    const saved = localStorage.getItem(FORUM_SIDEBAR_STORAGE_KEY);
+
+    return saved === null ? true : saved === "true";
+  }
+
+  /**
+   * @param {boolean} hidden
+   */
+  function setSavedForumSidebarHidden(hidden) {
+    forumSidebarHidden = hidden;
+    localStorage.setItem(FORUM_SIDEBAR_STORAGE_KEY, String(hidden));
+    applyForumSidebarVisibility();
   }
 
   /**
@@ -518,6 +542,36 @@
         padding: 5px 8px;
       }
 
+      #${FORUM_SIDEBAR_TOGGLE_BAR_ID} {
+        align-items: center;
+        background: #f7faff;
+        border: 1px solid #b7d1ff;
+        border-radius: 6px;
+        box-sizing: border-box;
+        color: #17324d;
+        display: flex;
+        flex-wrap: wrap;
+        font: 12px/1.4 Verdana, Arial, sans-serif;
+        gap: 8px;
+        margin: 0 0 10px;
+        padding: 8px 10px;
+      }
+
+      #${FORUM_SIDEBAR_TOGGLE_ID} {
+        background: #fff;
+        border: 1px solid #b7d1ff;
+        border-radius: 5px;
+        color: #17324d;
+        cursor: pointer;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 6px 8px;
+      }
+
+      #${FORUM_SIDEBAR_TOGGLE_ID}:hover {
+        border-color: #0b57d0;
+        color: #0b57d0;
+      }
+
       #${QUOTE_RETURN_ID} {
         align-items: center;
         background: #fff7d6;
@@ -544,6 +598,10 @@
       }
 
       tr[${HIDDEN_THREAD_ATTRIBUTE}] {
+        display: none !important;
+      }
+
+      [${FORUM_LAYOUT_HIDDEN_ATTRIBUTE}] {
         display: none !important;
       }
 
@@ -843,7 +901,9 @@
 
       if (matchIndex > currentIndex) {
         title.append(
-          document.createTextNode(originalTitle.slice(currentIndex, matchIndex)),
+          document.createTextNode(
+            originalTitle.slice(currentIndex, matchIndex),
+          ),
         );
       }
 
@@ -869,6 +929,379 @@
       renderTopTagBar();
       renderTagFilterBar();
     }
+  }
+
+  /**
+   * @returns {HTMLTableElement | null}
+   */
+  function getForumThreadsTable() {
+    const table = document.getElementById("threadslist");
+
+    if (table instanceof HTMLTableElement) {
+      return table;
+    }
+
+    const title = document.querySelector(THREAD_TITLE_SELECTOR);
+    const owner = title?.closest("table");
+
+    return owner instanceof HTMLTableElement ? owner : null;
+  }
+
+  /**
+   * @returns {HTMLTableElement | null}
+   */
+  function getForumThreadListHeaderTable() {
+    const threadsTable = getForumThreadsTable();
+    let sibling = threadsTable?.previousElementSibling || null;
+
+    while (sibling) {
+      if (
+        sibling instanceof HTMLTableElement &&
+        normalizeText(sibling.querySelector("td.tcat")?.textContent).startsWith(
+          "Temas en el Foro",
+        )
+      ) {
+        return sibling;
+      }
+
+      sibling = sibling.previousElementSibling;
+    }
+
+    for (const table of document.querySelectorAll("table.tborder")) {
+      if (
+        table instanceof HTMLTableElement &&
+        normalizeText(table.querySelector("td.tcat")?.textContent).startsWith(
+          "Temas en el Foro",
+        )
+      ) {
+        return table;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * @returns {string | null}
+   */
+  function getForumNameFromThreadListHeader() {
+    const header = getForumThreadListHeaderTable();
+    const label = normalizeText(
+      header?.querySelector("td.tcat .normal")?.textContent,
+    )
+      .replace(/^:\s*/, "")
+      .trim();
+
+    return label || null;
+  }
+
+  /**
+   * @param {HTMLTableElement} table
+   * @param {HTMLTableElement | null} header
+   * @param {string | null} forumName
+   * @returns {boolean}
+   */
+  function isForumTitleSummaryTable(table, header, forumName) {
+    if (
+      header &&
+      !(table.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING)
+    ) {
+      return false;
+    }
+
+    const title = normalizeText(table.querySelector("h1")?.textContent);
+
+    if (!title) {
+      return false;
+    }
+
+    if (forumName && title.toLowerCase() !== forumName.toLowerCase()) {
+      return false;
+    }
+
+    return Boolean(table.querySelector("img[src*='forocoches_recarga']"));
+  }
+
+  /**
+   * @param {HTMLTableElement} table
+   * @param {HTMLTableElement | null} header
+   * @param {string | null} forumName
+   * @returns {boolean}
+   */
+  function isForumBreadcrumbTitleTable(table, header, forumName) {
+    if (
+      header &&
+      !(table.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING)
+    ) {
+      return false;
+    }
+
+    const title = normalizeText(
+      table.querySelector("td.navbar strong")?.textContent,
+    );
+
+    if (!title) {
+      return false;
+    }
+
+    if (forumName && !title.toLowerCase().startsWith(forumName.toLowerCase())) {
+      return false;
+    }
+
+    return Boolean(table.querySelector("img[src*='navbits_finallink']"));
+  }
+
+  function removeForumTitleTables() {
+    const header = getForumThreadListHeaderTable();
+    const forumName = getForumNameFromThreadListHeader();
+
+    for (const table of document.querySelectorAll("table.tborder")) {
+      if (
+        table instanceof HTMLTableElement &&
+        (isForumTitleSummaryTable(table, header, forumName) ||
+          isForumBreadcrumbTitleTable(table, header, forumName))
+      ) {
+        table.remove();
+      }
+    }
+  }
+
+  /**
+   * @returns {HTMLTableElement | null}
+   */
+  function getRelatedForumsPanel() {
+    for (const table of document.querySelectorAll("table")) {
+      if (!(table instanceof HTMLTableElement)) {
+        continue;
+      }
+
+      const header = normalizeText(
+        table.querySelector("tr:first-child td")?.textContent,
+      ).toLowerCase();
+
+      if (header === "foros relacionados" || header === "related forums") {
+        return table;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * @param {Element | null} row
+   * @returns {HTMLTableCellElement[]}
+   */
+  function getDirectTableCells(row) {
+    if (!(row instanceof HTMLTableRowElement)) {
+      return [];
+    }
+
+    return Array.from(row.children).filter(
+      (child) => child instanceof HTMLTableCellElement,
+    );
+  }
+
+  /**
+   * @param {HTMLTableCellElement} cell
+   * @returns {boolean}
+   */
+  function cellContainsForumThreads(cell) {
+    return Boolean(
+      cell.querySelector("#threadslist") ||
+        cell.querySelector(THREAD_TITLE_SELECTOR),
+    );
+  }
+
+  /**
+   * @param {HTMLTableElement} panel
+   * @returns {HTMLTableCellElement | null}
+   */
+  function getForumSidebarCell(panel) {
+    let current = panel.parentElement;
+
+    while (current) {
+      if (current instanceof HTMLTableCellElement) {
+        const cells = getDirectTableCells(current.parentElement);
+        const hasMainSibling = cells.some(
+          (cell) => cell !== current && cellContainsForumThreads(cell),
+        );
+
+        if (hasMainSibling) {
+          return current;
+        }
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  /**
+   * @param {HTMLTableCellElement} sidebarCell
+   * @returns {HTMLTableCellElement | null}
+   */
+  function getForumMainCell(sidebarCell) {
+    const cells = getDirectTableCells(sidebarCell.parentElement);
+
+    return cells.find(cellContainsForumThreads) || null;
+  }
+
+  /**
+   * @param {HTMLTableCellElement} cell
+   * @returns {boolean}
+   */
+  function isForumSidebarSpacerCell(cell) {
+    const width = Number(cell.getAttribute("width") || "0");
+    const renderedWidth = cell.getBoundingClientRect().width;
+
+    return (
+      normalizeText(cell.textContent).length === 0 &&
+      ((Number.isFinite(width) && width > 0 && width <= 8) ||
+        (renderedWidth > 0 && renderedWidth <= 8))
+    );
+  }
+
+  /**
+   * @param {HTMLTableCellElement} sidebarCell
+   * @returns {HTMLTableCellElement | null}
+   */
+  function getForumSidebarSpacerCell(sidebarCell) {
+    const mainCell = getForumMainCell(sidebarCell);
+
+    if (!mainCell) {
+      return null;
+    }
+
+    const cells = getDirectTableCells(sidebarCell.parentElement);
+    const sidebarIndex = cells.indexOf(sidebarCell);
+    const mainIndex = cells.indexOf(mainCell);
+
+    if (sidebarIndex < 0 || mainIndex < 0 || mainIndex <= sidebarIndex + 1) {
+      return null;
+    }
+
+    return (
+      cells
+        .slice(sidebarIndex + 1, mainIndex)
+        .find(isForumSidebarSpacerCell) || null
+    );
+  }
+
+  /**
+   * @param {HTMLElement} element
+   * @param {boolean} hidden
+   */
+  function setForumLayoutElementHidden(element, hidden) {
+    if (hidden) {
+      element.setAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE, "true");
+    } else {
+      element.removeAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE);
+    }
+  }
+
+  /**
+   * @param {HTMLTableCellElement} mainCell
+   * @param {boolean} expanded
+   */
+  function setForumMainCellExpanded(mainCell, expanded) {
+    if (mainCell.dataset.fcPremiumOriginalWidth === undefined) {
+      mainCell.dataset.fcPremiumOriginalWidth =
+        mainCell.getAttribute("width") || "";
+    }
+
+    if (expanded) {
+      mainCell.setAttribute("width", "100%");
+      mainCell.style.width = "100%";
+      return;
+    }
+
+    if (mainCell.dataset.fcPremiumOriginalWidth) {
+      mainCell.setAttribute("width", mainCell.dataset.fcPremiumOriginalWidth);
+    }
+
+    mainCell.style.width = "";
+  }
+
+  /**
+   * @param {HTMLTableCellElement} mainCell
+   */
+  function renderForumSidebarToggle(mainCell) {
+    let bar = document.getElementById(FORUM_SIDEBAR_TOGGLE_BAR_ID);
+
+    if (!(bar instanceof HTMLElement)) {
+      bar = document.createElement("div");
+      bar.id = FORUM_SIDEBAR_TOGGLE_BAR_ID;
+
+      const button = document.createElement("button");
+      button.id = FORUM_SIDEBAR_TOGGLE_ID;
+      button.type = "button";
+      button.addEventListener("click", () => {
+        setSavedForumSidebarHidden(!forumSidebarHidden);
+      });
+      bar.append(button);
+    }
+
+    const button = bar.querySelector("button");
+
+    if (button instanceof HTMLButtonElement) {
+      button.textContent = forumSidebarHidden
+        ? "Mostrar panel izquierdo"
+        : "Ocultar panel izquierdo";
+      button.title = forumSidebarHidden
+        ? "Mostrar la columna izquierda"
+        : "Ocultar la columna izquierda";
+      button.setAttribute("aria-expanded", String(!forumSidebarHidden));
+    }
+
+    const anchor = getForumThreadListHeaderTable() || getForumThreadsTable();
+
+    if (anchor?.parentElement === mainCell) {
+      mainCell.insertBefore(bar, anchor);
+    } else if (bar.parentElement !== mainCell) {
+      mainCell.prepend(bar);
+    }
+  }
+
+  function applyForumSidebarVisibility() {
+    const panel = getRelatedForumsPanel();
+
+    if (!panel) {
+      return;
+    }
+
+    const sidebarCell = getForumSidebarCell(panel);
+
+    if (!sidebarCell) {
+      return;
+    }
+
+    const mainCell = getForumMainCell(sidebarCell);
+
+    if (!mainCell) {
+      return;
+    }
+
+    document.body.classList.toggle(
+      FORUM_SIDEBAR_HIDDEN_CLASS,
+      forumSidebarHidden,
+    );
+    setForumLayoutElementHidden(sidebarCell, forumSidebarHidden);
+
+    const spacerCell = getForumSidebarSpacerCell(sidebarCell);
+
+    if (spacerCell) {
+      setForumLayoutElementHidden(spacerCell, forumSidebarHidden);
+    }
+
+    setForumMainCellExpanded(mainCell, forumSidebarHidden);
+    renderForumSidebarToggle(mainCell);
+  }
+
+  function enhanceForumDisplayPage() {
+    ensureStyle();
+    removeForumTitleTables();
+    applyForumSidebarVisibility();
   }
 
   /**
@@ -1176,7 +1609,9 @@
    * @param {{ scroll?: boolean, persist?: boolean }} [options]
    */
   function renderNavigationSelection(options = {}) {
-    for (const selected of document.querySelectorAll(`[${SELECTED_ATTRIBUTE}]`)) {
+    for (const selected of document.querySelectorAll(
+      `[${SELECTED_ATTRIBUTE}]`,
+    )) {
       selected.removeAttribute(SELECTED_ATTRIBUTE);
     }
 
@@ -1604,7 +2039,9 @@
         continue;
       }
 
-      const quotedPostId = getQuotedPostId(link.getAttribute("href") || link.href);
+      const quotedPostId = getQuotedPostId(
+        link.getAttribute("href") || link.href,
+      );
 
       if (quotedPostId && quotedPostId !== postId) {
         quotedIds.add(quotedPostId);
@@ -2003,8 +2440,7 @@
       return;
     }
 
-    activePageFilter =
-      activePageFilter === pageNumber ? null : pageNumber;
+    activePageFilter = activePageFilter === pageNumber ? null : pageNumber;
     applyPageFilter();
     renderThreadPageLinks(document.getElementById(THREAD_SUMMARY_ID));
     renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
@@ -2224,8 +2660,7 @@
       return;
     }
 
-    activeAuthorFilter =
-      activeAuthorFilter === authorKey ? null : authorKey;
+    activeAuthorFilter = activeAuthorFilter === authorKey ? null : authorKey;
     applyAuthorFilter();
     renderAuthorFilterBar();
     renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
@@ -2478,9 +2913,13 @@
     const postNumber = normalizeText(
       wrapper?.querySelector(`#postcount${postId}`)?.textContent,
     );
-    const author = normalizeText(wrapper?.querySelector(".bigusername")?.textContent);
+    const author = normalizeText(
+      wrapper?.querySelector(".bigusername")?.textContent,
+    );
     const pageNumber =
-      wrapper instanceof HTMLElement ? wrapper.dataset.fcPremiumOriginalPage : "";
+      wrapper instanceof HTMLElement
+        ? wrapper.dataset.fcPremiumOriginalPage
+        : "";
     const parts = [];
 
     if (postNumber) {
@@ -2554,7 +2993,9 @@
         continue;
       }
 
-      const quotedPostId = getQuotedPostId(link.getAttribute("href") || link.href);
+      const quotedPostId = getQuotedPostId(
+        link.getAttribute("href") || link.href,
+      );
 
       if (!quotedPostId) {
         continue;
@@ -2858,6 +3299,7 @@
     }
 
     if (isForumDisplayPage()) {
+      enhanceForumDisplayPage();
       refreshNavigation({ reset: true });
     }
 
