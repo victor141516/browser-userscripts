@@ -21,6 +21,8 @@
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
   const COMPACT_MODE_STORAGE_KEY = "fcPremiumCompactMode";
+  const COMPACT_QUOTES_CLASS = "fc-premium-compact-quotes";
+  const COMPACT_QUOTES_STORAGE_KEY = "fcPremiumCompactQuotes";
   const LOAD_ALL_PAGES_STORAGE_KEY = "fcPremiumLoadAllPages";
   const THREAD_VIEW_MODE_STORAGE_KEY = "fcPremiumThreadViewMode";
   const SELECTED_ATTRIBUTE = "data-fc-premium-selected";
@@ -72,6 +74,7 @@
   /** @type {ThreadViewMode} */
   let currentThreadViewMode = getSavedThreadViewMode();
   let compactModeEnabled = getSavedCompactMode();
+  let compactQuotesEnabled = getSavedCompactQuotes();
   let loadAllPagesEnabled = getSavedLoadAllPages();
   /** @type {string | null} */
   let activeTagFilter = null;
@@ -196,6 +199,26 @@
 
   function applyCompactMode() {
     document.body.classList.toggle(COMPACT_MODE_CLASS, compactModeEnabled);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  function getSavedCompactQuotes() {
+    return localStorage.getItem(COMPACT_QUOTES_STORAGE_KEY) === "true";
+  }
+
+  /**
+   * @param {boolean} enabled
+   */
+  function setSavedCompactQuotes(enabled) {
+    compactQuotesEnabled = enabled;
+    localStorage.setItem(COMPACT_QUOTES_STORAGE_KEY, String(enabled));
+    applyCompactQuotes();
+  }
+
+  function applyCompactQuotes() {
+    document.body.classList.toggle(COMPACT_QUOTES_CLASS, compactQuotesEnabled);
   }
 
   /**
@@ -389,6 +412,24 @@
 
       a[data-fc-premium-quote-target]:focus-visible {
         outline: 2px solid #1a73e8;
+      }
+
+      [data-fc-premium-quote-block] {
+        transition: opacity 140ms ease;
+      }
+
+      body.${COMPACT_QUOTES_CLASS} [data-fc-premium-quote-body] {
+        display: none !important;
+      }
+
+      body.${COMPACT_QUOTES_CLASS} [data-fc-premium-quote-block] {
+        margin-bottom: 8px !important;
+        margin-top: 4px !important;
+        opacity: 0.88;
+      }
+
+      body.${COMPACT_QUOTES_CLASS} [data-fc-premium-quote-block] td.alt2 {
+        padding: 5px 8px !important;
       }
 
       .fc-premium-tag-chip {
@@ -1206,6 +1247,19 @@
     });
     controls.append(compactButton);
 
+    const compactQuotesButton = document.createElement("button");
+    compactQuotesButton.type = "button";
+    compactQuotesButton.textContent = "Citas compactas";
+    compactQuotesButton.setAttribute(
+      "aria-pressed",
+      String(compactQuotesEnabled),
+    );
+    compactQuotesButton.addEventListener("click", () => {
+      setSavedCompactQuotes(!compactQuotesEnabled);
+      renderThreadControls(summary);
+    });
+    controls.append(compactQuotesButton);
+
     const loadAllButton = document.createElement("button");
     loadAllButton.type = "button";
     loadAllButton.textContent = "Todas paginas";
@@ -1409,6 +1463,7 @@
 
       link.dataset.fcPremiumQuoteTarget = quotedPostId;
       link.title = "Ir al mensaje citado";
+      markQuoteBlock(link, quotedPostId);
       link.addEventListener("click", (event) => {
         const target = document.getElementById(`post${quotedPostId}`);
 
@@ -1419,6 +1474,33 @@
         event.preventDefault();
         selectPostById(quotedPostId);
       });
+    }
+  }
+
+  /**
+   * @param {HTMLAnchorElement} link
+   * @param {string} quotedPostId
+   */
+  function markQuoteBlock(link, quotedPostId) {
+    const quoteTable = link.closest("table");
+    const quoteWrapper = quoteTable?.parentElement;
+
+    if (!(quoteWrapper instanceof HTMLElement)) {
+      return;
+    }
+
+    quoteWrapper.dataset.fcPremiumQuoteBlock = quotedPostId;
+
+    const quoteCell = quoteTable.querySelector("td");
+    const body = Array.from(quoteCell?.children || []).find(
+      (child) =>
+        child instanceof HTMLElement &&
+        child !== link.parentElement &&
+        child.textContent.trim().length > 0,
+    );
+
+    if (body instanceof HTMLElement) {
+      body.dataset.fcPremiumQuoteBody = "true";
     }
   }
 
@@ -1620,6 +1702,7 @@
 
     window[INSTANCE_KEY] = true;
     applyCompactMode();
+    applyCompactQuotes();
     enhanceThreadTitleTags();
 
     if (isForumDisplayPage() || isThreadPage()) {

@@ -50,10 +50,12 @@ Thread pages include view controls:
 - `Original` restores chronological thread order while keeping citation badges.
 - `Solo citados` shows only posts that were quoted by another post.
 - `Compacto` hides bulky author metadata and narrows the author column.
+- `Citas compactas` hides embedded quote bodies while keeping quote headers and
+  jump links visible.
 - `Todas paginas` controls whether the script loads the whole thread or only
   the current page. It is enabled by default.
 
-The selected view, compact setting, and page-loading mode are saved in
+The selected view, compact settings, and page-loading mode are saved in
 localStorage and reused on later thread pages.
 
 ### Tags
