@@ -64,6 +64,8 @@ Thread pages include view controls:
   the current page. It is enabled by default.
 
 The summary and controls stay sticky while scrolling through a thread.
+When author or page filters are active, the sticky summary shows a `Limpiar
+filtros` button to clear all thread filters at once.
 The sticky summary also shows the currently selected visible post, including
 its position in the keyboard navigation list and original page.
 
@@ -98,7 +100,7 @@ On thread pages:
 - After the quote-ranking pass finishes, the first sorted post is selected.
 - Arrow Up and Arrow Down move between sorted posts.
 - Home and End jump to the first or last rendered post.
-- Escape clears an active author or page filter.
+- Escape clears all active author and page filters.
 - Enter opens the selected post permalink.
 
 Keyboard handling ignores inputs, textareas, selects, and contenteditable

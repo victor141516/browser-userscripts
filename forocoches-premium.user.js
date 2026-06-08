@@ -17,6 +17,7 @@
   const INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
   const TAG_FILTER_BAR_ID = "fc-premium-tag-filter-bar";
   const AUTHOR_FILTER_BAR_ID = "fc-premium-author-filter-bar";
+  const THREAD_FILTER_ACTIONS_ID = "fc-premium-thread-filter-actions";
   const TOP_CITED_ID = "fc-premium-top-cited";
   const TOP_AUTHORS_ID = "fc-premium-top-authors";
   const THREAD_PAGES_ID = "fc-premium-thread-pages";
@@ -460,6 +461,31 @@
         border: 1px solid #34a853;
         border-radius: 5px;
         color: #174d25;
+        cursor: pointer;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 5px 8px;
+      }
+
+      #${THREAD_FILTER_ACTIONS_ID} {
+        align-items: center;
+        background: #f1f3f4;
+        border: 1px solid #c4c7c5;
+        border-radius: 6px;
+        box-sizing: border-box;
+        color: #3c4043;
+        display: flex;
+        flex-wrap: wrap;
+        font: 12px/1.4 Verdana, Arial, sans-serif;
+        gap: 8px;
+        margin-top: 8px;
+        padding: 8px 10px;
+      }
+
+      #${THREAD_FILTER_ACTIONS_ID} button {
+        background: #fff;
+        border: 1px solid #80868b;
+        border-radius: 5px;
+        color: #3c4043;
         cursor: pointer;
         font: 700 11px/1 Verdana, Arial, sans-serif;
         padding: 5px 8px;
@@ -1192,12 +1218,12 @@
     } else if (event.key === "Escape" && activeTagFilter) {
       event.preventDefault();
       clearTagFilter();
-    } else if (event.key === "Escape" && activeAuthorFilter) {
+    } else if (
+      event.key === "Escape" &&
+      (activeAuthorFilter || activePageFilter)
+    ) {
       event.preventDefault();
-      clearAuthorFilter();
-    } else if (event.key === "Escape" && activePageFilter) {
-      event.preventDefault();
-      clearPageFilter();
+      clearThreadFilters();
     } else if (event.key === "Enter") {
       event.preventDefault();
       openSelectedNavigationItem();
@@ -1701,6 +1727,7 @@
       activePageFilter === pageNumber ? null : pageNumber;
     applyPageFilter();
     renderThreadPageLinks(document.getElementById(THREAD_SUMMARY_ID));
+    renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
     refreshNavigation({ reset: true, persist: false });
   }
 
@@ -1712,6 +1739,7 @@
     activePageFilter = null;
     applyPageFilter();
     renderThreadPageLinks(document.getElementById(THREAD_SUMMARY_ID));
+    renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
     refreshNavigation({ reset: true, persist: false });
   }
 
@@ -1798,6 +1826,68 @@
   }
 
   /**
+   * @returns {string[]}
+   */
+  function getActiveThreadFilterLabels() {
+    /** @type {string[]} */
+    const labels = [];
+
+    if (activeAuthorFilter) {
+      labels.push(`autor ${getAuthorFilterLabel(activeAuthorFilter)}`);
+    }
+
+    if (activePageFilter) {
+      labels.push(`pagina ${activePageFilter}`);
+    }
+
+    return labels;
+  }
+
+  function clearThreadFilters() {
+    if (!activeAuthorFilter && !activePageFilter) {
+      return;
+    }
+
+    activeAuthorFilter = null;
+    activePageFilter = null;
+    applyAuthorFilter();
+    applyPageFilter();
+
+    const summary = document.getElementById(THREAD_SUMMARY_ID);
+    renderAuthorFilterBar();
+    renderThreadPageLinks(summary);
+    renderThreadFilterActions(summary);
+    refreshNavigation({ reset: true, persist: false });
+  }
+
+  /**
+   * @param {HTMLElement | null} summary
+   */
+  function renderThreadFilterActions(summary) {
+    document.getElementById(THREAD_FILTER_ACTIONS_ID)?.remove();
+
+    if (
+      !(summary instanceof HTMLElement) ||
+      (!activeAuthorFilter && !activePageFilter)
+    ) {
+      return;
+    }
+
+    const bar = document.createElement("div");
+    bar.id = THREAD_FILTER_ACTIONS_ID;
+    bar.textContent = `Filtros activos: ${getActiveThreadFilterLabels().join(
+      " + ",
+    )}`;
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.textContent = "Limpiar filtros";
+    clearButton.addEventListener("click", clearThreadFilters);
+    bar.append(clearButton);
+    summary.append(bar);
+  }
+
+  /**
    * @param {string} authorKey
    * @returns {string}
    */
@@ -1827,6 +1917,7 @@
       activeAuthorFilter === authorKey ? null : authorKey;
     applyAuthorFilter();
     renderAuthorFilterBar();
+    renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
     refreshNavigation({ reset: true, persist: false });
   }
 
@@ -1838,6 +1929,7 @@
     activeAuthorFilter = null;
     applyAuthorFilter();
     renderAuthorFilterBar();
+    renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
     refreshNavigation({ reset: true, persist: false });
   }
 
@@ -2259,6 +2351,7 @@
 
     postsElement.append(fragment);
     renderAuthorFilterBar();
+    renderThreadFilterActions(document.getElementById(THREAD_SUMMARY_ID));
     applyPageFilter();
     refreshNavigation({ reset: true, persist: false });
 
@@ -2327,6 +2420,7 @@
     renderThreadPageLinks(summary);
     renderThreadControls(summary);
     renderAuthorFilterBar();
+    renderThreadFilterActions(summary);
     renderNavigationStatus(navigationItems[selectedNavigationIndex] || null);
   }
 
