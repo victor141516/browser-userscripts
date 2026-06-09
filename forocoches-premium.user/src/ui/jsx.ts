@@ -66,6 +66,18 @@ function applyProp(element: HTMLElement, name: string, value: unknown): void {
     return;
   }
 
+  if (name === "style") {
+    if (typeof value === "string") {
+      element.style.cssText = value;
+      return;
+    }
+
+    if (value && typeof value === "object") {
+      Object.assign(element.style, value);
+      return;
+    }
+  }
+
   if (/^on[A-Z]/.test(name) && typeof value === "function") {
     const eventName = name.slice(2).toLowerCase();
     element.addEventListener(eventName, value as EventListener);
