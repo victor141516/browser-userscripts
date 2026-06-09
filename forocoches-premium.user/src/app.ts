@@ -1,4 +1,3 @@
-import { ShortcutHelpContainer } from "./ui/shortcutHelp";
 import { ThreadSearchPanel } from "./ui/components/ThreadSearchPanel";
 import {
   refreshSelectedThreadAuthors as refreshSelectedThreadAuthorsInDom,
@@ -23,6 +22,12 @@ import {
   scrollNavigationElementIntoView as scrollNavigationElementIntoViewInDom,
 } from "./ui/navigationDom";
 import {
+  closeShortcutHelpPopover,
+  isShortcutHelpPopoverOpen,
+  renderShortcutHelpButton as renderShortcutHelpButtonInDom,
+  setShortcutHelpPopoverOpen,
+} from "./ui/shortcutHelpDom";
+import {
   ForumLoadingStatus,
   ForumSidebarToggleButton,
 } from "./ui/components/ForumControls";
@@ -44,9 +49,6 @@ import {
   STYLE_ID,
   INSTANCE_KEY,
   SCRIPT_INSTANCE_VERSION,
-  SHORTCUT_HELP_CONTAINER_ID,
-  SHORTCUT_HELP_BUTTON_ID,
-  SHORTCUT_HELP_POPOVER_ID,
   KEY_NAV_PREVIOUS_POST,
   KEY_NAV_NEXT_POST,
   KEY_NAV_FIRST_POST,
@@ -1845,72 +1847,11 @@ export function runForocochesPremium() {
     return key;
   }
 
-  function isShortcutHelpPopoverOpen(): boolean {
-    const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
-    return popover instanceof HTMLElement && !popover.hidden;
-  }
-
-  function closeShortcutHelpPopover() {
-    const button = document.getElementById(SHORTCUT_HELP_BUTTON_ID);
-    const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
-
-    if (popover instanceof HTMLElement) {
-      popover.hidden = true;
-    }
-
-    if (button instanceof HTMLButtonElement) {
-      button.setAttribute("aria-expanded", "false");
-    }
-  }
-
-  function setShortcutHelpPopoverOpen(open: boolean) {
-    const button = document.getElementById(SHORTCUT_HELP_BUTTON_ID);
-    const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
-
-    if (!(button instanceof HTMLButtonElement) || !popover) {
-      return;
-    }
-
-    popover.hidden = !open;
-    button.setAttribute("aria-expanded", open ? "true" : "false");
-  }
-
-  function handleShortcutHelpDocumentClick(event: MouseEvent) {
-    const target = event.target;
-
-    if (!(target instanceof Node)) {
-      return;
-    }
-
-    const button = document.getElementById(SHORTCUT_HELP_BUTTON_ID);
-    const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
-
-    if (button?.contains(target) || popover?.contains(target)) {
-      return;
-    }
-
-    closeShortcutHelpPopover();
-  }
-
   function renderShortcutHelpButton() {
-    if (!document.body) {
-      return;
-    }
-
-    document.getElementById(SHORTCUT_HELP_CONTAINER_ID)?.remove();
-    document.getElementById(SHORTCUT_HELP_BUTTON_ID)?.remove();
-    document.getElementById(SHORTCUT_HELP_POPOVER_ID)?.remove();
-
-    const container = ShortcutHelpContainer({
+    renderShortcutHelpButtonInDom({
       items: getShortcutHelpItems(),
       formatKey: formatShortcutHelpKey,
-      onToggle: () => {
-        setShortcutHelpPopoverOpen(!isShortcutHelpPopoverOpen());
-      },
     });
-
-    document.addEventListener("click", handleShortcutHelpDocumentClick, true);
-    document.body.prepend(container);
   }
 
   function openSelectedNavigationItem() {

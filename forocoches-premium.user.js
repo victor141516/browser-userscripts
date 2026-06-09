@@ -12,71 +12,6 @@
 // ==/UserScript==
 
 (() => {
-  // src/ui/jsx.ts
-  function createElement(tag, props, ...children) {
-    if (typeof tag === "function") {
-      return tag({ ...props || {}, children });
-    }
-    const element = document.createElement(tag);
-    for (const [name, value] of Object.entries(props || {})) {
-      applyProp(element, name, value);
-    }
-    appendChildren(element, children);
-    return element;
-  }
-  function appendChildren(parent, children) {
-    for (const child of children.flat()) {
-      if (child === null || child === undefined || child === false) {
-        continue;
-      }
-      parent.append(child instanceof Node ? child : document.createTextNode(String(child)));
-    }
-  }
-  function applyProp(element, name, value) {
-    if (value === false || value === null || value === undefined) {
-      return;
-    }
-    if (name === "className") {
-      element.className = String(value);
-      return;
-    }
-    if (name === "htmlFor" && element instanceof HTMLLabelElement) {
-      element.htmlFor = String(value);
-      return;
-    }
-    if (name === "style") {
-      if (typeof value === "string") {
-        element.style.cssText = value;
-        return;
-      }
-      if (value && typeof value === "object") {
-        for (const [propertyName, propertyValue] of Object.entries(value)) {
-          if (propertyValue === null || propertyValue === undefined) {
-            continue;
-          }
-          if (propertyName.startsWith("--")) {
-            element.style.setProperty(propertyName, String(propertyValue));
-          } else {
-            element.style[propertyName] = String(propertyValue);
-          }
-        }
-        return;
-      }
-    }
-    if (/^on[A-Z]/.test(name) && typeof value === "function") {
-      const eventName = name.slice(2).toLowerCase();
-      element.addEventListener(eventName, value);
-      return;
-    }
-    if (name in element) {
-      try {
-        element[name] = value;
-        return;
-      } catch (_error) {}
-    }
-    element.setAttribute(name, value === true ? "" : String(value));
-  }
-
   // src/config/domIds.ts
   var STYLE_ID = "fc-premium-style";
   var INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
@@ -160,43 +95,69 @@
   var SCRIPT_INSTANCE_VERSION = "2026-06-09-19";
   var PAGE_LOAD_DELAY_MS = 250;
   var GRAPH_VIEW_TYPES = ["quoted-sources", "quoted-by", "conversation"];
-  // src/ui/shortcutHelp.tsx
-  function ShortcutHelpContainer(props) {
-    return /* @__PURE__ */ createElement("div", {
-      id: SHORTCUT_HELP_CONTAINER_ID
-    }, /* @__PURE__ */ createElement("button", {
-      id: SHORTCUT_HELP_BUTTON_ID,
-      type: "button",
-      "aria-label": "Mostrar atajos de teclado",
-      "aria-haspopup": "dialog",
-      "aria-expanded": "false",
-      onClick: (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        props.onToggle();
-      }
-    }, "?"), /* @__PURE__ */ createElement("div", {
-      id: SHORTCUT_HELP_POPOVER_ID,
-      hidden: true,
-      role: "dialog",
-      "aria-label": "Atajos de teclado"
-    }, /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-shortcut-help-title"
-    }, "Atajos de teclado"), props.items.map((item) => /* @__PURE__ */ createElement(ShortcutHelpRow, {
-      item,
-      formatKey: props.formatKey
-    }))));
+  // src/ui/jsx.ts
+  function createElement(tag, props, ...children) {
+    if (typeof tag === "function") {
+      return tag({ ...props || {}, children });
+    }
+    const element = document.createElement(tag);
+    for (const [name, value] of Object.entries(props || {})) {
+      applyProp(element, name, value);
+    }
+    appendChildren(element, children);
+    return element;
   }
-  function ShortcutHelpRow(props) {
-    return /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-shortcut-help-row"
-    }, /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-shortcut-help-keys"
-    }, props.item.keys.map((key) => /* @__PURE__ */ createElement("kbd", {
-      className: "fc-premium-shortcut-help-key"
-    }, props.formatKey(key)))), /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-shortcut-help-description"
-    }, props.item.description));
+  function appendChildren(parent, children) {
+    for (const child of children.flat()) {
+      if (child === null || child === undefined || child === false) {
+        continue;
+      }
+      parent.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    }
+  }
+  function applyProp(element, name, value) {
+    if (value === false || value === null || value === undefined) {
+      return;
+    }
+    if (name === "className") {
+      element.className = String(value);
+      return;
+    }
+    if (name === "htmlFor" && element instanceof HTMLLabelElement) {
+      element.htmlFor = String(value);
+      return;
+    }
+    if (name === "style") {
+      if (typeof value === "string") {
+        element.style.cssText = value;
+        return;
+      }
+      if (value && typeof value === "object") {
+        for (const [propertyName, propertyValue] of Object.entries(value)) {
+          if (propertyValue === null || propertyValue === undefined) {
+            continue;
+          }
+          if (propertyName.startsWith("--")) {
+            element.style.setProperty(propertyName, String(propertyValue));
+          } else {
+            element.style[propertyName] = String(propertyValue);
+          }
+        }
+        return;
+      }
+    }
+    if (/^on[A-Z]/.test(name) && typeof value === "function") {
+      const eventName = name.slice(2).toLowerCase();
+      element.addEventListener(eventName, value);
+      return;
+    }
+    if (name in element) {
+      try {
+        element[name] = value;
+        return;
+      } catch (_error) {}
+    }
+    element.setAttribute(name, value === true ? "" : String(value));
   }
 
   // src/ui/components/ThreadSearchPanel.tsx
@@ -750,6 +711,100 @@
       return row;
     }
     return link;
+  }
+
+  // src/ui/shortcutHelp.tsx
+  function ShortcutHelpContainer(props) {
+    return /* @__PURE__ */ createElement("div", {
+      id: SHORTCUT_HELP_CONTAINER_ID
+    }, /* @__PURE__ */ createElement("button", {
+      id: SHORTCUT_HELP_BUTTON_ID,
+      type: "button",
+      "aria-label": "Mostrar atajos de teclado",
+      "aria-haspopup": "dialog",
+      "aria-expanded": "false",
+      onClick: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        props.onToggle();
+      }
+    }, "?"), /* @__PURE__ */ createElement("div", {
+      id: SHORTCUT_HELP_POPOVER_ID,
+      hidden: true,
+      role: "dialog",
+      "aria-label": "Atajos de teclado"
+    }, /* @__PURE__ */ createElement("div", {
+      className: "fc-premium-shortcut-help-title"
+    }, "Atajos de teclado"), props.items.map((item) => /* @__PURE__ */ createElement(ShortcutHelpRow, {
+      item,
+      formatKey: props.formatKey
+    }))));
+  }
+  function ShortcutHelpRow(props) {
+    return /* @__PURE__ */ createElement("div", {
+      className: "fc-premium-shortcut-help-row"
+    }, /* @__PURE__ */ createElement("span", {
+      className: "fc-premium-shortcut-help-keys"
+    }, props.item.keys.map((key) => /* @__PURE__ */ createElement("kbd", {
+      className: "fc-premium-shortcut-help-key"
+    }, props.formatKey(key)))), /* @__PURE__ */ createElement("span", {
+      className: "fc-premium-shortcut-help-description"
+    }, props.item.description));
+  }
+
+  // src/ui/shortcutHelpDom.ts
+  var documentClickInstalled = false;
+  function isShortcutHelpPopoverOpen() {
+    const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
+    return popover instanceof HTMLElement && !popover.hidden;
+  }
+  function closeShortcutHelpPopover() {
+    setShortcutHelpPopoverOpen(false);
+  }
+  function setShortcutHelpPopoverOpen(open) {
+    const button = document.getElementById(SHORTCUT_HELP_BUTTON_ID);
+    const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
+    if (!(button instanceof HTMLButtonElement) || !popover) {
+      return;
+    }
+    popover.hidden = !open;
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  function renderShortcutHelpButton(options) {
+    if (!document.body) {
+      return;
+    }
+    document.getElementById(SHORTCUT_HELP_CONTAINER_ID)?.remove();
+    document.getElementById(SHORTCUT_HELP_BUTTON_ID)?.remove();
+    document.getElementById(SHORTCUT_HELP_POPOVER_ID)?.remove();
+    const container = ShortcutHelpContainer({
+      items: options.items,
+      formatKey: options.formatKey,
+      onToggle: () => {
+        setShortcutHelpPopoverOpen(!isShortcutHelpPopoverOpen());
+      }
+    });
+    installShortcutHelpDocumentClick();
+    document.body.prepend(container);
+  }
+  function installShortcutHelpDocumentClick() {
+    if (documentClickInstalled) {
+      return;
+    }
+    documentClickInstalled = true;
+    document.addEventListener("click", handleShortcutHelpDocumentClick, true);
+  }
+  function handleShortcutHelpDocumentClick(event) {
+    const target = event.target;
+    if (!(target instanceof Node)) {
+      return;
+    }
+    const button = document.getElementById(SHORTCUT_HELP_BUTTON_ID);
+    const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
+    if (button?.contains(target) || popover?.contains(target)) {
+      return;
+    }
+    closeShortcutHelpPopover();
   }
 
   // src/ui/components/ForumControls.tsx
@@ -4472,57 +4527,11 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       }
       return key;
     }
-    function isShortcutHelpPopoverOpen() {
-      const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
-      return popover instanceof HTMLElement && !popover.hidden;
-    }
-    function closeShortcutHelpPopover() {
-      const button = document.getElementById(SHORTCUT_HELP_BUTTON_ID);
-      const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
-      if (popover instanceof HTMLElement) {
-        popover.hidden = true;
-      }
-      if (button instanceof HTMLButtonElement) {
-        button.setAttribute("aria-expanded", "false");
-      }
-    }
-    function setShortcutHelpPopoverOpen(open) {
-      const button = document.getElementById(SHORTCUT_HELP_BUTTON_ID);
-      const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
-      if (!(button instanceof HTMLButtonElement) || !popover) {
-        return;
-      }
-      popover.hidden = !open;
-      button.setAttribute("aria-expanded", open ? "true" : "false");
-    }
-    function handleShortcutHelpDocumentClick(event) {
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        return;
-      }
-      const button = document.getElementById(SHORTCUT_HELP_BUTTON_ID);
-      const popover = document.getElementById(SHORTCUT_HELP_POPOVER_ID);
-      if (button?.contains(target) || popover?.contains(target)) {
-        return;
-      }
-      closeShortcutHelpPopover();
-    }
-    function renderShortcutHelpButton() {
-      if (!document.body) {
-        return;
-      }
-      document.getElementById(SHORTCUT_HELP_CONTAINER_ID)?.remove();
-      document.getElementById(SHORTCUT_HELP_BUTTON_ID)?.remove();
-      document.getElementById(SHORTCUT_HELP_POPOVER_ID)?.remove();
-      const container = ShortcutHelpContainer({
+    function renderShortcutHelpButton2() {
+      renderShortcutHelpButton({
         items: getShortcutHelpItems(),
-        formatKey: formatShortcutHelpKey,
-        onToggle: () => {
-          setShortcutHelpPopoverOpen(!isShortcutHelpPopoverOpen());
-        }
+        formatKey: formatShortcutHelpKey
       });
-      document.addEventListener("click", handleShortcutHelpDocumentClick, true);
-      document.body.prepend(container);
     }
     function openSelectedNavigationItem() {
       if (isThreadPage()) {
@@ -5778,7 +5787,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       applyCompactMode();
       if (isForumDisplayPage() || isThreadPage()) {
         ensureStyle();
-        renderShortcutHelpButton();
+        renderShortcutHelpButton2();
         installKeyboardNavigation();
       }
       if (isForumDisplayPage()) {
