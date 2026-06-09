@@ -807,6 +807,170 @@
     closeShortcutHelpPopover();
   }
 
+  // src/adapters/forocoches/postReplyActions.ts
+  function clickPostQuoteAction(wrapper) {
+    const link = getPostReplyActionLink(wrapper, "quote");
+    if (!link) {
+      return false;
+    }
+    link.click();
+    return true;
+  }
+  function togglePostMultiquote(wrapper, postId) {
+    const link = getPostReplyActionLink(wrapper, "multiquote");
+    const target = link?.querySelector("img[id^='mq_']");
+    const multiquotePostId = target?.id.replace(/^mq_/, "") || postId;
+    if (multiquotePostId && typeof window.mq_click === "function") {
+      window.mq_click(multiquotePostId);
+      return true;
+    }
+    if (target instanceof HTMLElement) {
+      target.click();
+      return true;
+    }
+    if (!link) {
+      return false;
+    }
+    link.click();
+    return true;
+  }
+  function openThreadReplyWithoutQuote(threadId) {
+    const link = getThreadReplyWithoutQuoteLink();
+    if (link) {
+      link.click();
+      return true;
+    }
+    if (!threadId) {
+      return false;
+    }
+    location.href = new URL(`newreply.php?do=newreply&t=${threadId}`, location.href).href;
+    return true;
+  }
+  function isQuickReplyLink(link) {
+    const image = link.querySelector("img");
+    const label = `${link.id} ${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
+    return /quickreply|respuesta rapida|qr_\d+/i.test(label);
+  }
+  function isQuoteReplyLink(link) {
+    const image = link.querySelector("img");
+    const label = `${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
+    return /quote\.gif|multiquote|multi-cita|responder con cita/i.test(label);
+  }
+  function getPostReplyActionLink(wrapper, action) {
+    const links = Array.from(wrapper.querySelectorAll(".fc-premium-post-reply-actions a[href*='newreply.php?do=newreply']")).filter((link) => link instanceof HTMLAnchorElement);
+    return links.find((link) => action === "quote" ? isSingleQuoteReplyLink(link) : isMultiQuoteReplyLink(link)) || null;
+  }
+  function isMultiQuoteReplyLink(link) {
+    const image = link.querySelector("img");
+    const label = `${image?.id || ""} ${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
+    return /mq_\d+|multiquote|multi-cita/i.test(label);
+  }
+  function isSingleQuoteReplyLink(link) {
+    return isQuoteReplyLink(link) && !isMultiQuoteReplyLink(link);
+  }
+  function isThreadReplyWithoutQuoteLink(link) {
+    const image = link.querySelector("img");
+    const label = `${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
+    return link.href.includes("newreply.php") && link.href.includes("do=newreply") && link.href.includes("noquote=1") && /reply\.gif|respuesta/i.test(label);
+  }
+  function getThreadReplyWithoutQuoteLink() {
+    return Array.from(document.querySelectorAll("a[href*='newreply.php'][href*='noquote=1']")).filter((link) => link instanceof HTMLAnchorElement).find(isThreadReplyWithoutQuoteLink) || null;
+  }
+
+  // src/ui/postNativeDom.ts
+  function getPostStatusImage(wrapper) {
+    const footerRow = getPostFooterRow(wrapper);
+    const image = footerRow?.querySelector("img[src*='statusicon/user_']");
+    return image instanceof HTMLImageElement ? image : null;
+  }
+  function getPostReportLink(wrapper) {
+    const footerRow = getPostFooterRow(wrapper);
+    const link = footerRow?.querySelector("a[href*='report.php?p=']");
+    return link instanceof HTMLAnchorElement ? link : null;
+  }
+  function relocatePostFooterControls(wrapper) {
+    const footerRow = getPostFooterRow(wrapper);
+    const existingActions = wrapper.querySelector(".fc-premium-post-reply-actions");
+    const existingReplyLinks = Array.from(existingActions?.querySelectorAll("a[href*='newreply.php?do=newreply']") || []).filter((link) => link instanceof HTMLAnchorElement);
+    existingActions?.remove();
+    const footerReplyLinks = Array.from(footerRow?.querySelectorAll("a[href*='newreply.php?do=newreply']") || []).filter((link) => link instanceof HTMLAnchorElement);
+    const replyLinks = [...footerReplyLinks, ...existingReplyLinks].filter((link) => !isQuickReplyLink(link) && isQuoteReplyLink(link));
+    for (const link of footerReplyLinks) {
+      if (isQuickReplyLink(link)) {
+        link.remove();
+      }
+    }
+    if (replyLinks.length > 0) {
+      const actions = document.createElement("div");
+      actions.className = "fc-premium-post-reply-actions";
+      for (const link of replyLinks) {
+        actions.append(link);
+      }
+      wrapper.append(actions);
+    }
+    if (footerRow) {
+      footerRow.classList.add("fc-premium-post-footer-row");
+    }
+  }
+  function removeTrailingPostLayoutArtifacts(wrapper) {
+    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
+    const postContainer = table?.closest("div[id^='edit']");
+    if (!(table instanceof HTMLElement) || !postContainer) {
+      return;
+    }
+    let node = table.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      if (isPreservedHiddenPostMenuNode(node)) {
+        node = next;
+        continue;
+      }
+      if (!isRemovableTrailingPostLayoutNode(node)) {
+        break;
+      }
+      node.remove();
+      node = next;
+    }
+  }
+  function getPostFooterRow(wrapper) {
+    const footerSelector = "a[href*='report.php?p='], a[href*='newreply.php?do=newreply'], img[src*='statusicon/user_']";
+    const rows = Array.from(wrapper.querySelectorAll("tr"));
+    return rows.find((row) => {
+      if (!(row instanceof HTMLTableRowElement)) {
+        return false;
+      }
+      return Array.from(row.querySelectorAll(footerSelector)).some((control) => control instanceof HTMLElement && !isInsidePremiumPostUi(control));
+    }) || null;
+  }
+  function isInsidePremiumPostUi(element) {
+    return Boolean(element.closest(".fc-premium-author-hover-card, .fc-premium-post-reply-actions, .fc-premium-quote-actions"));
+  }
+  function isPreservedHiddenPostMenuNode(node) {
+    return node instanceof HTMLElement && (node.classList.contains("vbmenu_popup") || /_menu$/.test(node.id));
+  }
+  function isSpacerImage(image) {
+    const src = image.getAttribute("src") || "";
+    return /nada\.gif|clear\.gif|spacer/i.test(src);
+  }
+  function isEmptyPostSeparatorTable(element) {
+    if (!(element instanceof HTMLTableElement) || !element.classList.contains("cajasprin") || normalizeText(element.textContent)) {
+      return false;
+    }
+    if (element.querySelector("a, button, input, select, textarea")) {
+      return false;
+    }
+    return Array.from(element.querySelectorAll("img")).every((image) => image instanceof HTMLImageElement && isSpacerImage(image));
+  }
+  function isRemovableTrailingPostLayoutNode(node) {
+    if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE) {
+      return true;
+    }
+    if (node instanceof HTMLBRElement) {
+      return true;
+    }
+    return node instanceof HTMLElement && isEmptyPostSeparatorTable(node);
+  }
+
   // src/ui/components/ForumControls.tsx
   function ForumSidebarToggleButton(props) {
     return /* @__PURE__ */ createElement("button", {
@@ -1778,76 +1942,6 @@
         row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
       }
     }
-  }
-
-  // src/adapters/forocoches/postReplyActions.ts
-  function clickPostQuoteAction(wrapper) {
-    const link = getPostReplyActionLink(wrapper, "quote");
-    if (!link) {
-      return false;
-    }
-    link.click();
-    return true;
-  }
-  function togglePostMultiquote(wrapper, postId) {
-    const link = getPostReplyActionLink(wrapper, "multiquote");
-    const target = link?.querySelector("img[id^='mq_']");
-    const multiquotePostId = target?.id.replace(/^mq_/, "") || postId;
-    if (multiquotePostId && typeof window.mq_click === "function") {
-      window.mq_click(multiquotePostId);
-      return true;
-    }
-    if (target instanceof HTMLElement) {
-      target.click();
-      return true;
-    }
-    if (!link) {
-      return false;
-    }
-    link.click();
-    return true;
-  }
-  function openThreadReplyWithoutQuote(threadId) {
-    const link = getThreadReplyWithoutQuoteLink();
-    if (link) {
-      link.click();
-      return true;
-    }
-    if (!threadId) {
-      return false;
-    }
-    location.href = new URL(`newreply.php?do=newreply&t=${threadId}`, location.href).href;
-    return true;
-  }
-  function isQuickReplyLink(link) {
-    const image = link.querySelector("img");
-    const label = `${link.id} ${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
-    return /quickreply|respuesta rapida|qr_\d+/i.test(label);
-  }
-  function isQuoteReplyLink(link) {
-    const image = link.querySelector("img");
-    const label = `${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
-    return /quote\.gif|multiquote|multi-cita|responder con cita/i.test(label);
-  }
-  function getPostReplyActionLink(wrapper, action) {
-    const links = Array.from(wrapper.querySelectorAll(".fc-premium-post-reply-actions a[href*='newreply.php?do=newreply']")).filter((link) => link instanceof HTMLAnchorElement);
-    return links.find((link) => action === "quote" ? isSingleQuoteReplyLink(link) : isMultiQuoteReplyLink(link)) || null;
-  }
-  function isMultiQuoteReplyLink(link) {
-    const image = link.querySelector("img");
-    const label = `${image?.id || ""} ${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
-    return /mq_\d+|multiquote|multi-cita/i.test(label);
-  }
-  function isSingleQuoteReplyLink(link) {
-    return isQuoteReplyLink(link) && !isMultiQuoteReplyLink(link);
-  }
-  function isThreadReplyWithoutQuoteLink(link) {
-    const image = link.querySelector("img");
-    const label = `${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
-    return link.href.includes("newreply.php") && link.href.includes("do=newreply") && link.href.includes("noquote=1") && /reply\.gif|respuesta/i.test(label);
-  }
-  function getThreadReplyWithoutQuoteLink() {
-    return Array.from(document.querySelectorAll("a[href*='newreply.php'][href*='noquote=1']")).filter((link) => link instanceof HTMLAnchorElement).find(isThreadReplyWithoutQuoteLink) || null;
   }
 
   // src/adapters/forocoches/threadPageNavigation.ts
@@ -5280,98 +5374,6 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       });
       actions.append(conversationButton);
       targetContainer.append(actions);
-    }
-    function isInsidePremiumPostUi(element) {
-      return Boolean(element.closest(".fc-premium-author-hover-card, .fc-premium-post-reply-actions, .fc-premium-quote-actions"));
-    }
-    function getPostFooterRow(wrapper) {
-      const footerSelector = "a[href*='report.php?p='], a[href*='newreply.php?do=newreply'], img[src*='statusicon/user_']";
-      const rows = Array.from(wrapper.querySelectorAll("tr"));
-      return rows.find((row) => {
-        if (!(row instanceof HTMLTableRowElement)) {
-          return false;
-        }
-        return Array.from(row.querySelectorAll(footerSelector)).some((control) => control instanceof HTMLElement && !isInsidePremiumPostUi(control));
-      }) || null;
-    }
-    function getPostStatusImage(wrapper) {
-      const footerRow = getPostFooterRow(wrapper);
-      const image = footerRow?.querySelector("img[src*='statusicon/user_']");
-      return image instanceof HTMLImageElement ? image : null;
-    }
-    function getPostReportLink(wrapper) {
-      const footerRow = getPostFooterRow(wrapper);
-      const link = footerRow?.querySelector("a[href*='report.php?p=']");
-      return link instanceof HTMLAnchorElement ? link : null;
-    }
-    function relocatePostFooterControls(wrapper) {
-      const footerRow = getPostFooterRow(wrapper);
-      const existingActions = wrapper.querySelector(".fc-premium-post-reply-actions");
-      const existingReplyLinks = Array.from(existingActions?.querySelectorAll("a[href*='newreply.php?do=newreply']") || []).filter((link) => link instanceof HTMLAnchorElement);
-      existingActions?.remove();
-      const footerReplyLinks = Array.from(footerRow?.querySelectorAll("a[href*='newreply.php?do=newreply']") || []).filter((link) => link instanceof HTMLAnchorElement);
-      const replyLinks = [...footerReplyLinks, ...existingReplyLinks].filter((link) => !isQuickReplyLink(link) && isQuoteReplyLink(link));
-      for (const link of footerReplyLinks) {
-        if (isQuickReplyLink(link)) {
-          link.remove();
-        }
-      }
-      if (replyLinks.length > 0) {
-        const actions = document.createElement("div");
-        actions.className = "fc-premium-post-reply-actions";
-        for (const link of replyLinks) {
-          actions.append(link);
-        }
-        wrapper.append(actions);
-      }
-      if (footerRow) {
-        footerRow.classList.add("fc-premium-post-footer-row");
-      }
-    }
-    function isPreservedHiddenPostMenuNode(node) {
-      return node instanceof HTMLElement && (node.classList.contains("vbmenu_popup") || /_menu$/.test(node.id));
-    }
-    function isSpacerImage(image) {
-      const src = image.getAttribute("src") || "";
-      return /nada\.gif|clear\.gif|spacer/i.test(src);
-    }
-    function isEmptyPostSeparatorTable(element) {
-      if (!(element instanceof HTMLTableElement) || !element.classList.contains("cajasprin") || normalizeText(element.textContent)) {
-        return false;
-      }
-      if (element.querySelector("a, button, input, select, textarea")) {
-        return false;
-      }
-      return Array.from(element.querySelectorAll("img")).every((image) => image instanceof HTMLImageElement && isSpacerImage(image));
-    }
-    function isRemovableTrailingPostLayoutNode(node) {
-      if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE) {
-        return true;
-      }
-      if (node instanceof HTMLBRElement) {
-        return true;
-      }
-      return node instanceof HTMLElement && isEmptyPostSeparatorTable(node);
-    }
-    function removeTrailingPostLayoutArtifacts(wrapper) {
-      const table = wrapper.querySelector(POST_TABLE_SELECTOR);
-      const postContainer = table?.closest("div[id^='edit']");
-      if (!(table instanceof HTMLElement) || !postContainer) {
-        return;
-      }
-      let node = table.nextSibling;
-      while (node) {
-        const next = node.nextSibling;
-        if (isPreservedHiddenPostMenuNode(node)) {
-          node = next;
-          continue;
-        }
-        if (!isRemovableTrailingPostLayoutNode(node)) {
-          break;
-        }
-        node.remove();
-        node = next;
-      }
     }
     function getAuthorHoverLines(authorCell) {
       const lines = [];
