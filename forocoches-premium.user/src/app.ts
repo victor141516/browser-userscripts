@@ -36,6 +36,7 @@ import {
   updatePostCompactLayout,
   updateRenderedCompactPostLayouts as updateRenderedCompactPostLayoutsInDom,
 } from "./ui/postCompactLayoutDom";
+import { enhanceQuoteLinks as enhanceQuoteLinksInDom } from "./ui/postQuoteDom";
 import {
   ForumLoadingStatus,
   ForumSidebarToggleButton,
@@ -2833,90 +2834,17 @@ export function runForocochesPremium() {
   }
 
   function enhanceQuoteLinks(wrapper: HTMLElement) {
-    const sourcePostId = getPostIdFromNavigationElement(wrapper);
-
-    for (const link of wrapper.querySelectorAll(
-      "a[href*='showthread.php?p='][href*='#post']",
-    )) {
-      if (!(link instanceof HTMLAnchorElement)) {
-        continue;
-      }
-
-      const quotedPostId = getQuotedPostId(
-        link.getAttribute("href") || link.href,
-      );
-
-      if (!quotedPostId) {
-        continue;
-      }
-
-      link.dataset.fcPremiumQuoteTarget = quotedPostId;
-      link.title = "Ir al mensaje citado";
-      markQuoteBlock(link, quotedPostId, sourcePostId);
-      link.addEventListener("click", (event) => {
-        const target = document.getElementById(`post${quotedPostId}`);
-
-        if (!target) {
-          return;
-        }
-
-        event.preventDefault();
-        jumpToLoadedPost(quotedPostId);
-      });
-    }
-  }
-
-  function markQuoteBlock(link: HTMLAnchorElement, quotedPostId: string, sourcePostId: string | null) {
-    const quoteTable = link.closest("table");
-    const quoteWrapper = quoteTable?.parentElement;
-
-    if (!(quoteWrapper instanceof HTMLElement)) {
-      return;
-    }
-
-    if (!(quoteTable instanceof HTMLTableElement)) {
-      return;
-    }
-
-    quoteWrapper.dataset.fcPremiumQuoteBlock = quotedPostId;
-    renderQuoteBlockActions(quoteWrapper, link, sourcePostId, quotedPostId);
-
-    const quoteCell = quoteTable.querySelector("td");
-    const body = Array.from(quoteCell?.children || []).find(
-      (child) =>
-        child instanceof HTMLElement &&
-        child !== link.parentElement &&
-        child.textContent.trim().length > 0,
-    );
-
-    if (body instanceof HTMLElement) {
-      body.dataset.fcPremiumQuoteBody = "true";
-    }
-  }
-
-  function renderQuoteBlockActions(quoteWrapper: HTMLElement, quoteLink: HTMLAnchorElement, sourcePostId: string | null, quotedPostId: string) {
-    if (!sourcePostId) {
-      return;
-    }
-
-    quoteWrapper.querySelector(".fc-premium-quote-actions")?.remove();
-
-    const targetContainer = quoteLink.parentElement || quoteWrapper;
-    const actions = document.createElement("div");
-    actions.className = "fc-premium-quote-actions";
-
-    const conversationButton = document.createElement("button");
-    conversationButton.type = "button";
-    conversationButton.textContent = "Ver conversación";
-    conversationButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setActiveGraphView("conversation", sourcePostId, quotedPostId, {
-        scrollToFirstPost: true,
-      });
+    enhanceQuoteLinksInDom({
+      wrapper,
+      sourcePostId: getPostIdFromNavigationElement(wrapper),
+      getQuotedPostId,
+      onOpenQuotedPost: jumpToLoadedPost,
+      onReadConversation: (sourcePostId, quotedPostId) => {
+        setActiveGraphView("conversation", sourcePostId, quotedPostId, {
+          scrollToFirstPost: true,
+        });
+      },
     });
-    actions.append(conversationButton);
-    targetContainer.append(actions);
   }
 
   function updateRenderedCompactPostLayouts() {
