@@ -331,6 +331,111 @@
     }));
   }
 
+  // src/ui/components/ForumPager.tsx
+  function ForumPager(props) {
+    return /* @__PURE__ */ createElement("table", {
+      className: "tborder",
+      cellPadding: "3",
+      cellSpacing: "1",
+      border: "0"
+    }, /* @__PURE__ */ createElement("tbody", null, /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
+      className: "vbmenu_control",
+      style: "font-weight: normal"
+    }, "Pág ", props.currentPage, " de ", props.totalPages), props.visiblePages.map((pageNumber) => pageNumber === props.currentPage ? /* @__PURE__ */ createElement("td", {
+      className: "alt2"
+    }, /* @__PURE__ */ createElement("span", {
+      className: "mfont",
+      title: "Mostrando resultados filtrados"
+    }, /* @__PURE__ */ createElement("strong", null, pageNumber))) : /* @__PURE__ */ createElement(ForumPagerLinkCell, {
+      pageNumber,
+      label: String(pageNumber),
+      href: props.hrefForPage(pageNumber),
+      onPageClick: props.onPageClick
+    })), props.currentPage < props.totalPages ? /* @__PURE__ */ createElement(ForumPagerLinkCell, {
+      pageNumber: props.currentPage + 1,
+      label: ">",
+      href: props.hrefForPage(props.currentPage + 1),
+      onPageClick: props.onPageClick
+    }) : null, props.currentPage < props.totalPages ? /* @__PURE__ */ createElement(ForumPagerLinkCell, {
+      pageNumber: props.totalPages,
+      label: "Último »",
+      href: props.hrefForPage(props.totalPages),
+      onPageClick: props.onPageClick
+    }) : null)));
+  }
+  function ForumPagerLinkCell(props) {
+    return /* @__PURE__ */ createElement("td", {
+      className: "alt1"
+    }, /* @__PURE__ */ createElement("a", {
+      className: "mfont",
+      href: props.href,
+      onClick: (event) => {
+        event.preventDefault();
+        props.onPageClick(props.pageNumber);
+      }
+    }, props.label));
+  }
+
+  // src/shared/hash.ts
+  function hashString(value) {
+    let hash = 0;
+    for (let index = 0;index < value.length; index += 1) {
+      hash = hash * 31 + value.charCodeAt(index) >>> 0;
+    }
+    return hash;
+  }
+
+  // src/ui/components/Tags.tsx
+  function TagChip(props) {
+    const canonicalTag = props.tag.toLowerCase();
+    const colors = getTagColors(canonicalTag);
+    return /* @__PURE__ */ createElement("span", {
+      className: "fc-premium-tag-chip",
+      "data-fc-premium-tag": canonicalTag,
+      role: "button",
+      tabIndex: 0,
+      title: props.title || `Filtrar por +${props.tag}`,
+      "aria-pressed": typeof props.pressed === "boolean" ? String(props.pressed) : undefined,
+      style: {
+        "--fc-premium-tag-bg": colors.background,
+        "--fc-premium-tag-border": colors.border,
+        "--fc-premium-tag-color": colors.color
+      },
+      onClick: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        props.onToggle(canonicalTag);
+      },
+      onKeyDown: (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        props.onToggle(canonicalTag);
+      }
+    }, props.label || `+${props.tag}`);
+  }
+  function TopTagBar(props) {
+    return /* @__PURE__ */ createElement("div", {
+      id: "fc-premium-top-tags"
+    }, /* @__PURE__ */ createElement("span", null, "Top tags:"), props.tags.map((summary) => /* @__PURE__ */ createElement(TagChip, {
+      tag: summary.tag,
+      label: `+${summary.tag} (${summary.count})`,
+      title: `Filtrar ${summary.count} hilos con +${summary.tag}`,
+      pressed: props.activeTag === summary.tag,
+      onToggle: props.onToggle
+    })));
+  }
+  function getTagColors(tag) {
+    const hue = hashString(tag.toLowerCase()) % 360;
+    return {
+      background: `hsl(${hue}, 82%, 92%)`,
+      border: `hsl(${hue}, 58%, 60%)`,
+      color: `hsl(${hue}, 70%, 24%)`
+    };
+  }
+
   // src/shared/dom.ts
   function normalizeText(text) {
     return (text || "").replace(/\s+/g, " ").trim();
@@ -2515,48 +2620,11 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         document.head.appendChild(style);
       }
     }
-    function hashString(value) {
-      let hash = 0;
-      for (let index = 0;index < value.length; index += 1) {
-        hash = hash * 31 + value.charCodeAt(index) >>> 0;
-      }
-      return hash;
-    }
-    function getTagColors(tag) {
-      const hue = hashString(tag.toLowerCase()) % 360;
-      return {
-        background: `hsl(${hue}, 82%, 92%)`,
-        border: `hsl(${hue}, 58%, 60%)`,
-        color: `hsl(${hue}, 70%, 24%)`
-      };
-    }
     function createTagChip(tag) {
-      const canonicalTag = tag.toLowerCase();
-      const colors = getTagColors(canonicalTag);
-      const chip = document.createElement("span");
-      chip.className = "fc-premium-tag-chip";
-      chip.dataset.fcPremiumTag = canonicalTag;
-      chip.role = "button";
-      chip.tabIndex = 0;
-      chip.textContent = `+${tag}`;
-      chip.title = `Filtrar por +${tag}`;
-      chip.style.setProperty("--fc-premium-tag-bg", colors.background);
-      chip.style.setProperty("--fc-premium-tag-border", colors.border);
-      chip.style.setProperty("--fc-premium-tag-color", colors.color);
-      chip.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleTagFilter(canonicalTag);
+      return TagChip({
+        tag,
+        onToggle: toggleTagFilter
       });
-      chip.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") {
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        toggleTagFilter(canonicalTag);
-      });
-      return chip;
     }
     function renderTaggedTitle(title) {
       if (title.dataset.fcPremiumTagsRendered === "true") {
@@ -2911,13 +2979,9 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       renderHiddenThreadsToolbarButton();
       hideUnusedTopNavigationBars();
     }
-    function getForumThreadsBody() {
-      const table = getForumThreadsTable();
-      return table?.tBodies[0] || table?.createTBody() || null;
-    }
     function getForumThreadRows() {
-      const body = getForumThreadsBody();
-      return body ? Array.from(body.rows) : [];
+      const table = getForumThreadsTable();
+      return table ? Array.from(table.rows) : [];
     }
     function captureNativeForumThreadRows() {
       if (nativeForumThreadRowHtml.length > 0) {
@@ -2929,9 +2993,10 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       }
       const rows = Array.from(table.rows);
       const firstThreadIndex = rows.findIndex((row) => row.querySelector(THREAD_TITLE_SELECTOR));
+      const threadRows = firstThreadIndex >= 0 ? rows.slice(firstThreadIndex) : rows;
       nativeForumThreadHeaderRowHtml = firstThreadIndex > 0 ? rows.slice(0, firstThreadIndex).map((row) => row.outerHTML) : [];
-      nativeForumThreadRowHtml = getForumThreadRows().map((row) => row.outerHTML);
-      forumThreadsPerPage = nativeForumThreadRowHtml.length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
+      nativeForumThreadRowHtml = threadRows.map((row) => row.outerHTML);
+      forumThreadsPerPage = threadRows.filter((row) => row.querySelector(THREAD_TITLE_SELECTOR)).length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
       renderedForumThreadListSignature = getForumThreadRowsSignature(nativeForumThreadRowHtml, "native");
     }
     function getForumThreadRowsSignature(rowHtmlList, scope) {
@@ -3000,67 +3065,14 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         if (container instanceof HTMLElement) {
           setForumLayoutElementHidden(container, false);
         }
-        const table = document.createElement("table");
-        table.className = "tborder";
-        table.cellPadding = "3";
-        table.cellSpacing = "1";
-        table.border = "0";
-        const body = table.createTBody();
-        const row = body.insertRow();
-        const label = row.insertCell();
-        label.className = "vbmenu_control";
-        label.style.fontWeight = "normal";
-        label.textContent = `Pág ${activeForumTagPage} de ${totalPages}`;
-        for (const pageNumber of getVisibleThreadPageNumbers(totalPages, activeForumTagPage)) {
-          const cell = row.insertCell();
-          if (pageNumber === activeForumTagPage) {
-            cell.className = "alt2";
-            const current = document.createElement("span");
-            current.className = "mfont";
-            current.title = `Mostrando resultados filtrados`;
-            const strong = document.createElement("strong");
-            strong.textContent = String(pageNumber);
-            current.append(strong);
-            cell.append(current);
-            continue;
-          }
-          cell.className = "alt1";
-          const link = document.createElement("a");
-          link.className = "mfont";
-          link.href = getForumDynamicPageUrl(pageNumber).href;
-          link.textContent = String(pageNumber);
-          link.addEventListener("click", (event) => {
-            event.preventDefault();
-            setForumTagPage(pageNumber);
-          });
-          cell.append(link);
-        }
-        if (activeForumTagPage < totalPages) {
-          const nextCell = row.insertCell();
-          nextCell.className = "alt1";
-          const next = document.createElement("a");
-          next.className = "mfont";
-          next.href = getForumDynamicPageUrl(activeForumTagPage + 1).href;
-          next.textContent = ">";
-          next.addEventListener("click", (event) => {
-            event.preventDefault();
-            setForumTagPage(activeForumTagPage + 1);
-          });
-          nextCell.append(next);
-          const lastCell = row.insertCell();
-          lastCell.className = "alt1";
-          const last = document.createElement("a");
-          last.className = "mfont";
-          last.href = getForumDynamicPageUrl(totalPages).href;
-          last.textContent = "Último »";
-          last.addEventListener("click", (event) => {
-            event.preventDefault();
-            setForumTagPage(totalPages);
-          });
-          lastCell.append(last);
-        }
         pager.textContent = "";
-        pager.append(table);
+        pager.append(ForumPager({
+          currentPage: activeForumTagPage,
+          totalPages,
+          visiblePages: getVisibleThreadPageNumbers(totalPages, activeForumTagPage),
+          hrefForPage: (pageNumber) => getForumDynamicPageUrl(pageNumber).href,
+          onPageClick: setForumTagPage
+        }));
       }
     }
     function setForumTagPage(pageNumber) {
@@ -3408,19 +3420,11 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       if (!table?.parentElement) {
         return;
       }
-      const bar = document.createElement("div");
-      bar.id = TOP_TAGS_ID;
-      const label = document.createElement("span");
-      label.textContent = "Top tags:";
-      bar.append(label);
-      for (const summary of topTags) {
-        const chip = createTagChip(summary.tag);
-        chip.textContent = `+${summary.tag} (${summary.count})`;
-        chip.title = `Filtrar ${summary.count} hilos con +${summary.tag}`;
-        chip.setAttribute("aria-pressed", String(activeTagFilter === summary.tag));
-        bar.append(chip);
-      }
-      table.before(bar);
+      table.before(TopTagBar({
+        tags: topTags,
+        activeTag: activeTagFilter,
+        onToggle: toggleTagFilter
+      }));
     }
     function isEditableTarget(target) {
       if (!(target instanceof HTMLElement)) {
