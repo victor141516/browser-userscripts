@@ -686,6 +686,72 @@
     return postId || null;
   }
 
+  // src/ui/navigationDom.ts
+  function getThreadTitleNavigationItems() {
+    const items = [];
+    for (const link of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
+      if (!(link instanceof HTMLAnchorElement) || !isVisible(link)) {
+        continue;
+      }
+      items.push({
+        element: getThreadNavigationOwner(link),
+        link
+      });
+    }
+    return items;
+  }
+  function getPostNavigationItems(posts) {
+    if (!posts) {
+      return [];
+    }
+    const items = [];
+    for (const wrapper of posts.querySelectorAll(".fc-premium-post-wrapper")) {
+      if (!(wrapper instanceof HTMLElement) || !isVisible(wrapper)) {
+        continue;
+      }
+      const postId = getPostIdFromNavigationElement(wrapper);
+      const link = postId ? wrapper.querySelector(`#postcount${postId}`) : wrapper.querySelector("a[id^='postcount']");
+      items.push({
+        element: wrapper,
+        link: link instanceof HTMLAnchorElement ? link : null
+      });
+    }
+    return items;
+  }
+  function clearNavigationSelection() {
+    for (const selected of document.querySelectorAll(`[${SELECTED_ATTRIBUTE}]`)) {
+      selected.removeAttribute(SELECTED_ATTRIBUTE);
+    }
+  }
+  function markNavigationItemSelected(item) {
+    item.element.setAttribute(SELECTED_ATTRIBUTE, "true");
+  }
+  function scrollNavigationElementIntoView(element, block) {
+    element.scrollIntoView({
+      behavior: "smooth",
+      block
+    });
+  }
+  function getPostIdFromNavigationElement(element) {
+    if (!(element instanceof HTMLElement)) {
+      return null;
+    }
+    const postTable = element.querySelector(POST_TABLE_SELECTOR);
+    const postId = postTable?.id.match(/^post(\d+)$/)?.[1];
+    return postId || null;
+  }
+  function getSelectedPostWrapper() {
+    const marked = document.querySelector(`.fc-premium-post-wrapper[${SELECTED_ATTRIBUTE}]`);
+    return marked instanceof HTMLElement ? marked : null;
+  }
+  function getThreadNavigationOwner(link) {
+    const row = link.closest("tr");
+    if (row instanceof HTMLElement) {
+      return row;
+    }
+    return link;
+  }
+
   // src/shared/hash.ts
   function hashString(value) {
     let hash = 0;
@@ -4185,52 +4251,12 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         onToggle: toggleTagFilter
       }));
     }
-    function getThreadNavigationOwner(link) {
-      const row = link.closest("tr");
-      if (row instanceof HTMLElement) {
-        return row;
-      }
-      return link;
-    }
-    function getThreadTitleNavigationItems() {
-      const items = [];
-      for (const link of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
-        if (!(link instanceof HTMLAnchorElement) || !isVisible(link)) {
-          continue;
-        }
-        items.push({
-          element: getThreadNavigationOwner(link),
-          link
-        });
-      }
-      return items;
-    }
-    function getPostNavigationItems() {
-      const posts = getPostsElement();
-      if (!posts) {
-        return [];
-      }
-      const items = [];
-      for (const wrapper of posts.querySelectorAll(".fc-premium-post-wrapper")) {
-        if (!(wrapper instanceof HTMLElement) || !isVisible(wrapper)) {
-          continue;
-        }
-        const table = wrapper.querySelector(POST_TABLE_SELECTOR);
-        const postId = table?.id.match(/^post(\d+)$/)?.[1] || null;
-        const link = postId ? wrapper.querySelector(`#postcount${postId}`) : wrapper.querySelector("a[id^='postcount']");
-        items.push({
-          element: wrapper,
-          link: link instanceof HTMLAnchorElement ? link : null
-        });
-      }
-      return items;
-    }
     function collectNavigationItems() {
       if (isForumDisplayPage()) {
         return getThreadTitleNavigationItems();
       }
       if (isThreadPage()) {
-        return getPostNavigationItems();
+        return getPostNavigationItems(getPostsElement());
       }
       return [];
     }
@@ -4251,21 +4277,19 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       renderNavigationSelection(options);
     }
     function renderNavigationSelection(options = {}) {
-      for (const selected2 of document.querySelectorAll(`[${SELECTED_ATTRIBUTE}]`)) {
-        selected2.removeAttribute(SELECTED_ATTRIBUTE);
-      }
+      clearNavigationSelection();
       const selected = navigationItems[selectedNavigationIndex];
       if (!selected) {
         renderNavigationStatus(null);
         return;
       }
-      selected.element.setAttribute(SELECTED_ATTRIBUTE, "true");
+      markNavigationItemSelected(selected);
       renderNavigationStatus(selected);
       if (options.updateUrl && isThreadPage()) {
         updateSelectedPostUrl(selected);
       }
       if (options.scroll) {
-        scrollNavigationElementIntoView(selected.element);
+        scrollNavigationElementIntoView2(selected.element);
       }
     }
     function updateSelectedPostUrl(selected) {
@@ -4291,19 +4315,8 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     function renderNavigationStatus(selected) {
       document.getElementById(NAVIGATION_STATUS_ID)?.remove();
     }
-    function scrollNavigationElementIntoView(element) {
-      element.scrollIntoView({
-        behavior: "smooth",
-        block: isThreadPage() ? "start" : "nearest"
-      });
-    }
-    function getPostIdFromNavigationElement(element) {
-      if (!(element instanceof HTMLElement)) {
-        return null;
-      }
-      const postTable = element.querySelector(POST_TABLE_SELECTOR);
-      const postId = postTable?.id.match(/^post(\d+)$/)?.[1];
-      return postId || null;
+    function scrollNavigationElementIntoView2(element) {
+      scrollNavigationElementIntoView(element, isThreadPage() ? "start" : "nearest");
     }
     function moveNavigation(direction) {
       if (navigationItems.length === 0) {
@@ -4329,7 +4342,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       const index = navigationItems.findIndex((item) => item.element === element);
       if (index < 0) {
         if (options.scroll !== false) {
-          scrollNavigationElementIntoView(element);
+          scrollNavigationElementIntoView2(element);
         }
         return;
       }
@@ -4339,7 +4352,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         updateUrl: options.updateUrl !== false
       });
     }
-    function getSelectedPostWrapper() {
+    function getSelectedPostWrapper2() {
       if (navigationItems.length === 0) {
         refreshNavigation({ reset: true });
       }
@@ -4347,8 +4360,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       if (selected instanceof HTMLElement && selected.matches(".fc-premium-post-wrapper")) {
         return selected;
       }
-      const marked = document.querySelector(`.fc-premium-post-wrapper[${SELECTED_ATTRIBUTE}]`);
-      return marked instanceof HTMLElement ? marked : null;
+      return getSelectedPostWrapper();
     }
     function quoteSelectedPost(wrapper) {
       return clickPostQuoteAction(wrapper);
@@ -4477,7 +4489,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     }
     function openSelectedNavigationItem() {
       if (isThreadPage()) {
-        const selected2 = getSelectedPostWrapper();
+        const selected2 = getSelectedPostWrapper2();
         if (selected2) {
           quoteSelectedPost(selected2);
         }
@@ -4529,7 +4541,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         openThreadReplyWithoutQuote2();
         return true;
       }
-      const selected = getSelectedPostWrapper();
+      const selected = getSelectedPostWrapper2();
       if (selected && keyboardShortcutMatches(event, KEY_QUOTE_SELECTED_POST)) {
         event.preventDefault();
         quoteSelectedPost(selected);

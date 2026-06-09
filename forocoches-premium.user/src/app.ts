@@ -14,6 +14,15 @@ import {
   enhanceAuthorFilterButton as enhanceAuthorFilterButtonInDom,
 } from "./ui/threadPostFiltersDom";
 import {
+  clearNavigationSelection,
+  getPostIdFromNavigationElement,
+  getPostNavigationItems,
+  getSelectedPostWrapper as getSelectedPostWrapperFromDom,
+  getThreadTitleNavigationItems,
+  markNavigationItemSelected,
+  scrollNavigationElementIntoView as scrollNavigationElementIntoViewInDom,
+} from "./ui/navigationDom";
+import {
   HiddenThreadsModal,
   HiddenThreadsModalBody,
 } from "./ui/components/HiddenThreadsModal";
@@ -80,7 +89,6 @@ import {
   FORUM_LIVE_SEARCH_DEBOUNCE_MS,
   THREAD_STATE_QUERY_PARAMS,
   FORUM_STATE_QUERY_PARAMS,
-  SELECTED_ATTRIBUTE,
   FORUM_LAYOUT_HIDDEN_ATTRIBUTE,
   POSTS_SELECTOR,
   POST_TABLE_SELECTOR,
@@ -1626,69 +1634,13 @@ export function runForocochesPremium() {
     );
   }
 
-  function getThreadNavigationOwner(link: HTMLAnchorElement): HTMLElement {
-    const row = link.closest("tr");
-
-    if (row instanceof HTMLElement) {
-      return row;
-    }
-
-    return link;
-  }
-
-  function getThreadTitleNavigationItems(): NavigationItem[] {
-    const items: NavigationItem[] = [];
-
-    for (const link of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
-      if (!(link instanceof HTMLAnchorElement) || !isVisible(link)) {
-        continue;
-      }
-
-      items.push({
-        element: getThreadNavigationOwner(link),
-        link,
-      });
-    }
-
-    return items;
-  }
-
-  function getPostNavigationItems(): NavigationItem[] {
-    const posts = getPostsElement();
-
-    if (!posts) {
-      return [];
-    }
-
-    const items: NavigationItem[] = [];
-
-    for (const wrapper of posts.querySelectorAll(".fc-premium-post-wrapper")) {
-      if (!(wrapper instanceof HTMLElement) || !isVisible(wrapper)) {
-        continue;
-      }
-
-      const table = wrapper.querySelector(POST_TABLE_SELECTOR);
-      const postId = table?.id.match(/^post(\d+)$/)?.[1] || null;
-      const link = postId
-        ? wrapper.querySelector(`#postcount${postId}`)
-        : wrapper.querySelector("a[id^='postcount']");
-
-      items.push({
-        element: wrapper,
-        link: link instanceof HTMLAnchorElement ? link : null,
-      });
-    }
-
-    return items;
-  }
-
   function collectNavigationItems(): NavigationItem[] {
     if (isForumDisplayPage()) {
       return getThreadTitleNavigationItems();
     }
 
     if (isThreadPage()) {
-      return getPostNavigationItems();
+      return getPostNavigationItems(getPostsElement());
     }
 
     return [];
@@ -1717,11 +1669,7 @@ export function runForocochesPremium() {
   }
 
   function renderNavigationSelection(options: { scroll?: boolean, updateUrl?: boolean } = {}) {
-    for (const selected of document.querySelectorAll(
-      `[${SELECTED_ATTRIBUTE}]`,
-    )) {
-      selected.removeAttribute(SELECTED_ATTRIBUTE);
-    }
+    clearNavigationSelection();
 
     const selected = navigationItems[selectedNavigationIndex];
 
@@ -1730,7 +1678,7 @@ export function runForocochesPremium() {
       return;
     }
 
-    selected.element.setAttribute(SELECTED_ATTRIBUTE, "true");
+    markNavigationItemSelected(selected);
     renderNavigationStatus(selected);
 
     if (options.updateUrl && isThreadPage()) {
@@ -1778,21 +1726,10 @@ export function runForocochesPremium() {
   }
 
   function scrollNavigationElementIntoView(element: HTMLElement) {
-    element.scrollIntoView({
-      behavior: "smooth",
-      block: isThreadPage() ? "start" : "nearest",
-    });
-  }
-
-  function getPostIdFromNavigationElement(element: HTMLElement | undefined): string | null {
-    if (!(element instanceof HTMLElement)) {
-      return null;
-    }
-
-    const postTable = element.querySelector(POST_TABLE_SELECTOR);
-    const postId = postTable?.id.match(/^post(\d+)$/)?.[1];
-
-    return postId || null;
+    scrollNavigationElementIntoViewInDom(
+      element,
+      isThreadPage() ? "start" : "nearest",
+    );
   }
 
   function moveNavigation(direction: number) {
@@ -1858,11 +1795,7 @@ export function runForocochesPremium() {
       return selected;
     }
 
-    const marked = document.querySelector(
-      `.fc-premium-post-wrapper[${SELECTED_ATTRIBUTE}]`,
-    );
-
-    return marked instanceof HTMLElement ? marked : null;
+    return getSelectedPostWrapperFromDom();
   }
 
   function quoteSelectedPost(wrapper: HTMLElement): boolean {
