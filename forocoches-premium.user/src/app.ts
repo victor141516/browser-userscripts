@@ -180,6 +180,13 @@ import {
   writeCurrentThreadCache,
   writeForumThreadCacheRecords,
 } from "./services/threadCache";
+import {
+  hasKeyboardModifier,
+  isEditableTarget,
+  isMacKeyboardPlatform,
+  isOpenInNewTabKeyboardShortcut,
+  keyboardShortcutMatches,
+} from "./services/keyboard";
 
 declare const __FC_PREMIUM_CSS__: string;
 
@@ -1498,16 +1505,6 @@ export function runForocochesPremium() {
     );
   }
 
-  function isEditableTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) {
-      return false;
-    }
-
-    return Boolean(
-      target.closest("input, textarea, select, [contenteditable='true']"),
-    );
-  }
-
   function getThreadNavigationOwner(link: HTMLAnchorElement): HTMLElement {
     const row = link.closest("tr");
 
@@ -2039,35 +2036,15 @@ export function runForocochesPremium() {
     return true;
   }
 
-  function hasKeyboardModifier(event: KeyboardEvent): boolean {
-    return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
-  }
-
-  function keyboardShortcutMatches(event: KeyboardEvent, key: string): boolean {
-    if (key.length === 1) {
-      return event.key.toLowerCase() === key.toLowerCase();
-    }
-
-    return event.key === key;
-  }
-
-  function isMacKeyboardPlatform(): boolean {
-    return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || "");
-  }
-
   function isOpenSelectedThreadInNewTabShortcut(event: KeyboardEvent): boolean {
-    if (
-      !isForumDisplayPage() ||
-      event.key !== KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB ||
-      event.altKey ||
-      event.shiftKey
-    ) {
+    if (!isForumDisplayPage()) {
       return false;
     }
 
-    return isMacKeyboardPlatform()
-      ? event.metaKey && !event.ctrlKey
-      : event.ctrlKey && !event.metaKey;
+    return isOpenInNewTabKeyboardShortcut(
+      event,
+      KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB,
+    );
   }
 
   function handleHideSelectedThreadShortcut(event: KeyboardEvent): boolean {

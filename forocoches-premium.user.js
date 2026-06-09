@@ -1522,6 +1522,32 @@
     }
   }
 
+  // src/services/keyboard.ts
+  function isEditableTarget(target) {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+  }
+  function hasKeyboardModifier(event) {
+    return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+  }
+  function keyboardShortcutMatches(event, key) {
+    if (key.length === 1) {
+      return event.key.toLowerCase() === key.toLowerCase();
+    }
+    return event.key === key;
+  }
+  function isMacKeyboardPlatform() {
+    return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || "");
+  }
+  function isOpenInNewTabKeyboardShortcut(event, key) {
+    if (event.key !== key || event.altKey || event.shiftKey) {
+      return false;
+    }
+    return isMacKeyboardPlatform() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  }
+
   // src/app.ts
   function runForocochesPremium() {
     let navigationItems = [];
@@ -3452,12 +3478,6 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         onToggle: toggleTagFilter
       }));
     }
-    function isEditableTarget(target) {
-      if (!(target instanceof HTMLElement)) {
-        return false;
-      }
-      return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
-    }
     function getThreadNavigationOwner(link) {
       const row = link.closest("tr");
       if (row instanceof HTMLElement) {
@@ -3829,23 +3849,11 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       window.open(selected.link.href, "_blank", "noopener");
       return true;
     }
-    function hasKeyboardModifier(event) {
-      return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
-    }
-    function keyboardShortcutMatches(event, key) {
-      if (key.length === 1) {
-        return event.key.toLowerCase() === key.toLowerCase();
-      }
-      return event.key === key;
-    }
-    function isMacKeyboardPlatform() {
-      return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || "");
-    }
     function isOpenSelectedThreadInNewTabShortcut(event) {
-      if (!isForumDisplayPage() || event.key !== KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB || event.altKey || event.shiftKey) {
+      if (!isForumDisplayPage()) {
         return false;
       }
-      return isMacKeyboardPlatform() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+      return isOpenInNewTabKeyboardShortcut(event, KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB);
     }
     function handleHideSelectedThreadShortcut(event) {
       if (!isForumDisplayPage() || hasKeyboardModifier(event) || !keyboardShortcutMatches(event, KEY_HIDE_SELECTED_THREAD)) {
