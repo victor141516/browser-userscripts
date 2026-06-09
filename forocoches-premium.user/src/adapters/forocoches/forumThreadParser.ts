@@ -2,32 +2,15 @@ import {
   FORUM_THREAD_CACHE_RECORD_VERSION,
   HIDDEN_THREAD_ATTRIBUTE,
   SELECTED_ATTRIBUTE,
-  TAG_PATTERN,
   THREAD_TITLE_SELECTOR,
 } from "../../config/constants";
+import { getTagsFromText } from "../../domain/tags";
 import type { ForumThreadRecord } from "../../domain/types";
 import {
   getThreadId,
   normalizeText,
   toUrl,
 } from "../../shared/dom";
-
-export function getTagsFromText(
-  source: string | null | undefined,
-): string[] {
-  const tags = new Set<string>();
-
-  TAG_PATTERN.lastIndex = 0;
-
-  for (const match of String(source || "").matchAll(TAG_PATTERN)) {
-    if (match[1]) {
-      tags.add(match[1].toLowerCase());
-    }
-  }
-
-  TAG_PATTERN.lastIndex = 0;
-  return Array.from(tags);
-}
 
 export function getTitleTags(title: HTMLAnchorElement): string[] {
   const source = title.title || normalizeText(title.textContent);

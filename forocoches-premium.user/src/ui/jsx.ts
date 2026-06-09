@@ -73,7 +73,18 @@ function applyProp(element: HTMLElement, name: string, value: unknown): void {
     }
 
     if (value && typeof value === "object") {
-      Object.assign(element.style, value);
+      for (const [propertyName, propertyValue] of Object.entries(value)) {
+        if (propertyValue === null || propertyValue === undefined) {
+          continue;
+        }
+
+        if (propertyName.startsWith("--")) {
+          element.style.setProperty(propertyName, String(propertyValue));
+        } else {
+          (element.style as unknown as Record<string, string>)[propertyName] =
+            String(propertyValue);
+        }
+      }
       return;
     }
   }

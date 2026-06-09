@@ -1,5 +1,6 @@
 import { createElement } from "../jsx";
 import { hashString } from "../../shared/hash";
+import { normalizeTag } from "../../domain/tags";
 
 export interface TopTagSummary {
   tag: string;
@@ -16,24 +17,17 @@ interface TagChipProps {
 }
 
 export function TagChip(props: TagChipProps): HTMLElement {
-  const canonicalTag = props.tag.toLowerCase();
-  const colors = getTagColors(canonicalTag);
+  const canonicalTag = normalizeTag(props.tag);
 
   return (
-    <span
-      className="fc-premium-tag-chip"
-      data-fc-premium-tag={canonicalTag}
+    <TagBase
+      tag={canonicalTag}
       role="button"
       tabIndex={0}
       title={props.title || `Filtrar por +${props.tag}`}
       aria-pressed={
         typeof props.pressed === "boolean" ? String(props.pressed) : undefined
       }
-      style={{
-        "--fc-premium-tag-bg": colors.background,
-        "--fc-premium-tag-border": colors.border,
-        "--fc-premium-tag-color": colors.color,
-      }}
       onClick={(event: MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
@@ -50,7 +44,19 @@ export function TagChip(props: TagChipProps): HTMLElement {
       }}
     >
       {props.label || `+${props.tag}`}
-    </span>
+    </TagBase>
+  ) as HTMLElement;
+}
+
+export function TagLabel(props: {
+  tag: string;
+  label?: string;
+  title?: string;
+}): HTMLElement {
+  return (
+    <TagBase tag={props.tag} title={props.title}>
+      {props.label || `+${props.tag}`}
+    </TagBase>
   ) as HTMLElement;
 }
 
@@ -87,4 +93,32 @@ function getTagColors(tag: string): {
     border: `hsl(${hue}, 58%, 60%)`,
     color: `hsl(${hue}, 70%, 24%)`,
   };
+}
+
+function TagBase(
+  props: {
+    tag: string;
+    children?: unknown[];
+  } & Record<string, unknown>,
+): HTMLElement {
+  const canonicalTag = normalizeTag(props.tag);
+  const colors = getTagColors(canonicalTag);
+  const elementProps: Record<string, unknown> = { ...props };
+  delete elementProps.tag;
+  delete elementProps.children;
+
+  return (
+    <span
+      {...elementProps}
+      className="fc-premium-tag-chip"
+      data-fc-premium-tag={canonicalTag}
+      style={{
+        "--fc-premium-tag-bg": colors.background,
+        "--fc-premium-tag-border": colors.border,
+        "--fc-premium-tag-color": colors.color,
+      }}
+    >
+      {props.children}
+    </span>
+  ) as HTMLElement;
 }

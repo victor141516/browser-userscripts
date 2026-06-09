@@ -50,7 +50,16 @@
         return;
       }
       if (value && typeof value === "object") {
-        Object.assign(element.style, value);
+        for (const [propertyName, propertyValue] of Object.entries(value)) {
+          if (propertyValue === null || propertyValue === undefined) {
+            continue;
+          }
+          if (propertyName.startsWith("--")) {
+            element.style.setProperty(propertyName, String(propertyValue));
+          } else {
+            element.style[propertyName] = String(propertyValue);
+          }
+        }
         return;
       }
     }
@@ -150,7 +159,6 @@
   // src/config/domain.ts
   var SCRIPT_INSTANCE_VERSION = "2026-06-09-19";
   var PAGE_LOAD_DELAY_MS = 250;
-  var TAG_PATTERN = /\+([A-Za-z0-9_-]+)/g;
   var GRAPH_VIEW_TYPES = ["quoted-sources", "quoted-by", "conversation"];
   // src/ui/shortcutHelp.tsx
   function ShortcutHelpContainer(props) {
@@ -254,6 +262,165 @@
     })))));
   }
 
+  // src/shared/hash.ts
+  function hashString(value) {
+    let hash = 0;
+    for (let index = 0;index < value.length; index += 1) {
+      hash = hash * 31 + value.charCodeAt(index) >>> 0;
+    }
+    return hash;
+  }
+
+  // src/domain/tags.ts
+  var SPECIAL_TAGS = [
+    "tema serio"
+  ];
+  var SINGLE_WORD_TAG_PATTERN = /^[A-Za-z0-9_-]+/;
+  var SPECIAL_TAG_PATTERNS = SPECIAL_TAGS.map((tag) => ({
+    tag,
+    pattern: new RegExp(`^${escapeRegExp(tag).replace(/\\ /g, "\\s+")}(?![\\p{L}\\p{N}_-])`, "iu")
+  }));
+  function normalizeTag(tag) {
+    return tag.replace(/\s+/g, " ").trim().toLowerCase();
+  }
+  function findTagsInText(source) {
+    const text = String(source || "");
+    const matches = [];
+    for (let index = 0;index < text.length; index += 1) {
+      if (text[index] !== "+") {
+        continue;
+      }
+      const tagMatch = matchTagAfterPlus(text.slice(index + 1));
+      if (!tagMatch) {
+        continue;
+      }
+      matches.push({
+        tag: tagMatch.tag,
+        start: index,
+        end: index + 1 + tagMatch.length
+      });
+      index += tagMatch.length;
+    }
+    return matches;
+  }
+  function getTagsFromText(source) {
+    return Array.from(new Set(findTagsInText(source).map((match) => match.tag)));
+  }
+  function splitTextByTags(source) {
+    const parts = [];
+    let currentIndex = 0;
+    for (const match of findTagsInText(source)) {
+      if (match.start > currentIndex) {
+        parts.push({
+          type: "text",
+          text: source.slice(currentIndex, match.start)
+        });
+      }
+      parts.push({
+        type: "tag",
+        text: source.slice(match.start, match.end),
+        tag: match.tag
+      });
+      currentIndex = match.end;
+    }
+    if (currentIndex < source.length) {
+      parts.push({
+        type: "text",
+        text: source.slice(currentIndex)
+      });
+    }
+    return parts;
+  }
+  function matchTagAfterPlus(source) {
+    for (const special of SPECIAL_TAG_PATTERNS) {
+      const match = source.match(special.pattern);
+      if (match?.[0]) {
+        return {
+          tag: normalizeTag(special.tag),
+          length: match[0].length
+        };
+      }
+    }
+    const wordMatch = source.match(SINGLE_WORD_TAG_PATTERN);
+    if (!wordMatch?.[0]) {
+      return null;
+    }
+    return {
+      tag: normalizeTag(wordMatch[0]),
+      length: wordMatch[0].length
+    };
+  }
+  function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  // src/ui/components/Tags.tsx
+  function TagChip(props) {
+    const canonicalTag = normalizeTag(props.tag);
+    return /* @__PURE__ */ createElement(TagBase, {
+      tag: canonicalTag,
+      role: "button",
+      tabIndex: 0,
+      title: props.title || `Filtrar por +${props.tag}`,
+      "aria-pressed": typeof props.pressed === "boolean" ? String(props.pressed) : undefined,
+      onClick: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        props.onToggle(canonicalTag);
+      },
+      onKeyDown: (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        props.onToggle(canonicalTag);
+      }
+    }, props.label || `+${props.tag}`);
+  }
+  function TagLabel(props) {
+    return /* @__PURE__ */ createElement(TagBase, {
+      tag: props.tag,
+      title: props.title
+    }, props.label || `+${props.tag}`);
+  }
+  function TopTagBar(props) {
+    return /* @__PURE__ */ createElement("div", {
+      id: "fc-premium-top-tags"
+    }, /* @__PURE__ */ createElement("span", null, "Top tags:"), props.tags.map((summary) => /* @__PURE__ */ createElement(TagChip, {
+      tag: summary.tag,
+      label: `+${summary.tag} (${summary.count})`,
+      title: `Filtrar ${summary.count} hilos con +${summary.tag}`,
+      pressed: props.activeTag === summary.tag,
+      onToggle: props.onToggle
+    })));
+  }
+  function getTagColors(tag) {
+    const hue = hashString(tag.toLowerCase()) % 360;
+    return {
+      background: `hsl(${hue}, 82%, 92%)`,
+      border: `hsl(${hue}, 58%, 60%)`,
+      color: `hsl(${hue}, 70%, 24%)`
+    };
+  }
+  function TagBase(props) {
+    const canonicalTag = normalizeTag(props.tag);
+    const colors = getTagColors(canonicalTag);
+    const elementProps = { ...props };
+    delete elementProps.tag;
+    delete elementProps.children;
+    return /* @__PURE__ */ createElement("span", {
+      ...elementProps,
+      className: "fc-premium-tag-chip",
+      "data-fc-premium-tag": canonicalTag,
+      style: {
+        "--fc-premium-tag-bg": colors.background,
+        "--fc-premium-tag-border": colors.border,
+        "--fc-premium-tag-color": colors.color
+      }
+    }, props.children);
+  }
+
   // src/ui/components/HiddenThreadsModal.tsx
   function HiddenThreadsModal(props) {
     return /* @__PURE__ */ createElement("div", {
@@ -303,9 +470,9 @@
       href: record.url
     }, record.title || `Hilo ${record.id}`), record.tags.length > 0 ? /* @__PURE__ */ createElement("div", {
       className: "fc-premium-hidden-thread-meta"
-    }, record.tags.slice(0, 5).map((tag) => /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-tag-chip"
-    }, "+", tag)), record.tags.length > 5 ? ` +${record.tags.length - 5}` : "") : null), /* @__PURE__ */ createElement("td", null, info.length > 0 ? info.join(" · ") : "-"), /* @__PURE__ */ createElement("td", null, formatHiddenThreadDate(record.hiddenAt)), /* @__PURE__ */ createElement("td", null, /* @__PURE__ */ createElement("button", {
+    }, record.tags.slice(0, 5).map((tag) => /* @__PURE__ */ createElement(TagLabel, {
+      tag
+    })), record.tags.length > 5 ? ` +${record.tags.length - 5}` : "") : null), /* @__PURE__ */ createElement("td", null, info.length > 0 ? info.join(" · ") : "-"), /* @__PURE__ */ createElement("td", null, formatHiddenThreadDate(record.hiddenAt)), /* @__PURE__ */ createElement("td", null, /* @__PURE__ */ createElement("button", {
       type: "button",
       className: "fc-premium-hidden-thread-restore",
       onClick: () => props.onRestore(record.id)
@@ -400,66 +567,6 @@
         props.onPageClick(props.pageNumber);
       }
     }, props.label));
-  }
-
-  // src/shared/hash.ts
-  function hashString(value) {
-    let hash = 0;
-    for (let index = 0;index < value.length; index += 1) {
-      hash = hash * 31 + value.charCodeAt(index) >>> 0;
-    }
-    return hash;
-  }
-
-  // src/ui/components/Tags.tsx
-  function TagChip(props) {
-    const canonicalTag = props.tag.toLowerCase();
-    const colors = getTagColors(canonicalTag);
-    return /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-tag-chip",
-      "data-fc-premium-tag": canonicalTag,
-      role: "button",
-      tabIndex: 0,
-      title: props.title || `Filtrar por +${props.tag}`,
-      "aria-pressed": typeof props.pressed === "boolean" ? String(props.pressed) : undefined,
-      style: {
-        "--fc-premium-tag-bg": colors.background,
-        "--fc-premium-tag-border": colors.border,
-        "--fc-premium-tag-color": colors.color
-      },
-      onClick: (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        props.onToggle(canonicalTag);
-      },
-      onKeyDown: (event) => {
-        if (event.key !== "Enter" && event.key !== " ") {
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        props.onToggle(canonicalTag);
-      }
-    }, props.label || `+${props.tag}`);
-  }
-  function TopTagBar(props) {
-    return /* @__PURE__ */ createElement("div", {
-      id: "fc-premium-top-tags"
-    }, /* @__PURE__ */ createElement("span", null, "Top tags:"), props.tags.map((summary) => /* @__PURE__ */ createElement(TagChip, {
-      tag: summary.tag,
-      label: `+${summary.tag} (${summary.count})`,
-      title: `Filtrar ${summary.count} hilos con +${summary.tag}`,
-      pressed: props.activeTag === summary.tag,
-      onToggle: props.onToggle
-    })));
-  }
-  function getTagColors(tag) {
-    const hue = hashString(tag.toLowerCase()) % 360;
-    return {
-      background: `hsl(${hue}, 82%, 92%)`,
-      border: `hsl(${hue}, 58%, 60%)`,
-      color: `hsl(${hue}, 70%, 24%)`
-    };
   }
 
   // src/shared/dom.ts
@@ -798,17 +905,6 @@
   }
 
   // src/adapters/forocoches/forumThreadParser.ts
-  function getTagsFromText(source) {
-    const tags = new Set;
-    TAG_PATTERN.lastIndex = 0;
-    for (const match of String(source || "").matchAll(TAG_PATTERN)) {
-      if (match[1]) {
-        tags.add(match[1].toLowerCase());
-      }
-    }
-    TAG_PATTERN.lastIndex = 0;
-    return Array.from(tags);
-  }
   function getTitleTags(title) {
     const source = title.title || normalizeText(title.textContent);
     return getTagsFromText(source);
@@ -2683,26 +2779,18 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         return;
       }
       const originalTitle = normalizeText(title.textContent);
-      if (!TAG_PATTERN.test(originalTitle)) {
-        TAG_PATTERN.lastIndex = 0;
+      if (findTagsInText(originalTitle).length === 0) {
         return;
       }
-      TAG_PATTERN.lastIndex = 0;
       title.dataset.fcPremiumTagsRendered = "true";
       title.title = originalTitle;
       title.textContent = "";
-      let currentIndex = 0;
-      for (const match of originalTitle.matchAll(TAG_PATTERN)) {
-        const matchIndex = match.index || 0;
-        const tag = match[1] || "";
-        if (matchIndex > currentIndex) {
-          title.append(document.createTextNode(originalTitle.slice(currentIndex, matchIndex)));
+      for (const part of splitTextByTags(originalTitle)) {
+        if (part.type === "text") {
+          title.append(document.createTextNode(part.text));
+        } else if (part.tag) {
+          title.append(createTagChip(part.tag));
         }
-        title.append(createTagChip(tag));
-        currentIndex = matchIndex + match[0].length;
-      }
-      if (currentIndex < originalTitle.length) {
-        title.append(document.createTextNode(originalTitle.slice(currentIndex)));
       }
     }
     function enhanceThreadTitleTags() {

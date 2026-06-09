@@ -4,6 +4,7 @@ import {
 } from "../../config/constants";
 import type { ForumThreadRecord } from "../../domain/types";
 import { createElement } from "../jsx";
+import { TagLabel } from "./Tags";
 
 interface HiddenThreadsModalProps {
   records: ForumThreadRecord[];
@@ -97,7 +98,7 @@ function HiddenThreadRow(props: {
         {record.tags.length > 0 ? (
           <div className="fc-premium-hidden-thread-meta">
             {record.tags.slice(0, 5).map((tag) => (
-              <span className="fc-premium-tag-chip">+{tag}</span>
+              <TagLabel tag={tag} />
             ))}
             {record.tags.length > 5 ? ` +${record.tags.length - 5}` : ""}
           </div>

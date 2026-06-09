@@ -70,9 +70,7 @@ import {
   FORUM_THREAD_CACHE_MAX_RECORDS,
   FORUM_THREAD_FALLBACK_PAGE_SIZE,
   FORUM_LIVE_SEARCH_DEBOUNCE_MS,
-  THREAD_CACHE_LEGACY_STORAGE_PREFIX,
   THREAD_STATE_QUERY_PARAMS,
-  LEGACY_THREAD_STATE_QUERY_PARAMS,
   FORUM_STATE_QUERY_PARAMS,
   SELECTED_ATTRIBUTE,
   FORUM_LAYOUT_HIDDEN_ATTRIBUTE,
@@ -83,7 +81,6 @@ import {
   HIDDEN_POST_FILTER_ATTRIBUTE,
   HIDDEN_POST_PAGE_ATTRIBUTE,
   PAGE_LOAD_DELAY_MS,
-  TAG_PATTERN,
   GRAPH_VIEW_TYPES
 } from "./config/constants";
 import {
@@ -101,6 +98,7 @@ import {
   getForumId
 } from "./shared/dom";
 import { hashString } from "./shared/hash";
+import { findTagsInText, splitTextByTags } from "./domain/tags";
 import type {
   ActiveGraphView,
   ForumQueryState,
@@ -348,36 +346,20 @@ export function runForocochesPremium() {
 
     const originalTitle = normalizeText(title.textContent);
 
-    if (!TAG_PATTERN.test(originalTitle)) {
-      TAG_PATTERN.lastIndex = 0;
+    if (findTagsInText(originalTitle).length === 0) {
       return;
     }
 
-    TAG_PATTERN.lastIndex = 0;
     title.dataset.fcPremiumTagsRendered = "true";
     title.title = originalTitle;
     title.textContent = "";
 
-    let currentIndex = 0;
-
-    for (const match of originalTitle.matchAll(TAG_PATTERN)) {
-      const matchIndex = match.index || 0;
-      const tag = match[1] || "";
-
-      if (matchIndex > currentIndex) {
-        title.append(
-          document.createTextNode(
-            originalTitle.slice(currentIndex, matchIndex),
-          ),
-        );
+    for (const part of splitTextByTags(originalTitle)) {
+      if (part.type === "text") {
+        title.append(document.createTextNode(part.text));
+      } else if (part.tag) {
+        title.append(createTagChip(part.tag));
       }
-
-      title.append(createTagChip(tag));
-      currentIndex = matchIndex + match[0].length;
-    }
-
-    if (currentIndex < originalTitle.length) {
-      title.append(document.createTextNode(originalTitle.slice(currentIndex)));
     }
   }
 
