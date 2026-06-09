@@ -806,6 +806,30 @@
     return sortForumThreadRecords(getVisibleForumThreadRecords(records).filter((record) => (!filters.tag || record.tags.includes(filters.tag)) && forumThreadMatchesSearchTokens(record, tokens)));
   }
 
+  // src/domain/forumThreadList.ts
+  function getForumThreadRowsSignature(rowHtmlList, scope) {
+    return `${scope}|${rowHtmlList.length}|${rowHtmlList.map((html) => hashString(html).toString(36)).join(":")}`;
+  }
+  function getForumThreadListPage(records, requestedPage, pageSize) {
+    const totalPages = getForumThreadListTotalPages(records.length, pageSize);
+    const currentPage = clampForumThreadListPage(requestedPage, totalPages);
+    const start = (currentPage - 1) * pageSize;
+    const pageRecords = records.slice(start, start + pageSize);
+    return {
+      currentPage,
+      totalPages,
+      pageSize,
+      records: pageRecords,
+      rowHtmlList: pageRecords.map((record) => record.html)
+    };
+  }
+  function getForumThreadListTotalPages(totalRecords, pageSize) {
+    return Math.max(1, Math.ceil(totalRecords / pageSize));
+  }
+  function clampForumThreadListPage(pageNumber, totalPages) {
+    return Math.min(Math.max(pageNumber, 1), totalPages);
+  }
+
   // src/adapters/forocoches/threadParser.ts
   function getMaxThreadPage(doc) {
     const currentUrl = new URL(location.href);
@@ -3244,9 +3268,6 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       forumThreadsPerPage = threadRows.filter((row) => row.querySelector(THREAD_TITLE_SELECTOR)).length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
       renderedForumThreadListSignature = getForumThreadRowsSignature(nativeForumThreadRowHtml, "native");
     }
-    function getForumThreadRowsSignature(rowHtmlList, scope) {
-      return `${scope}|${rowHtmlList.length}|${rowHtmlList.map((html) => hashString(html).toString(36)).join(":")}`;
-    }
     function renderVisibleForumThreadTitleTags(root = document) {
       for (const title of root.querySelectorAll(THREAD_TITLE_SELECTOR)) {
         if (title instanceof HTMLAnchorElement) {
@@ -3300,8 +3321,8 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     }
     function renderNativeForumPagers(total) {
       const pageSize = forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-      const totalPages = Math.max(1, Math.ceil(total / pageSize));
-      activeForumTagPage = Math.min(Math.max(activeForumTagPage, 1), totalPages);
+      const totalPages = getForumThreadListTotalPages(total, pageSize);
+      activeForumTagPage = clampForumThreadListPage(activeForumTagPage, totalPages);
       for (const pager of document.querySelectorAll(".pagenav")) {
         if (!(pager instanceof HTMLElement)) {
           continue;
@@ -3392,20 +3413,16 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         applyHiddenForumThreadRows();
         return changed2;
       }
-      const pageSize = forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-      const totalPages = Math.max(1, Math.ceil(records.length / pageSize));
-      activeForumTagPage = Math.min(Math.max(activeForumTagPage, 1), totalPages);
-      const start = (activeForumTagPage - 1) * pageSize;
-      const pageRecords = records.slice(start, start + pageSize);
-      const rowHtmlList = pageRecords.map((record) => record.html);
-      const signature = getForumThreadRowsSignature(rowHtmlList, [
+      const page = getForumThreadListPage(records, activeForumTagPage, forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE);
+      activeForumTagPage = page.currentPage;
+      const signature = getForumThreadRowsSignature(page.rowHtmlList, [
         "dynamic",
         activeTagFilter || "",
         activeForumSearchQuery,
-        activeForumTagPage,
-        pageSize
+        page.currentPage,
+        page.pageSize
       ].join(":"));
-      const changed = renderForumThreadRows(rowHtmlList, signature);
+      const changed = renderForumThreadRows(page.rowHtmlList, signature);
       renderNativeForumPagers(records.length);
       return changed;
     }

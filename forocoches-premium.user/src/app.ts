@@ -97,7 +97,6 @@ import {
   isForumDisplayPage,
   getForumId
 } from "./shared/dom";
-import { hashString } from "./shared/hash";
 import { findTagsInText, splitTextByTags } from "./domain/tags";
 import type {
   ActiveGraphView,
@@ -131,6 +130,12 @@ import {
   getVisibleForumThreadRecords,
   sortForumThreadRecords,
 } from "./domain/forumThreads";
+import {
+  clampForumThreadListPage,
+  getForumThreadListPage,
+  getForumThreadListTotalPages,
+  getForumThreadRowsSignature,
+} from "./domain/forumThreadList";
 import {
   collectPosts,
   fetchThreadDocument,
@@ -874,12 +879,6 @@ export function runForocochesPremium() {
     );
   }
 
-  function getForumThreadRowsSignature(rowHtmlList: string[], scope: string): string {
-    return `${scope}|${rowHtmlList.length}|${rowHtmlList
-      .map((html) => hashString(html).toString(36))
-      .join(":")}`;
-  }
-
   function renderVisibleForumThreadTitleTags(root: HTMLElement | Document = document) {
     for (const title of root.querySelectorAll(THREAD_TITLE_SELECTOR)) {
       if (title instanceof HTMLAnchorElement) {
@@ -948,8 +947,11 @@ export function runForocochesPremium() {
 
   function renderNativeForumPagers(total: number) {
     const pageSize = forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    activeForumTagPage = Math.min(Math.max(activeForumTagPage, 1), totalPages);
+    const totalPages = getForumThreadListTotalPages(total, pageSize);
+    activeForumTagPage = clampForumThreadListPage(
+      activeForumTagPage,
+      totalPages,
+    );
 
     for (const pager of document.querySelectorAll(".pagenav")) {
       if (!(pager instanceof HTMLElement)) {
@@ -1074,24 +1076,23 @@ export function runForocochesPremium() {
       return changed;
     }
 
-    const pageSize = forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-    const totalPages = Math.max(1, Math.ceil(records.length / pageSize));
-    activeForumTagPage = Math.min(Math.max(activeForumTagPage, 1), totalPages);
-
-    const start = (activeForumTagPage - 1) * pageSize;
-    const pageRecords = records.slice(start, start + pageSize);
-    const rowHtmlList = pageRecords.map((record) => record.html);
+    const page = getForumThreadListPage(
+      records,
+      activeForumTagPage,
+      forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE,
+    );
+    activeForumTagPage = page.currentPage;
     const signature = getForumThreadRowsSignature(
-      rowHtmlList,
+      page.rowHtmlList,
       [
         "dynamic",
         activeTagFilter || "",
         activeForumSearchQuery,
-        activeForumTagPage,
-        pageSize,
+        page.currentPage,
+        page.pageSize,
       ].join(":"),
     );
-    const changed = renderForumThreadRows(rowHtmlList, signature);
+    const changed = renderForumThreadRows(page.rowHtmlList, signature);
 
     renderNativeForumPagers(records.length);
     return changed;
