@@ -33,6 +33,10 @@ import {
 } from "./ui/postNativeDom";
 import { createHeaderAuthorMeta } from "./ui/postAuthorDom";
 import {
+  updatePostCompactLayout,
+  updateRenderedCompactPostLayouts as updateRenderedCompactPostLayoutsInDom,
+} from "./ui/postCompactLayoutDom";
+import {
   ForumLoadingStatus,
   ForumSidebarToggleButton,
 } from "./ui/components/ForumControls";
@@ -2915,69 +2919,8 @@ export function runForocochesPremium() {
     targetContainer.append(actions);
   }
 
-  function rememberCellColSpan(cell: HTMLTableCellElement) {
-    if (!cell.dataset.fcPremiumOriginalColspan) {
-      cell.dataset.fcPremiumOriginalColspan = String(cell.colSpan || 1);
-    }
-  }
-
-  function applyCompactColSpan(cell: HTMLTableCellElement) {
-    rememberCellColSpan(cell);
-    cell.colSpan = Math.max(cell.colSpan, 2);
-  }
-
-  function restoreOriginalColSpan(cell: HTMLTableCellElement) {
-    const original = Number(cell.dataset.fcPremiumOriginalColspan || "1");
-    cell.colSpan = Number.isFinite(original) && original > 0 ? original : 1;
-  }
-
-  function updatePostCompactLayout(wrapper: HTMLElement) {
-    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
-
-    if (!(table instanceof HTMLTableElement)) {
-      return;
-    }
-
-    const authorCell = table.querySelector(".fc-premium-author-cell");
-    const headerRow = table.rows[0] || null;
-    const compact = compactModeEnabled;
-
-    for (const row of Array.from(table.rows)) {
-      if (row === headerRow) {
-        continue;
-      }
-
-      const rowHasAuthorCell = Array.from(row.cells).some((cell) =>
-        cell.classList.contains("fc-premium-author-cell"),
-      );
-      const shouldExpandRow = rowHasAuthorCell || row.cells.length === 1;
-
-      for (const cell of Array.from(row.cells)) {
-        if (
-          !(cell instanceof HTMLTableCellElement) ||
-          cell === authorCell ||
-          cell.classList.contains("fc-premium-author-cell")
-        ) {
-          continue;
-        }
-
-        if (compact && shouldExpandRow) {
-          applyCompactColSpan(cell);
-        } else {
-          restoreOriginalColSpan(cell);
-        }
-      }
-    }
-  }
-
   function updateRenderedCompactPostLayouts() {
-    for (const wrapper of document.querySelectorAll(
-      ".fc-premium-post-wrapper",
-    )) {
-      if (wrapper instanceof HTMLElement) {
-        updatePostCompactLayout(wrapper);
-      }
-    }
+    updateRenderedCompactPostLayoutsInDom(compactModeEnabled);
   }
 
   function enhanceNativePostHeader(wrapper: HTMLElement, post: PostRecord) {
@@ -3062,7 +3005,7 @@ export function runForocochesPremium() {
       (header.dateCell || header.numberCell)?.append(badge);
     }
 
-    updatePostCompactLayout(wrapper);
+    updatePostCompactLayout(wrapper, compactModeEnabled);
     return wrapper;
   }
 

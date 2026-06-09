@@ -1085,6 +1085,53 @@
     card.append(actions);
   }
 
+  // src/ui/postCompactLayoutDom.ts
+  function updatePostCompactLayout(wrapper, compact) {
+    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
+    if (!(table instanceof HTMLTableElement)) {
+      return;
+    }
+    const authorCell = table.querySelector(".fc-premium-author-cell");
+    const headerRow = table.rows[0] || null;
+    for (const row of Array.from(table.rows)) {
+      if (row === headerRow) {
+        continue;
+      }
+      const rowHasAuthorCell = Array.from(row.cells).some((cell) => cell.classList.contains("fc-premium-author-cell"));
+      const shouldExpandRow = rowHasAuthorCell || row.cells.length === 1;
+      for (const cell of Array.from(row.cells)) {
+        if (!(cell instanceof HTMLTableCellElement) || cell === authorCell || cell.classList.contains("fc-premium-author-cell")) {
+          continue;
+        }
+        if (compact && shouldExpandRow) {
+          applyCompactColSpan(cell);
+        } else {
+          restoreOriginalColSpan(cell);
+        }
+      }
+    }
+  }
+  function updateRenderedCompactPostLayouts(compact) {
+    for (const wrapper of document.querySelectorAll(".fc-premium-post-wrapper")) {
+      if (wrapper instanceof HTMLElement) {
+        updatePostCompactLayout(wrapper, compact);
+      }
+    }
+  }
+  function rememberCellColSpan(cell) {
+    if (!cell.dataset.fcPremiumOriginalColspan) {
+      cell.dataset.fcPremiumOriginalColspan = String(cell.colSpan || 1);
+    }
+  }
+  function applyCompactColSpan(cell) {
+    rememberCellColSpan(cell);
+    cell.colSpan = Math.max(cell.colSpan, 2);
+  }
+  function restoreOriginalColSpan(cell) {
+    const original = Number(cell.dataset.fcPremiumOriginalColspan || "1");
+    cell.colSpan = Number.isFinite(original) && original > 0 ? original : 1;
+  }
+
   // src/ui/components/ForumControls.tsx
   function ForumSidebarToggleButton(props) {
     return /* @__PURE__ */ createElement("button", {
@@ -2690,7 +2737,7 @@
     }
     function applyCompactMode() {
       document.body.classList.add(COMPACT_MODE_CLASS);
-      updateRenderedCompactPostLayouts();
+      updateRenderedCompactPostLayouts2();
     }
     function getSavedForumSidebarHidden() {
       const saved = localStorage.getItem(FORUM_SIDEBAR_STORAGE_KEY);
@@ -5489,51 +5536,8 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       actions.append(conversationButton);
       targetContainer.append(actions);
     }
-    function rememberCellColSpan(cell) {
-      if (!cell.dataset.fcPremiumOriginalColspan) {
-        cell.dataset.fcPremiumOriginalColspan = String(cell.colSpan || 1);
-      }
-    }
-    function applyCompactColSpan(cell) {
-      rememberCellColSpan(cell);
-      cell.colSpan = Math.max(cell.colSpan, 2);
-    }
-    function restoreOriginalColSpan(cell) {
-      const original = Number(cell.dataset.fcPremiumOriginalColspan || "1");
-      cell.colSpan = Number.isFinite(original) && original > 0 ? original : 1;
-    }
-    function updatePostCompactLayout(wrapper) {
-      const table = wrapper.querySelector(POST_TABLE_SELECTOR);
-      if (!(table instanceof HTMLTableElement)) {
-        return;
-      }
-      const authorCell = table.querySelector(".fc-premium-author-cell");
-      const headerRow = table.rows[0] || null;
-      const compact = compactModeEnabled;
-      for (const row of Array.from(table.rows)) {
-        if (row === headerRow) {
-          continue;
-        }
-        const rowHasAuthorCell = Array.from(row.cells).some((cell) => cell.classList.contains("fc-premium-author-cell"));
-        const shouldExpandRow = rowHasAuthorCell || row.cells.length === 1;
-        for (const cell of Array.from(row.cells)) {
-          if (!(cell instanceof HTMLTableCellElement) || cell === authorCell || cell.classList.contains("fc-premium-author-cell")) {
-            continue;
-          }
-          if (compact && shouldExpandRow) {
-            applyCompactColSpan(cell);
-          } else {
-            restoreOriginalColSpan(cell);
-          }
-        }
-      }
-    }
-    function updateRenderedCompactPostLayouts() {
-      for (const wrapper of document.querySelectorAll(".fc-premium-post-wrapper")) {
-        if (wrapper instanceof HTMLElement) {
-          updatePostCompactLayout(wrapper);
-        }
-      }
+    function updateRenderedCompactPostLayouts2() {
+      updateRenderedCompactPostLayouts(compactModeEnabled);
     }
     function enhanceNativePostHeader(wrapper, post) {
       const table = wrapper.querySelector(POST_TABLE_SELECTOR);
@@ -5591,7 +5595,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         appendReplyLinks(badge, post, postById);
         (header.dateCell || header.numberCell)?.append(badge);
       }
-      updatePostCompactLayout(wrapper);
+      updatePostCompactLayout(wrapper, compactModeEnabled);
       return wrapper;
     }
     function appendReplyLinks(badge, post, postById) {
