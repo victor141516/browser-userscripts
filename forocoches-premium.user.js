@@ -262,6 +262,352 @@
     })))));
   }
 
+  // src/shared/dom.ts
+  function normalizeText(text) {
+    return (text || "").replace(/\s+/g, " ").trim();
+  }
+  function normalizeLayoutText(text) {
+    return normalizeText(text).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+  function normalizeAuthorName(author) {
+    return normalizeText(author).toLowerCase();
+  }
+  function sleep(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+  function isVisible(element) {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+  }
+  function toUrl(href) {
+    try {
+      return new URL(href, location.href);
+    } catch (_error) {
+      return null;
+    }
+  }
+  function getThreadId(url) {
+    return url.searchParams.get("t");
+  }
+  function getPostQueryId(url) {
+    return url.searchParams.get("p");
+  }
+  function getPageNumber(url) {
+    const page = Number(url.searchParams.get("page") || "1");
+    return Number.isFinite(page) && page > 0 ? page : 1;
+  }
+  function getLocationPostHashId(url = new URL(location.href)) {
+    const match = url.hash.match(/^#post(\d+)$/);
+    return match?.[1] || null;
+  }
+  function isThreadPage() {
+    return location.pathname.endsWith("/showthread.php") && Boolean(getThreadId(new URL(location.href)) || getPostQueryId(new URL(location.href)));
+  }
+  function isForumDisplayPage() {
+    return location.pathname.endsWith("/forumdisplay.php");
+  }
+  function getForumId(url = new URL(location.href)) {
+    return url.searchParams.get("f") || "";
+  }
+
+  // src/domain/threadPosts.ts
+  function applyReplyCounts(posts) {
+    const repliesByPostId = new Map;
+    for (const post of posts) {
+      for (const quotedPostId of post.quotedPostIds) {
+        if (!repliesByPostId.has(quotedPostId)) {
+          repliesByPostId.set(quotedPostId, new Set);
+        }
+        repliesByPostId.get(quotedPostId).add(post.id);
+      }
+    }
+    for (const post of posts) {
+      post.replyingPostIds = Array.from(repliesByPostId.get(post.id) || []);
+      post.replyCount = post.replyingPostIds.length;
+    }
+  }
+  function createEmptyThreadGraph() {
+    return {
+      postById: new Map,
+      quotedByPostId: new Map,
+      quotingByPostId: new Map,
+      neighborsByPostId: new Map,
+      chronologicalNextByPostId: new Map
+    };
+  }
+  function sortPosts(posts) {
+    return posts.slice().sort((left, right) => {
+      if (left.replyCount !== right.replyCount) {
+        return right.replyCount - left.replyCount;
+      }
+      return left.originalIndex - right.originalIndex;
+    });
+  }
+  function sortPostsChronologically(posts) {
+    return posts.slice().sort((left, right) => left.originalIndex - right.originalIndex);
+  }
+  function applyOriginalPosterFlags(posts) {
+    const firstPost = sortPostsChronologically(posts)[0];
+    const originalPoster = firstPost?.author.toLowerCase();
+    if (!originalPoster) {
+      return;
+    }
+    for (const post of posts) {
+      post.isOriginalPoster = post.author.toLowerCase() === originalPoster;
+    }
+  }
+  function getPromotedCitedPosts(posts, limit) {
+    const firstPost = sortPostsChronologically(posts)[0];
+    return sortPosts(posts).filter((post) => post.replyCount > 0).slice(0, limit).filter((post) => post.id !== firstPost?.id);
+  }
+  function getFeaturedChronologicalPosts(posts, options) {
+    const chronologicalPosts = sortPostsChronologically(posts);
+    if (!options.shouldPromoteCitedPosts) {
+      return chronologicalPosts;
+    }
+    const firstPost = chronologicalPosts[0];
+    const promotedPosts = getPromotedCitedPosts(posts, 3);
+    if (!firstPost || promotedPosts.length === 0) {
+      return chronologicalPosts;
+    }
+    const promotedPostIds = new Set(promotedPosts.map((post) => post.id));
+    return [
+      firstPost,
+      ...promotedPosts,
+      ...chronologicalPosts.filter((post) => post.id !== firstPost.id && !promotedPostIds.has(post.id))
+    ];
+  }
+  function getReplyRankByPostId(posts) {
+    const rankByPostId = new Map;
+    let rank = 0;
+    for (const post of sortPosts(posts)) {
+      if (post.replyCount <= 0) {
+        continue;
+      }
+      rank += 1;
+      rankByPostId.set(post.id, rank);
+    }
+    return rankByPostId;
+  }
+  function buildThreadGraph(posts) {
+    const graph = createEmptyThreadGraph();
+    const chronologicalPosts = sortPostsChronologically(posts);
+    for (const post of chronologicalPosts) {
+      graph.postById.set(post.id, post);
+      ensureGraphSet(graph.quotedByPostId, post.id);
+      ensureGraphSet(graph.quotingByPostId, post.id);
+      ensureGraphSet(graph.neighborsByPostId, post.id);
+    }
+    for (let index = 0;index < chronologicalPosts.length; index += 1) {
+      const post = chronologicalPosts[index];
+      const nextPost = chronologicalPosts[index + 1] || null;
+      if (post) {
+        graph.chronologicalNextByPostId.set(post.id, nextPost?.id || null);
+      }
+    }
+    for (const post of chronologicalPosts) {
+      for (const quotedPostId of post.quotedPostIds) {
+        if (!graph.postById.has(quotedPostId)) {
+          continue;
+        }
+        ensureGraphSet(graph.quotedByPostId, quotedPostId).add(post.id);
+        ensureGraphSet(graph.quotingByPostId, post.id).add(quotedPostId);
+        ensureGraphSet(graph.neighborsByPostId, quotedPostId).add(post.id);
+        ensureGraphSet(graph.neighborsByPostId, post.id).add(quotedPostId);
+      }
+    }
+    return graph;
+  }
+  function getPostsForGraphView(view, graph, posts) {
+    const root = graph.postById.get(view.rootPostId);
+    if (!root) {
+      return [];
+    }
+    if (view.type === "quoted-sources") {
+      return getChronologicalGraphPosts([...root.quotedPostIds, root.id], posts);
+    }
+    if (view.type === "quoted-by") {
+      const replyPosts = getChronologicalGraphPosts(Array.from(graph.quotedByPostId.get(root.id) || []), posts).filter((post) => post.id !== root.id);
+      return [root, ...replyPosts];
+    }
+    return getConversationChainPosts(view, graph);
+  }
+  function ensureGraphSet(map, key) {
+    if (!map.has(key)) {
+      map.set(key, new Set);
+    }
+    return map.get(key);
+  }
+  function getChronologicalGraphPosts(postIds, posts) {
+    const ids = new Set(postIds);
+    return sortPostsChronologically(posts).filter((post) => ids.has(post.id));
+  }
+  function getConversationParentPostId(post, preferredPostId, graph) {
+    if (preferredPostId && post.quotedPostIds.includes(preferredPostId) && graph.postById.has(preferredPostId)) {
+      return preferredPostId;
+    }
+    return post.quotedPostIds.find((postId) => graph.postById.has(postId)) || null;
+  }
+  function getConversationChainPosts(view, graph) {
+    const chain = [];
+    const seen = new Set;
+    let currentPost = graph.postById.get(view.rootPostId) || null;
+    let preferredParentPostId = view.relatedPostId;
+    while (currentPost && !seen.has(currentPost.id)) {
+      chain.push(currentPost);
+      seen.add(currentPost.id);
+      const parentPostId = getConversationParentPostId(currentPost, preferredParentPostId, graph);
+      preferredParentPostId = null;
+      currentPost = parentPostId ? graph.postById.get(parentPostId) || null : null;
+    }
+    return chain.reverse();
+  }
+
+  // src/domain/threadAuthors.ts
+  function getThreadOriginalPosterName(posts) {
+    return sortPostsChronologically(posts)[0]?.author || "";
+  }
+  function getThreadAuthorOptions(posts, currentUsername) {
+    const optionsByKey = new Map;
+    const originalPosterKey = normalizeAuthorName(getThreadOriginalPosterName(posts));
+    const currentUserKey = normalizeAuthorName(currentUsername);
+    for (const post of posts) {
+      const key = normalizeAuthorName(post.author);
+      if (!key) {
+        continue;
+      }
+      const option = optionsByKey.get(key) || {
+        key,
+        name: post.author,
+        count: 0,
+        isOriginalPoster: key === originalPosterKey,
+        isCurrentUser: key === currentUserKey
+      };
+      option.count += 1;
+      option.isOriginalPoster = option.isOriginalPoster || key === originalPosterKey;
+      option.isCurrentUser = option.isCurrentUser || key === currentUserKey;
+      optionsByKey.set(key, option);
+    }
+    if (currentUserKey && !optionsByKey.has(currentUserKey)) {
+      optionsByKey.set(currentUserKey, {
+        key: currentUserKey,
+        name: currentUsername,
+        count: 0,
+        isOriginalPoster: currentUserKey === originalPosterKey,
+        isCurrentUser: true
+      });
+    }
+    return Array.from(optionsByKey.values()).sort((left, right) => {
+      if (left.isOriginalPoster !== right.isOriginalPoster) {
+        return left.isOriginalPoster ? -1 : 1;
+      }
+      if (left.isCurrentUser !== right.isCurrentUser) {
+        return left.isCurrentUser ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name, "es", {
+        sensitivity: "base"
+      });
+    });
+  }
+  function getThreadAuthorOptionLabel(option) {
+    const markers = [];
+    if (option.isOriginalPoster) {
+      markers.push("autor");
+    }
+    if (option.isCurrentUser) {
+      markers.push("tú");
+    }
+    return markers.length > 0 ? `${option.name} (${markers.join(", ")})` : option.name;
+  }
+  function resolveThreadAuthorInputValue(value, options) {
+    const input = normalizeText(value);
+    const inputKey = normalizeAuthorName(input);
+    if (!inputKey) {
+      return null;
+    }
+    for (const option of options) {
+      const labelKey = normalizeAuthorName(getThreadAuthorOptionLabel(option));
+      if (option.key === inputKey || normalizeAuthorName(option.name) === inputKey || labelKey === inputKey) {
+        return option.key;
+      }
+    }
+    return null;
+  }
+
+  // src/ui/threadSearchPanelDom.ts
+  function syncThreadSearchTextInput(searchQuery) {
+    const textInput = document.getElementById(THREAD_SEARCH_TEXT_INPUT_ID);
+    if (textInput instanceof HTMLInputElement && document.activeElement !== textInput) {
+      textInput.value = searchQuery;
+    }
+  }
+  function refreshThreadAuthorDatalist(options, activeAuthorFilters) {
+    const datalist = document.getElementById(THREAD_SEARCH_AUTHOR_DATALIST_ID);
+    if (!(datalist instanceof HTMLDataListElement)) {
+      return;
+    }
+    datalist.textContent = "";
+    for (const option of options) {
+      if (activeAuthorFilters.has(option.key)) {
+        continue;
+      }
+      const element = document.createElement("option");
+      element.value = getThreadAuthorOptionLabel(option);
+      element.label = `${option.count} mensajes`;
+      datalist.append(element);
+    }
+  }
+  function refreshSelectedThreadAuthors(authorKeys, authorOptions, onRemoveAuthor) {
+    const container = document.getElementById(THREAD_SEARCH_SELECTED_AUTHORS_ID);
+    if (!(container instanceof HTMLElement)) {
+      return;
+    }
+    container.textContent = "";
+    for (const authorKey of authorKeys) {
+      const option = authorOptions.find((candidate) => candidate.key === authorKey) || null;
+      const chip = document.createElement("span");
+      chip.className = "fc-premium-thread-author-chip";
+      chip.textContent = option ? getThreadAuthorOptionLabel(option) : authorKey;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "x";
+      remove.title = "Quitar usuario";
+      remove.addEventListener("click", () => {
+        onRemoveAuthor(authorKey);
+      });
+      chip.append(remove);
+      container.append(chip);
+    }
+  }
+  function renderThreadSearchStatus(options) {
+    const status = document.getElementById(THREAD_SEARCH_STATUS_ID);
+    if (!(status instanceof HTMLElement)) {
+      return;
+    }
+    const total = options.counts?.total ?? options.totalPosts;
+    const visible = options.counts?.visible ?? getVisibleThreadSearchPostWrapperCount();
+    const loading = options.threadLoadState.isLoading ? ` · cargando ${options.threadLoadState.loadedPages}/${options.threadLoadState.targetPages}` : "";
+    status.textContent = options.hasActiveFilters ? `${visible}/${total} mensajes${loading}` : `${total} mensajes${loading}`;
+  }
+  function renderThreadSearchEmptyState(options) {
+    const posts = options.posts;
+    if (!posts) {
+      return;
+    }
+    let empty = document.getElementById(THREAD_SEARCH_EMPTY_ID);
+    if (!empty) {
+      empty = document.createElement("div");
+      empty.id = THREAD_SEARCH_EMPTY_ID;
+      posts.before(empty);
+    }
+    empty.textContent = options.isLoading ? "No hay mensajes cargados que coincidan con estos filtros." : "No hay mensajes que coincidan con estos filtros.";
+    empty.hidden = !(options.hasActiveFilters && (options.counts?.visible ?? 0) === 0);
+  }
+  function getVisibleThreadSearchPostWrapperCount() {
+    return Array.from(document.querySelectorAll(".fc-premium-post-wrapper")).filter((wrapper) => wrapper instanceof HTMLElement && isVisible(wrapper)).length;
+  }
+
   // src/shared/hash.ts
   function hashString(value) {
     let hash = 0;
@@ -571,208 +917,6 @@
     }, props.label));
   }
 
-  // src/shared/dom.ts
-  function normalizeText(text) {
-    return (text || "").replace(/\s+/g, " ").trim();
-  }
-  function normalizeLayoutText(text) {
-    return normalizeText(text).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  }
-  function normalizeAuthorName(author) {
-    return normalizeText(author).toLowerCase();
-  }
-  function sleep(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
-  }
-  function isVisible(element) {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
-  }
-  function toUrl(href) {
-    try {
-      return new URL(href, location.href);
-    } catch (_error) {
-      return null;
-    }
-  }
-  function getThreadId(url) {
-    return url.searchParams.get("t");
-  }
-  function getPostQueryId(url) {
-    return url.searchParams.get("p");
-  }
-  function getPageNumber(url) {
-    const page = Number(url.searchParams.get("page") || "1");
-    return Number.isFinite(page) && page > 0 ? page : 1;
-  }
-  function getLocationPostHashId(url = new URL(location.href)) {
-    const match = url.hash.match(/^#post(\d+)$/);
-    return match?.[1] || null;
-  }
-  function isThreadPage() {
-    return location.pathname.endsWith("/showthread.php") && Boolean(getThreadId(new URL(location.href)) || getPostQueryId(new URL(location.href)));
-  }
-  function isForumDisplayPage() {
-    return location.pathname.endsWith("/forumdisplay.php");
-  }
-  function getForumId(url = new URL(location.href)) {
-    return url.searchParams.get("f") || "";
-  }
-
-  // src/domain/threadPosts.ts
-  function applyReplyCounts(posts) {
-    const repliesByPostId = new Map;
-    for (const post of posts) {
-      for (const quotedPostId of post.quotedPostIds) {
-        if (!repliesByPostId.has(quotedPostId)) {
-          repliesByPostId.set(quotedPostId, new Set);
-        }
-        repliesByPostId.get(quotedPostId).add(post.id);
-      }
-    }
-    for (const post of posts) {
-      post.replyingPostIds = Array.from(repliesByPostId.get(post.id) || []);
-      post.replyCount = post.replyingPostIds.length;
-    }
-  }
-  function createEmptyThreadGraph() {
-    return {
-      postById: new Map,
-      quotedByPostId: new Map,
-      quotingByPostId: new Map,
-      neighborsByPostId: new Map,
-      chronologicalNextByPostId: new Map
-    };
-  }
-  function sortPosts(posts) {
-    return posts.slice().sort((left, right) => {
-      if (left.replyCount !== right.replyCount) {
-        return right.replyCount - left.replyCount;
-      }
-      return left.originalIndex - right.originalIndex;
-    });
-  }
-  function sortPostsChronologically(posts) {
-    return posts.slice().sort((left, right) => left.originalIndex - right.originalIndex);
-  }
-  function applyOriginalPosterFlags(posts) {
-    const firstPost = sortPostsChronologically(posts)[0];
-    const originalPoster = firstPost?.author.toLowerCase();
-    if (!originalPoster) {
-      return;
-    }
-    for (const post of posts) {
-      post.isOriginalPoster = post.author.toLowerCase() === originalPoster;
-    }
-  }
-  function getPromotedCitedPosts(posts, limit) {
-    const firstPost = sortPostsChronologically(posts)[0];
-    return sortPosts(posts).filter((post) => post.replyCount > 0).slice(0, limit).filter((post) => post.id !== firstPost?.id);
-  }
-  function getFeaturedChronologicalPosts(posts, options) {
-    const chronologicalPosts = sortPostsChronologically(posts);
-    if (!options.shouldPromoteCitedPosts) {
-      return chronologicalPosts;
-    }
-    const firstPost = chronologicalPosts[0];
-    const promotedPosts = getPromotedCitedPosts(posts, 3);
-    if (!firstPost || promotedPosts.length === 0) {
-      return chronologicalPosts;
-    }
-    const promotedPostIds = new Set(promotedPosts.map((post) => post.id));
-    return [
-      firstPost,
-      ...promotedPosts,
-      ...chronologicalPosts.filter((post) => post.id !== firstPost.id && !promotedPostIds.has(post.id))
-    ];
-  }
-  function getReplyRankByPostId(posts) {
-    const rankByPostId = new Map;
-    let rank = 0;
-    for (const post of sortPosts(posts)) {
-      if (post.replyCount <= 0) {
-        continue;
-      }
-      rank += 1;
-      rankByPostId.set(post.id, rank);
-    }
-    return rankByPostId;
-  }
-  function buildThreadGraph(posts) {
-    const graph = createEmptyThreadGraph();
-    const chronologicalPosts = sortPostsChronologically(posts);
-    for (const post of chronologicalPosts) {
-      graph.postById.set(post.id, post);
-      ensureGraphSet(graph.quotedByPostId, post.id);
-      ensureGraphSet(graph.quotingByPostId, post.id);
-      ensureGraphSet(graph.neighborsByPostId, post.id);
-    }
-    for (let index = 0;index < chronologicalPosts.length; index += 1) {
-      const post = chronologicalPosts[index];
-      const nextPost = chronologicalPosts[index + 1] || null;
-      if (post) {
-        graph.chronologicalNextByPostId.set(post.id, nextPost?.id || null);
-      }
-    }
-    for (const post of chronologicalPosts) {
-      for (const quotedPostId of post.quotedPostIds) {
-        if (!graph.postById.has(quotedPostId)) {
-          continue;
-        }
-        ensureGraphSet(graph.quotedByPostId, quotedPostId).add(post.id);
-        ensureGraphSet(graph.quotingByPostId, post.id).add(quotedPostId);
-        ensureGraphSet(graph.neighborsByPostId, quotedPostId).add(post.id);
-        ensureGraphSet(graph.neighborsByPostId, post.id).add(quotedPostId);
-      }
-    }
-    return graph;
-  }
-  function getPostsForGraphView(view, graph, posts) {
-    const root = graph.postById.get(view.rootPostId);
-    if (!root) {
-      return [];
-    }
-    if (view.type === "quoted-sources") {
-      return getChronologicalGraphPosts([...root.quotedPostIds, root.id], posts);
-    }
-    if (view.type === "quoted-by") {
-      const replyPosts = getChronologicalGraphPosts(Array.from(graph.quotedByPostId.get(root.id) || []), posts).filter((post) => post.id !== root.id);
-      return [root, ...replyPosts];
-    }
-    return getConversationChainPosts(view, graph);
-  }
-  function ensureGraphSet(map, key) {
-    if (!map.has(key)) {
-      map.set(key, new Set);
-    }
-    return map.get(key);
-  }
-  function getChronologicalGraphPosts(postIds, posts) {
-    const ids = new Set(postIds);
-    return sortPostsChronologically(posts).filter((post) => ids.has(post.id));
-  }
-  function getConversationParentPostId(post, preferredPostId, graph) {
-    if (preferredPostId && post.quotedPostIds.includes(preferredPostId) && graph.postById.has(preferredPostId)) {
-      return preferredPostId;
-    }
-    return post.quotedPostIds.find((postId) => graph.postById.has(postId)) || null;
-  }
-  function getConversationChainPosts(view, graph) {
-    const chain = [];
-    const seen = new Set;
-    let currentPost = graph.postById.get(view.rootPostId) || null;
-    let preferredParentPostId = view.relatedPostId;
-    while (currentPost && !seen.has(currentPost.id)) {
-      chain.push(currentPost);
-      seen.add(currentPost.id);
-      const parentPostId = getConversationParentPostId(currentPost, preferredParentPostId, graph);
-      preferredParentPostId = null;
-      currentPost = parentPostId ? graph.postById.get(parentPostId) || null : null;
-    }
-    return chain.reverse();
-  }
-
   // src/domain/forumThreads.ts
   function getForumSearchTokens(query2) {
     return normalizeLayoutText(query2).split(/\s+/).filter(Boolean);
@@ -804,80 +948,6 @@
   function filterForumThreadRecords(records, filters) {
     const tokens = getForumSearchTokens(filters.searchQuery);
     return sortForumThreadRecords(getVisibleForumThreadRecords(records).filter((record) => (!filters.tag || record.tags.includes(filters.tag)) && forumThreadMatchesSearchTokens(record, tokens)));
-  }
-
-  // src/domain/threadAuthors.ts
-  function getThreadOriginalPosterName(posts) {
-    return sortPostsChronologically(posts)[0]?.author || "";
-  }
-  function getThreadAuthorOptions(posts, currentUsername) {
-    const optionsByKey = new Map;
-    const originalPosterKey = normalizeAuthorName(getThreadOriginalPosterName(posts));
-    const currentUserKey = normalizeAuthorName(currentUsername);
-    for (const post of posts) {
-      const key = normalizeAuthorName(post.author);
-      if (!key) {
-        continue;
-      }
-      const option = optionsByKey.get(key) || {
-        key,
-        name: post.author,
-        count: 0,
-        isOriginalPoster: key === originalPosterKey,
-        isCurrentUser: key === currentUserKey
-      };
-      option.count += 1;
-      option.isOriginalPoster = option.isOriginalPoster || key === originalPosterKey;
-      option.isCurrentUser = option.isCurrentUser || key === currentUserKey;
-      optionsByKey.set(key, option);
-    }
-    if (currentUserKey && !optionsByKey.has(currentUserKey)) {
-      optionsByKey.set(currentUserKey, {
-        key: currentUserKey,
-        name: currentUsername,
-        count: 0,
-        isOriginalPoster: currentUserKey === originalPosterKey,
-        isCurrentUser: true
-      });
-    }
-    return Array.from(optionsByKey.values()).sort((left, right) => {
-      if (left.isOriginalPoster !== right.isOriginalPoster) {
-        return left.isOriginalPoster ? -1 : 1;
-      }
-      if (left.isCurrentUser !== right.isCurrentUser) {
-        return left.isCurrentUser ? -1 : 1;
-      }
-      return left.name.localeCompare(right.name, "es", {
-        sensitivity: "base"
-      });
-    });
-  }
-  function getThreadAuthorOptionLabel(option) {
-    const markers = [];
-    if (option.isOriginalPoster) {
-      markers.push("autor");
-    }
-    if (option.isCurrentUser) {
-      markers.push("tú");
-    }
-    return markers.length > 0 ? `${option.name} (${markers.join(", ")})` : option.name;
-  }
-  function getThreadAuthorOptionByKey(options, authorKey) {
-    return options.find((option) => option.key === authorKey) || null;
-  }
-  function resolveThreadAuthorInputValue(value, options) {
-    const input = normalizeText(value);
-    const inputKey = normalizeAuthorName(input);
-    if (!inputKey) {
-      return null;
-    }
-    for (const option of options) {
-      const labelKey = normalizeAuthorName(getThreadAuthorOptionLabel(option));
-      if (option.key === inputKey || normalizeAuthorName(option.name) === inputKey || labelKey === inputKey) {
-        return option.key;
-      }
-    }
-    return null;
   }
 
   // src/domain/forumThreadList.ts
@@ -4560,9 +4630,6 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     function getThreadAuthorOptions2(posts = loadedThreadPosts) {
       return getThreadAuthorOptions(posts, getAuthenticatedUsername());
     }
-    function getThreadAuthorOptionByKey2(authorKey) {
-      return getThreadAuthorOptionByKey(getThreadAuthorOptions2(), authorKey);
-    }
     function resolveThreadAuthorInputValue2(value) {
       return resolveThreadAuthorInputValue(value, getThreadAuthorOptions2());
     }
@@ -4595,67 +4662,27 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       posts.before(panel);
       return panel;
     }
-    function refreshThreadAuthorDatalist() {
-      const datalist = document.getElementById(THREAD_SEARCH_AUTHOR_DATALIST_ID);
-      if (!(datalist instanceof HTMLDataListElement)) {
-        return;
-      }
-      datalist.textContent = "";
-      for (const option of getThreadAuthorOptions2()) {
-        if (activeAuthorFilters.has(option.key)) {
-          continue;
-        }
-        const element = document.createElement("option");
-        element.value = getThreadAuthorOptionLabel(option);
-        element.label = `${option.count} mensajes`;
-        datalist.append(element);
-      }
+    function refreshThreadAuthorDatalist2() {
+      refreshThreadAuthorDatalist(getThreadAuthorOptions2(), activeAuthorFilters);
     }
-    function refreshSelectedThreadAuthors() {
-      const container = document.getElementById(THREAD_SEARCH_SELECTED_AUTHORS_ID);
-      if (!(container instanceof HTMLElement)) {
-        return;
-      }
-      container.textContent = "";
-      for (const authorKey of activeAuthorFilters) {
-        const option = getThreadAuthorOptionByKey2(authorKey);
-        const chip = document.createElement("span");
-        chip.className = "fc-premium-thread-author-chip";
-        chip.textContent = option ? getThreadAuthorOptionLabel(option) : authorKey;
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.textContent = "x";
-        remove.title = "Quitar usuario";
-        remove.addEventListener("click", () => {
-          removeThreadAuthorFilter(authorKey);
-        });
-        chip.append(remove);
-        container.append(chip);
-      }
+    function refreshSelectedThreadAuthors2() {
+      refreshSelectedThreadAuthors(activeAuthorFilters, getThreadAuthorOptions2(), removeThreadAuthorFilter);
     }
-    function renderThreadSearchStatus(counts) {
-      const status = document.getElementById(THREAD_SEARCH_STATUS_ID);
-      if (!(status instanceof HTMLElement)) {
-        return;
-      }
-      const total = counts?.total ?? loadedThreadPosts.length;
-      const visible = counts?.visible ?? Array.from(document.querySelectorAll(".fc-premium-post-wrapper")).filter((wrapper) => wrapper instanceof HTMLElement && isVisible(wrapper)).length;
-      const loading = threadLoadState.isLoading ? ` · cargando ${threadLoadState.loadedPages}/${threadLoadState.targetPages}` : "";
-      status.textContent = hasActiveThreadPostFilters() ? `${visible}/${total} mensajes${loading}` : `${total} mensajes${loading}`;
+    function renderThreadSearchStatus2(counts) {
+      renderThreadSearchStatus({
+        counts,
+        totalPosts: loadedThreadPosts.length,
+        threadLoadState,
+        hasActiveFilters: hasActiveThreadPostFilters()
+      });
     }
-    function renderThreadSearchEmptyState(counts) {
-      const posts = getPostsElement();
-      if (!posts) {
-        return;
-      }
-      let empty = document.getElementById(THREAD_SEARCH_EMPTY_ID);
-      if (!empty) {
-        empty = document.createElement("div");
-        empty.id = THREAD_SEARCH_EMPTY_ID;
-        posts.before(empty);
-      }
-      empty.textContent = threadLoadState.isLoading ? "No hay mensajes cargados que coincidan con estos filtros." : "No hay mensajes que coincidan con estos filtros.";
-      empty.hidden = !(hasActiveThreadPostFilters() && (counts?.visible ?? 0) === 0);
+    function renderThreadSearchEmptyState2(counts) {
+      renderThreadSearchEmptyState({
+        posts: getPostsElement(),
+        counts,
+        isLoading: threadLoadState.isLoading,
+        hasActiveFilters: hasActiveThreadPostFilters()
+      });
     }
     function refreshThreadSearchPanel(counts) {
       if (!isThreadPage()) {
@@ -4665,14 +4692,11 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       if (!panel) {
         return;
       }
-      const textInput = document.getElementById(THREAD_SEARCH_TEXT_INPUT_ID);
-      if (textInput instanceof HTMLInputElement && document.activeElement !== textInput) {
-        textInput.value = activeThreadSearchQuery;
-      }
-      refreshThreadAuthorDatalist();
-      refreshSelectedThreadAuthors();
-      renderThreadSearchStatus(counts);
-      renderThreadSearchEmptyState(counts);
+      syncThreadSearchTextInput(activeThreadSearchQuery);
+      refreshThreadAuthorDatalist2();
+      refreshSelectedThreadAuthors2();
+      renderThreadSearchStatus2(counts);
+      renderThreadSearchEmptyState2(counts);
     }
     function renderThreadSearchPanel(counts) {
       refreshThreadSearchPanel(counts);

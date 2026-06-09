@@ -1,6 +1,14 @@
 import { ShortcutHelpContainer } from "./ui/shortcutHelp";
 import { ThreadSearchPanel } from "./ui/components/ThreadSearchPanel";
 import {
+  refreshSelectedThreadAuthors as refreshSelectedThreadAuthorsInDom,
+  refreshThreadAuthorDatalist as refreshThreadAuthorDatalistInDom,
+  renderThreadSearchEmptyState as renderThreadSearchEmptyStateInDom,
+  renderThreadSearchStatus as renderThreadSearchStatusInDom,
+  syncThreadSearchTextInput,
+  type ThreadSearchCounts,
+} from "./ui/threadSearchPanelDom";
+import {
   HiddenThreadsModal,
   HiddenThreadsModalBody,
 } from "./ui/components/HiddenThreadsModal";
@@ -49,12 +57,7 @@ import {
   THREAD_SUMMARY_ID,
   THREAD_CONTROLS_ID,
   THREAD_SEARCH_PANEL_ID,
-  THREAD_SEARCH_TEXT_INPUT_ID,
   THREAD_SEARCH_AUTHOR_INPUT_ID,
-  THREAD_SEARCH_AUTHOR_DATALIST_ID,
-  THREAD_SEARCH_SELECTED_AUTHORS_ID,
-  THREAD_SEARCH_STATUS_ID,
-  THREAD_SEARCH_EMPTY_ID,
   FORUM_SIDEBAR_HIDDEN_CLASS,
   COMPACT_MODE_CLASS,
   FORUM_SIDEBAR_STORAGE_KEY,
@@ -130,8 +133,6 @@ import {
   sortForumThreadRecords,
 } from "./domain/forumThreads";
 import {
-  getThreadAuthorOptionByKey as getThreadAuthorOptionByKeyFromOptions,
-  getThreadAuthorOptionLabel,
   getThreadAuthorOptions as buildThreadAuthorOptions,
   resolveThreadAuthorInputValue as resolveThreadAuthorInputValueFromOptions,
 } from "./domain/threadAuthors";
@@ -2490,13 +2491,6 @@ export function runForocochesPremium() {
     return buildThreadAuthorOptions(posts, getAuthenticatedUsername());
   }
 
-  function getThreadAuthorOptionByKey(authorKey: string): ThreadAuthorOption | null {
-    return getThreadAuthorOptionByKeyFromOptions(
-      getThreadAuthorOptions(),
-      authorKey,
-    );
-  }
-
   function resolveThreadAuthorInputValue(value: string): string | null {
     return resolveThreadAuthorInputValueFromOptions(
       value,
@@ -2544,104 +2538,39 @@ export function runForocochesPremium() {
   }
 
   function refreshThreadAuthorDatalist() {
-    const datalist = document.getElementById(THREAD_SEARCH_AUTHOR_DATALIST_ID);
-
-    if (!(datalist instanceof HTMLDataListElement)) {
-      return;
-    }
-
-    datalist.textContent = "";
-
-    for (const option of getThreadAuthorOptions()) {
-      if (activeAuthorFilters.has(option.key)) {
-        continue;
-      }
-
-      const element = document.createElement("option");
-      element.value = getThreadAuthorOptionLabel(option);
-      element.label = `${option.count} mensajes`;
-      datalist.append(element);
-    }
+    refreshThreadAuthorDatalistInDom(
+      getThreadAuthorOptions(),
+      activeAuthorFilters,
+    );
   }
 
   function refreshSelectedThreadAuthors() {
-    const container = document.getElementById(
-      THREAD_SEARCH_SELECTED_AUTHORS_ID,
-    );
-
-    if (!(container instanceof HTMLElement)) {
-      return;
-    }
-
-    container.textContent = "";
-
-    for (const authorKey of activeAuthorFilters) {
-      const option = getThreadAuthorOptionByKey(authorKey);
-      const chip = document.createElement("span");
-      chip.className = "fc-premium-thread-author-chip";
-      chip.textContent = option
-        ? getThreadAuthorOptionLabel(option)
-        : authorKey;
-
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.textContent = "x";
-      remove.title = "Quitar usuario";
-      remove.addEventListener("click", () => {
-        removeThreadAuthorFilter(authorKey);
-      });
-      chip.append(remove);
-      container.append(chip);
-    }
-  }
-
-  function renderThreadSearchStatus(counts?: { total: number, visible: number }) {
-    const status = document.getElementById(THREAD_SEARCH_STATUS_ID);
-
-    if (!(status instanceof HTMLElement)) {
-      return;
-    }
-
-    const total = counts?.total ?? loadedThreadPosts.length;
-    const visible =
-      counts?.visible ??
-      Array.from(
-        document.querySelectorAll(".fc-premium-post-wrapper"),
-      ).filter((wrapper) => wrapper instanceof HTMLElement && isVisible(wrapper))
-        .length;
-    const loading = threadLoadState.isLoading
-      ? ` · cargando ${threadLoadState.loadedPages}/${threadLoadState.targetPages}`
-      : "";
-
-    status.textContent = hasActiveThreadPostFilters()
-      ? `${visible}/${total} mensajes${loading}`
-      : `${total} mensajes${loading}`;
-  }
-
-  function renderThreadSearchEmptyState(counts?: { total: number, visible: number }) {
-    const posts = getPostsElement();
-
-    if (!posts) {
-      return;
-    }
-
-    let empty = document.getElementById(THREAD_SEARCH_EMPTY_ID);
-
-    if (!empty) {
-      empty = document.createElement("div");
-      empty.id = THREAD_SEARCH_EMPTY_ID;
-      posts.before(empty);
-    }
-
-    empty.textContent = threadLoadState.isLoading
-      ? "No hay mensajes cargados que coincidan con estos filtros."
-      : "No hay mensajes que coincidan con estos filtros.";
-    empty.hidden = !(
-      hasActiveThreadPostFilters() && (counts?.visible ?? 0) === 0
+    refreshSelectedThreadAuthorsInDom(
+      activeAuthorFilters,
+      getThreadAuthorOptions(),
+      removeThreadAuthorFilter,
     );
   }
 
-  function refreshThreadSearchPanel(counts?: { total: number, visible: number }) {
+  function renderThreadSearchStatus(counts?: ThreadSearchCounts) {
+    renderThreadSearchStatusInDom({
+      counts,
+      totalPosts: loadedThreadPosts.length,
+      threadLoadState,
+      hasActiveFilters: hasActiveThreadPostFilters(),
+    });
+  }
+
+  function renderThreadSearchEmptyState(counts?: ThreadSearchCounts) {
+    renderThreadSearchEmptyStateInDom({
+      posts: getPostsElement(),
+      counts,
+      isLoading: threadLoadState.isLoading,
+      hasActiveFilters: hasActiveThreadPostFilters(),
+    });
+  }
+
+  function refreshThreadSearchPanel(counts?: ThreadSearchCounts) {
     if (!isThreadPage()) {
       return;
     }
@@ -2652,22 +2581,14 @@ export function runForocochesPremium() {
       return;
     }
 
-    const textInput = document.getElementById(THREAD_SEARCH_TEXT_INPUT_ID);
-
-    if (
-      textInput instanceof HTMLInputElement &&
-      document.activeElement !== textInput
-    ) {
-      textInput.value = activeThreadSearchQuery;
-    }
-
+    syncThreadSearchTextInput(activeThreadSearchQuery);
     refreshThreadAuthorDatalist();
     refreshSelectedThreadAuthors();
     renderThreadSearchStatus(counts);
     renderThreadSearchEmptyState(counts);
   }
 
-  function renderThreadSearchPanel(counts?: { total: number, visible: number }): void {
+  function renderThreadSearchPanel(counts?: ThreadSearchCounts): void {
     refreshThreadSearchPanel(counts);
   }
 
