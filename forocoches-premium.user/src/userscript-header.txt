@@ -1,0 +1,12 @@
+// ==UserScript==
+// @name         Forocoches Premium
+// @namespace    http://tampermonkey.net/
+// @version      2026-06-09-19
+// @description  Improves Forocoches thread reading
+// @author       victor141516
+// @match        https://forocoches.com/foro/*
+// @icon         https://forocoches.com/favicon.ico
+// @grant        none
+// @run-at       document-start
+// @license      MIT
+// ==/UserScript==
