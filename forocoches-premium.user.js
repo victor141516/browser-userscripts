@@ -608,6 +608,84 @@
     return Array.from(document.querySelectorAll(".fc-premium-post-wrapper")).filter((wrapper) => wrapper instanceof HTMLElement && isVisible(wrapper)).length;
   }
 
+  // src/ui/threadPostFiltersDom.ts
+  function applyPageFilterToRenderedPosts(posts, activePageFilter) {
+    let total = 0;
+    let visible = 0;
+    if (!posts) {
+      return { total, visible };
+    }
+    for (const wrapper of getRenderedPostWrappers(posts)) {
+      const pageNumber = Number(wrapper.dataset.fcPremiumOriginalPage || "0");
+      const matches = !activePageFilter || pageNumber === activePageFilter;
+      total += 1;
+      if (matches) {
+        visible += 1;
+        wrapper.removeAttribute(HIDDEN_POST_PAGE_ATTRIBUTE);
+      } else {
+        wrapper.setAttribute(HIDDEN_POST_PAGE_ATTRIBUTE, "true");
+      }
+    }
+    return { total, visible };
+  }
+  function applyThreadPostFiltersToRenderedPosts(options) {
+    let total = 0;
+    let visible = 0;
+    if (!options.posts) {
+      return { total, visible };
+    }
+    for (const wrapper of getRenderedPostWrappers(options.posts)) {
+      const authorKey = wrapper.dataset.fcPremiumAuthor || "";
+      const postId = getPostIdFromWrapper(wrapper);
+      const post = postId ? options.postById.get(postId) : null;
+      const matchesAuthor = options.activeAuthorFilters.size === 0 || options.activeAuthorFilters.has(authorKey);
+      const matchesText = !options.query || (post ? options.getPostSearchText(post).includes(options.query) : false);
+      const matches = matchesAuthor && matchesText;
+      total += 1;
+      if (matches) {
+        visible += 1;
+        wrapper.removeAttribute(HIDDEN_POST_FILTER_ATTRIBUTE);
+      } else {
+        wrapper.setAttribute(HIDDEN_POST_FILTER_ATTRIBUTE, "true");
+      }
+    }
+    return { total, visible };
+  }
+  function enhanceAuthorFilterButton(wrapper, author, onToggleAuthor) {
+    const authorKey = normalizeAuthorName(author);
+    if (!authorKey) {
+      return;
+    }
+    wrapper.dataset.fcPremiumAuthor = authorKey;
+    const username = wrapper.querySelector(".bigusername");
+    if (!(username instanceof HTMLElement)) {
+      return;
+    }
+    const existingButton = username.parentElement?.querySelector(".fc-premium-author-filter-button");
+    if (existingButton) {
+      return;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "fc-premium-author-filter-button";
+    button.textContent = "filtrar";
+    button.title = `Filtrar mensajes de ${author}`;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onToggleAuthor(author);
+    });
+    username.after(button);
+  }
+  function getRenderedPostWrappers(posts) {
+    return Array.from(posts.querySelectorAll(".fc-premium-post-wrapper")).filter((wrapper) => wrapper instanceof HTMLElement);
+  }
+  function getPostIdFromWrapper(wrapper) {
+    const postTable = wrapper.querySelector(POST_TABLE_SELECTOR);
+    const postId = postTable?.id.match(/^post(\d+)$/)?.[1];
+    return postId || null;
+  }
+
   // src/shared/hash.ts
   function hashString(value) {
     let hash = 0;
@@ -4890,27 +4968,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       setPageFilter(getPageNumber(new URL(location.href)));
     }
     function applyPageFilter() {
-      const posts = getPostsElement();
-      let total = 0;
-      let visible = 0;
-      if (!posts) {
-        return { total, visible };
-      }
-      for (const wrapper of posts.querySelectorAll(".fc-premium-post-wrapper")) {
-        if (!(wrapper instanceof HTMLElement)) {
-          continue;
-        }
-        const pageNumber = Number(wrapper.dataset.fcPremiumOriginalPage || "0");
-        const matches = !activePageFilter || pageNumber === activePageFilter;
-        total += 1;
-        if (matches) {
-          visible += 1;
-          wrapper.removeAttribute(HIDDEN_POST_PAGE_ATTRIBUTE);
-        } else {
-          wrapper.setAttribute(HIDDEN_POST_PAGE_ATTRIBUTE, "true");
-        }
-      }
-      return { total, visible };
+      return applyPageFilterToRenderedPosts(getPostsElement(), activePageFilter);
     }
     function updateOriginalThreadPageMenus2() {
       if (!isThreadPage() || threadPages.length <= 1 || activeGraphView) {
@@ -4980,59 +5038,18 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       updateThreadPostFilters({ render: true });
     }
     function applyThreadPostFilters() {
-      const posts = getPostsElement();
-      let total = 0;
-      let visible = 0;
-      if (!posts) {
-        return { total, visible };
-      }
       const query2 = normalizeLayoutText(activeThreadSearchQuery);
       const postById = new Map(loadedThreadPosts.map((post) => [post.id, post]));
-      for (const wrapper of posts.querySelectorAll(".fc-premium-post-wrapper")) {
-        if (!(wrapper instanceof HTMLElement)) {
-          continue;
-        }
-        const authorKey = wrapper.dataset.fcPremiumAuthor || "";
-        const postId = getPostIdFromNavigationElement(wrapper);
-        const post = postId ? postById.get(postId) : null;
-        const matchesAuthor = activeAuthorFilters.size === 0 || activeAuthorFilters.has(authorKey);
-        const matchesText = !query2 || (post ? getThreadPostSearchText(post).includes(query2) : false);
-        const matches = matchesAuthor && matchesText;
-        total += 1;
-        if (matches) {
-          visible += 1;
-          wrapper.removeAttribute(HIDDEN_POST_FILTER_ATTRIBUTE);
-        } else {
-          wrapper.setAttribute(HIDDEN_POST_FILTER_ATTRIBUTE, "true");
-        }
-      }
-      return { total, visible };
-    }
-    function enhanceAuthorFilterButton(wrapper, author) {
-      const authorKey = normalizeAuthorName(author);
-      if (!authorKey) {
-        return;
-      }
-      wrapper.dataset.fcPremiumAuthor = authorKey;
-      const username = wrapper.querySelector(".bigusername");
-      if (!(username instanceof HTMLElement)) {
-        return;
-      }
-      const existingButton = username.parentElement?.querySelector(".fc-premium-author-filter-button");
-      if (existingButton) {
-        return;
-      }
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "fc-premium-author-filter-button";
-      button.textContent = "filtrar";
-      button.title = `Filtrar mensajes de ${author}`;
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleAuthorFilter(author);
+      return applyThreadPostFiltersToRenderedPosts({
+        posts: getPostsElement(),
+        query: query2,
+        activeAuthorFilters,
+        postById,
+        getPostSearchText: getThreadPostSearchText
       });
-      username.after(button);
+    }
+    function enhanceAuthorFilterButton2(wrapper, author) {
+      enhanceAuthorFilterButton(wrapper, author, toggleAuthorFilter);
     }
     function setActiveGraphView(type, rootPostId, relatedPostId = null, options = {}) {
       if (!threadGraph.postById.has(rootPostId)) {
@@ -5496,7 +5513,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         wrapper.dataset.fcPremiumReplyIndent = String(replyIndentDepth);
       }
       enhanceQuoteLinks(wrapper);
-      enhanceAuthorFilterButton(wrapper, post.author);
+      enhanceAuthorFilterButton2(wrapper, post.author);
       const header = enhanceNativePostHeader(wrapper, post);
       removeTrailingPostLayoutArtifacts(wrapper);
       relocatePostFooterControls(wrapper);
