@@ -77,7 +77,6 @@ import {
   POSTS_SELECTOR,
   POST_TABLE_SELECTOR,
   THREAD_TITLE_SELECTOR,
-  HIDDEN_THREAD_ATTRIBUTE,
   HIDDEN_POST_FILTER_ATTRIBUTE,
   HIDDEN_POST_PAGE_ATTRIBUTE,
   PAGE_LOAD_DELAY_MS,
@@ -171,6 +170,12 @@ import {
   hideNativeThreadSearchMenu,
   moveForumHeaderSearchForm,
 } from "./adapters/forocoches/threadHeader";
+import {
+  applyHiddenForumThreadRows as applyHiddenForumThreadRowsInDom,
+  renderForumThreadRowsFromHtml,
+  renderVisibleForumThreadTitleTags as renderVisibleForumThreadTitleTagsInDom,
+  restoreForumThreadRowsFromHtml,
+} from "./adapters/forocoches/forumThreadListDom";
 import {
   clearForumStateQueryParams,
   clearThreadStateQueryParams,
@@ -880,11 +885,7 @@ export function runForocochesPremium() {
   }
 
   function renderVisibleForumThreadTitleTags(root: HTMLElement | Document = document) {
-    for (const title of root.querySelectorAll(THREAD_TITLE_SELECTOR)) {
-      if (title instanceof HTMLAnchorElement) {
-        renderTaggedTitle(title);
-      }
-    }
+    renderVisibleForumThreadTitleTagsInDom(root, renderTaggedTitle);
   }
 
   function getCachedForumThreadsForCurrentForum(): ForumThreadRecord[] {
@@ -990,68 +991,48 @@ export function runForocochesPremium() {
   }
 
   function renderForumThreadRows(rowHtmlList: string[], signature: string): boolean {
-    const table = getForumThreadsTable();
+    const changed = renderForumThreadRowsFromHtml({
+      headerRowHtml: nativeForumThreadHeaderRowHtml,
+      rowHtmlList,
+      signature,
+      currentSignature: renderedForumThreadListSignature,
+      renderTaggedTitle,
+    });
 
-    if (!table) {
+    if (!changed) {
       return false;
     }
 
-    if (signature === renderedForumThreadListSignature) {
-      return false;
-    }
-
-    const template = document.createElement("template");
-    template.innerHTML = [
-      ...nativeForumThreadHeaderRowHtml,
-      ...rowHtmlList,
-    ].join("");
-
-    for (const body of Array.from(table.tBodies)) {
-      body.remove();
-    }
-
-    const body = table.createTBody();
-    body.append(template.content);
-    renderVisibleForumThreadTitleTags(body);
     renderedForumThreadListSignature = signature;
     return true;
   }
 
   function restoreNativeForumThreadRows(): boolean {
-    if (nativeForumThreadRowHtml.length > 0) {
-      const changed = renderForumThreadRows(
-        nativeForumThreadRowHtml,
-        getForumThreadRowsSignature(nativeForumThreadRowHtml, "native"),
-      );
-      renderVisibleForumThreadTitleTags();
-      return changed;
+    const nativeSignature = getForumThreadRowsSignature(
+      nativeForumThreadRowHtml,
+      "native",
+    );
+    const changed = restoreForumThreadRowsFromHtml({
+      headerRowHtml: nativeForumThreadHeaderRowHtml,
+      nativeRowHtml: nativeForumThreadRowHtml,
+      nativeSignature,
+      currentSignature: renderedForumThreadListSignature,
+      renderTaggedTitle,
+    });
+
+    if (changed) {
+      renderedForumThreadListSignature = nativeSignature;
     }
 
     renderVisibleForumThreadTitleTags();
-    return false;
+    return changed;
   }
 
   function applyHiddenForumThreadRows(): void {
     const hiddenThreadIds = new Set(
       getHiddenForumThreadRecordsForCurrentForum().map((record) => record.id),
     );
-
-    for (const row of getForumThreadRows()) {
-      const title = row.querySelector(THREAD_TITLE_SELECTOR);
-
-      if (!(title instanceof HTMLAnchorElement)) {
-        row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
-        continue;
-      }
-
-      const threadId = getThreadId(new URL(title.href));
-
-      if (threadId && hiddenThreadIds.has(threadId)) {
-        row.setAttribute(HIDDEN_THREAD_ATTRIBUTE, "true");
-      } else {
-        row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
-      }
-    }
+    applyHiddenForumThreadRowsInDom(hiddenThreadIds);
   }
 
   function renderForumThreadList(): boolean {

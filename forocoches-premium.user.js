@@ -1304,6 +1304,64 @@
     };
   }
 
+  // src/adapters/forocoches/forumThreadListDom.ts
+  function renderVisibleForumThreadTitleTags(root, renderTaggedTitle) {
+    for (const title of root.querySelectorAll(THREAD_TITLE_SELECTOR)) {
+      if (title instanceof HTMLAnchorElement) {
+        renderTaggedTitle(title);
+      }
+    }
+  }
+  function renderForumThreadRowsFromHtml(options) {
+    const table = getForumThreadsTable();
+    if (!table || options.signature === options.currentSignature) {
+      return false;
+    }
+    const template = document.createElement("template");
+    template.innerHTML = [
+      ...options.headerRowHtml,
+      ...options.rowHtmlList
+    ].join("");
+    for (const body2 of Array.from(table.tBodies)) {
+      body2.remove();
+    }
+    const body = table.createTBody();
+    body.append(template.content);
+    renderVisibleForumThreadTitleTags(body, options.renderTaggedTitle);
+    return true;
+  }
+  function restoreForumThreadRowsFromHtml(options) {
+    if (options.nativeRowHtml.length > 0) {
+      return renderForumThreadRowsFromHtml({
+        headerRowHtml: options.headerRowHtml,
+        rowHtmlList: options.nativeRowHtml,
+        signature: options.nativeSignature,
+        currentSignature: options.currentSignature,
+        renderTaggedTitle: options.renderTaggedTitle
+      });
+    }
+    return false;
+  }
+  function applyHiddenForumThreadRows(hiddenThreadIds) {
+    const table = getForumThreadsTable();
+    if (!table) {
+      return;
+    }
+    for (const row of Array.from(table.rows)) {
+      const title = row.querySelector(THREAD_TITLE_SELECTOR);
+      if (!(title instanceof HTMLAnchorElement)) {
+        row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
+        continue;
+      }
+      const threadId = getThreadId(new URL(title.href));
+      if (threadId && hiddenThreadIds.has(threadId)) {
+        row.setAttribute(HIDDEN_THREAD_ATTRIBUTE, "true");
+      } else {
+        row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
+      }
+    }
+  }
+
   // src/services/queryState.ts
   function readForumQueryState(url = new URL(location.href)) {
     const tag = normalizeAuthorName(url.searchParams.get(FORUM_STATE_QUERY_PARAMS.tag));
@@ -3268,12 +3326,8 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       forumThreadsPerPage = threadRows.filter((row) => row.querySelector(THREAD_TITLE_SELECTOR)).length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
       renderedForumThreadListSignature = getForumThreadRowsSignature(nativeForumThreadRowHtml, "native");
     }
-    function renderVisibleForumThreadTitleTags(root = document) {
-      for (const title of root.querySelectorAll(THREAD_TITLE_SELECTOR)) {
-        if (title instanceof HTMLAnchorElement) {
-          renderTaggedTitle(title);
-        }
-      }
+    function renderVisibleForumThreadTitleTags2(root = document) {
+      renderVisibleForumThreadTitleTags(root, renderTaggedTitle);
     }
     function getCachedForumThreadsForCurrentForum() {
       const forumId = getForumId();
@@ -3350,51 +3404,37 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       window.scrollTo({ top: 0, behavior: "auto" });
     }
     function renderForumThreadRows(rowHtmlList, signature) {
-      const table = getForumThreadsTable();
-      if (!table) {
+      const changed = renderForumThreadRowsFromHtml({
+        headerRowHtml: nativeForumThreadHeaderRowHtml,
+        rowHtmlList,
+        signature,
+        currentSignature: renderedForumThreadListSignature,
+        renderTaggedTitle
+      });
+      if (!changed) {
         return false;
       }
-      if (signature === renderedForumThreadListSignature) {
-        return false;
-      }
-      const template = document.createElement("template");
-      template.innerHTML = [
-        ...nativeForumThreadHeaderRowHtml,
-        ...rowHtmlList
-      ].join("");
-      for (const body2 of Array.from(table.tBodies)) {
-        body2.remove();
-      }
-      const body = table.createTBody();
-      body.append(template.content);
-      renderVisibleForumThreadTitleTags(body);
       renderedForumThreadListSignature = signature;
       return true;
     }
     function restoreNativeForumThreadRows() {
-      if (nativeForumThreadRowHtml.length > 0) {
-        const changed = renderForumThreadRows(nativeForumThreadRowHtml, getForumThreadRowsSignature(nativeForumThreadRowHtml, "native"));
-        renderVisibleForumThreadTitleTags();
-        return changed;
+      const nativeSignature = getForumThreadRowsSignature(nativeForumThreadRowHtml, "native");
+      const changed = restoreForumThreadRowsFromHtml({
+        headerRowHtml: nativeForumThreadHeaderRowHtml,
+        nativeRowHtml: nativeForumThreadRowHtml,
+        nativeSignature,
+        currentSignature: renderedForumThreadListSignature,
+        renderTaggedTitle
+      });
+      if (changed) {
+        renderedForumThreadListSignature = nativeSignature;
       }
-      renderVisibleForumThreadTitleTags();
-      return false;
+      renderVisibleForumThreadTitleTags2();
+      return changed;
     }
-    function applyHiddenForumThreadRows() {
+    function applyHiddenForumThreadRows2() {
       const hiddenThreadIds = new Set(getHiddenForumThreadRecordsForCurrentForum().map((record) => record.id));
-      for (const row of getForumThreadRows()) {
-        const title = row.querySelector(THREAD_TITLE_SELECTOR);
-        if (!(title instanceof HTMLAnchorElement)) {
-          row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
-          continue;
-        }
-        const threadId = getThreadId(new URL(title.href));
-        if (threadId && hiddenThreadIds.has(threadId)) {
-          row.setAttribute(HIDDEN_THREAD_ATTRIBUTE, "true");
-        } else {
-          row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
-        }
-      }
+      applyHiddenForumThreadRows(hiddenThreadIds);
     }
     function renderForumThreadList() {
       if (!isForumDisplayPage()) {
@@ -3405,12 +3445,12 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       const records = getForumThreadRecordsForTag(activeTagFilter);
       if (!activeTagFilter && !activeForumSearchQuery) {
         const changed2 = restoreNativeForumThreadRows();
-        applyHiddenForumThreadRows();
+        applyHiddenForumThreadRows2();
         return changed2;
       }
       if (cachedForumRecords.length === 0) {
         const changed2 = restoreNativeForumThreadRows();
-        applyHiddenForumThreadRows();
+        applyHiddenForumThreadRows2();
         return changed2;
       }
       const page = getForumThreadListPage(records, activeForumTagPage, forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE);
@@ -3547,7 +3587,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         forumThreadsPerPage = records.length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
         renderedForumThreadListSignature = null;
         renderForumThreadRows(nativeForumThreadRowHtml, getForumThreadRowsSignature(nativeForumThreadRowHtml, `native-page-${pageNumber}`));
-        applyHiddenForumThreadRows();
+        applyHiddenForumThreadRows2();
         updateBrowserHistory(url, "push");
         mergeCachedForumThreadRecords(records);
         await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
