@@ -136,6 +136,7 @@ import {
   getThreadAuthorOptions as buildThreadAuthorOptions,
   resolveThreadAuthorInputValue as resolveThreadAuthorInputValueFromOptions,
 } from "./domain/threadAuthors";
+import { getVisiblePageNumbers } from "./domain/pagination";
 import {
   clampForumThreadListPage,
   getForumThreadListPage,
@@ -190,6 +191,10 @@ import {
   openThreadReplyWithoutQuote as openThreadReplyWithoutQuoteAction,
   togglePostMultiquote,
 } from "./adapters/forocoches/postReplyActions";
+import {
+  getOriginalThreadPageLinkNumber,
+  updateOriginalThreadPageMenus as updateOriginalThreadPageMenusInDom,
+} from "./adapters/forocoches/threadPageNavigation";
 import {
   clearForumStateQueryParams,
   clearThreadStateQueryParams,
@@ -984,7 +989,7 @@ export function runForocochesPremium() {
         ForumPager({
           currentPage: activeForumTagPage,
           totalPages,
-          visiblePages: getVisibleThreadPageNumbers(
+          visiblePages: getVisiblePageNumbers(
             totalPages,
             activeForumTagPage,
           ),
@@ -2713,22 +2718,6 @@ export function runForocochesPremium() {
     setPageFilter(getPageNumber(new URL(location.href)));
   }
 
-  function getVisibleThreadPageNumbers(totalPages: number, currentPage: number | null): number[] {
-    if (totalPages <= 11) {
-      return Array.from({ length: totalPages }, (_value, index) => index + 1);
-    }
-
-    const page = currentPage || 1;
-    const maxVisible = 11;
-    const halfWindow = Math.floor(maxVisible / 2);
-    const start = Math.max(
-      1,
-      Math.min(page - halfWindow, totalPages - maxVisible + 1),
-    );
-
-    return Array.from({ length: maxVisible }, (_value, index) => start + index);
-  }
-
   function applyPageFilter(): { total: number, visible: number } {
     const posts = getPostsElement();
     let total = 0;
@@ -2759,60 +2748,6 @@ export function runForocochesPremium() {
     return { total, visible };
   }
 
-  function getOriginalThreadPageNavTables(): HTMLTableElement[] {
-    return Array.from(document.querySelectorAll("table.tborder")).filter(
-      (table): table is HTMLTableElement => {
-        if (!(table instanceof HTMLTableElement)) {
-          return false;
-        }
-
-        const status = normalizeText(
-          table.querySelector("td.vbmenu_control")?.textContent,
-        );
-
-        return /^Pág \d+ de \d+$/.test(status);
-      },
-    );
-  }
-
-  function createOriginalThreadPageCell(pageNumber: number, currentPage: number): HTMLTableCellElement {
-    const cell = document.createElement("td");
-    const isCurrent = pageNumber === currentPage;
-    cell.className = isCurrent ? "alt2" : "alt1";
-
-    if (isCurrent) {
-      const span = document.createElement("span");
-      span.className = "mfont";
-      span.title = `Pagina ${pageNumber}`;
-
-      const strong = document.createElement("strong");
-      strong.textContent = String(pageNumber);
-      span.append(strong);
-      cell.append(span);
-      return cell;
-    }
-
-    const link = document.createElement("a");
-    link.className = "mfont";
-    link.href = getThreadPageUrl(pageNumber).href;
-    link.title = `Mostrar pagina ${pageNumber}`;
-    link.textContent = String(pageNumber);
-    cell.append(link);
-    return cell;
-  }
-
-  function createOriginalThreadPageActionCell(text: string, pageNumber: number): HTMLTableCellElement {
-    const cell = document.createElement("td");
-    cell.className = "alt1";
-
-    const link = document.createElement("a");
-    link.className = "smallfont";
-    link.href = getThreadPageUrl(pageNumber).href;
-    link.textContent = text;
-    cell.append(link);
-    return cell;
-  }
-
   function updateOriginalThreadPageMenus() {
     if (!isThreadPage() || threadPages.length <= 1 || activeGraphView) {
       return;
@@ -2821,56 +2756,12 @@ export function runForocochesPremium() {
     const totalPages = threadPages.length;
     const currentPage =
       activePageFilter || getPageNumber(new URL(location.href));
-    const visiblePages = getVisibleThreadPageNumbers(totalPages, currentPage);
-
-    for (const table of getOriginalThreadPageNavTables()) {
-      const body = table.tBodies[0] || table.createTBody();
-      const row = document.createElement("tr");
-      const statusCell = document.createElement("td");
-      statusCell.className = "vbmenu_control";
-      statusCell.style.fontWeight = "normal";
-      statusCell.textContent = `Pág ${currentPage} de ${totalPages}`;
-      row.append(statusCell);
-
-      for (const pageNumber of visiblePages) {
-        row.append(createOriginalThreadPageCell(pageNumber, currentPage));
-      }
-
-      if (currentPage < totalPages) {
-        row.append(createOriginalThreadPageActionCell(">", currentPage + 1));
-      }
-
-      if (currentPage !== totalPages) {
-        row.append(createOriginalThreadPageActionCell("Último »", totalPages));
-      }
-
-      body.textContent = "";
-      body.append(row);
-    }
-  }
-
-  function getOriginalThreadPageLinkNumber(link: HTMLAnchorElement): number | null {
-    const table = link.closest("table.tborder");
-
-    if (!(table instanceof HTMLTableElement)) {
-      return null;
-    }
-
-    const status = normalizeText(
-      table.querySelector("td.vbmenu_control")?.textContent,
-    );
-
-    if (!/^Pág \d+ de \d+$/.test(status)) {
-      return null;
-    }
-
-    const url = toUrl(link.getAttribute("href") || link.href);
-
-    if (!url || getThreadId(url) !== getThreadId(new URL(location.href))) {
-      return null;
-    }
-
-    return getPageNumber(url);
+    updateOriginalThreadPageMenusInDom({
+      totalPages,
+      currentPage,
+      visiblePages: getVisiblePageNumbers(totalPages, currentPage),
+      hrefForPage: (pageNumber) => getThreadPageUrl(pageNumber).href,
+    });
   }
 
   function handleThreadPageNavigationClick(event: MouseEvent) {
@@ -2883,7 +2774,10 @@ export function runForocochesPremium() {
       return;
     }
 
-    const pageNumber = getOriginalThreadPageLinkNumber(link);
+    const pageNumber = getOriginalThreadPageLinkNumber(
+      link,
+      getThreadId(new URL(location.href)),
+    );
 
     if (!pageNumber) {
       return;

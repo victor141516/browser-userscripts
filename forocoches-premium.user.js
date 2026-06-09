@@ -950,6 +950,18 @@
     return sortForumThreadRecords(getVisibleForumThreadRecords(records).filter((record) => (!filters.tag || record.tags.includes(filters.tag)) && forumThreadMatchesSearchTokens(record, tokens)));
   }
 
+  // src/domain/pagination.ts
+  function getVisiblePageNumbers(totalPages, currentPage) {
+    if (totalPages <= 11) {
+      return Array.from({ length: totalPages }, (_value, index) => index + 1);
+    }
+    const page = currentPage || 1;
+    const maxVisible = 11;
+    const halfWindow = Math.floor(maxVisible / 2);
+    const start = Math.max(1, Math.min(page - halfWindow, totalPages - maxVisible + 1));
+    return Array.from({ length: maxVisible }, (_value, index) => start + index);
+  }
+
   // src/domain/forumThreadList.ts
   function getForumThreadRowsSignature(rowHtmlList, scope) {
     return `${scope}|${rowHtmlList.length}|${rowHtmlList.map((html) => hashString(html).toString(36)).join(":")}`;
@@ -1574,6 +1586,86 @@
   }
   function getThreadReplyWithoutQuoteLink() {
     return Array.from(document.querySelectorAll("a[href*='newreply.php'][href*='noquote=1']")).filter((link) => link instanceof HTMLAnchorElement).find(isThreadReplyWithoutQuoteLink) || null;
+  }
+
+  // src/adapters/forocoches/threadPageNavigation.ts
+  function updateOriginalThreadPageMenus(options) {
+    for (const table of getOriginalThreadPageNavTables()) {
+      const body = table.tBodies[0] || table.createTBody();
+      const row = document.createElement("tr");
+      const statusCell = document.createElement("td");
+      statusCell.className = "vbmenu_control";
+      statusCell.style.fontWeight = "normal";
+      statusCell.textContent = `Pág ${options.currentPage} de ${options.totalPages}`;
+      row.append(statusCell);
+      for (const pageNumber of options.visiblePages) {
+        row.append(createOriginalThreadPageCell(pageNumber, options.currentPage, options.hrefForPage));
+      }
+      if (options.currentPage < options.totalPages) {
+        row.append(createOriginalThreadPageActionCell(">", options.currentPage + 1, options.hrefForPage));
+      }
+      if (options.currentPage !== options.totalPages) {
+        row.append(createOriginalThreadPageActionCell("Último »", options.totalPages, options.hrefForPage));
+      }
+      body.textContent = "";
+      body.append(row);
+    }
+  }
+  function getOriginalThreadPageLinkNumber(link, currentThreadId) {
+    const table = link.closest("table.tborder");
+    if (!(table instanceof HTMLTableElement)) {
+      return null;
+    }
+    const status = normalizeText(table.querySelector("td.vbmenu_control")?.textContent);
+    if (!/^Pág \d+ de \d+$/.test(status)) {
+      return null;
+    }
+    const url = toUrl(link.getAttribute("href") || link.href);
+    if (!url || getThreadId(url) !== currentThreadId) {
+      return null;
+    }
+    return getPageNumber(url);
+  }
+  function getOriginalThreadPageNavTables() {
+    return Array.from(document.querySelectorAll("table.tborder")).filter((table) => {
+      if (!(table instanceof HTMLTableElement)) {
+        return false;
+      }
+      const status = normalizeText(table.querySelector("td.vbmenu_control")?.textContent);
+      return /^Pág \d+ de \d+$/.test(status);
+    });
+  }
+  function createOriginalThreadPageCell(pageNumber, currentPage, hrefForPage) {
+    const cell = document.createElement("td");
+    const isCurrent = pageNumber === currentPage;
+    cell.className = isCurrent ? "alt2" : "alt1";
+    if (isCurrent) {
+      const span = document.createElement("span");
+      span.className = "mfont";
+      span.title = `Pagina ${pageNumber}`;
+      const strong = document.createElement("strong");
+      strong.textContent = String(pageNumber);
+      span.append(strong);
+      cell.append(span);
+      return cell;
+    }
+    const link = document.createElement("a");
+    link.className = "mfont";
+    link.href = hrefForPage(pageNumber);
+    link.title = `Mostrar pagina ${pageNumber}`;
+    link.textContent = String(pageNumber);
+    cell.append(link);
+    return cell;
+  }
+  function createOriginalThreadPageActionCell(text, pageNumber, hrefForPage) {
+    const cell = document.createElement("td");
+    cell.className = "alt1";
+    const link = document.createElement("a");
+    link.className = "smallfont";
+    link.href = hrefForPage(pageNumber);
+    link.textContent = text;
+    cell.append(link);
+    return cell;
   }
 
   // src/services/queryState.ts
@@ -3603,7 +3695,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         pager.append(ForumPager({
           currentPage: activeForumTagPage,
           totalPages,
-          visiblePages: getVisibleThreadPageNumbers(totalPages, activeForumTagPage),
+          visiblePages: getVisiblePageNumbers(totalPages, activeForumTagPage),
           hrefForPage: (pageNumber) => getForumDynamicPageUrl(pageNumber).href,
           onPageClick: setForumTagPage
         }));
@@ -4571,7 +4663,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       if (post) {
         activePageFilter = post.pageNumber;
         updateThreadPageUrl(post.pageNumber);
-        updateOriginalThreadPageMenus();
+        updateOriginalThreadPageMenus2();
         renderThreadPosts(loadedThreadPosts);
         renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
       }
@@ -4767,7 +4859,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       }
       const counts = applyThreadPostFilters();
       applyPageFilter();
-      updateOriginalThreadPageMenus();
+      updateOriginalThreadPageMenus2();
       refreshThreadSearchPanel(counts);
       refreshNavigation({ reset: true });
     }
@@ -4779,7 +4871,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       activeGraphView = null;
       pendingGraphView = null;
       updateThreadPageUrl(pageNumber, { history: "push" });
-      updateOriginalThreadPageMenus();
+      updateOriginalThreadPageMenus2();
       renderThreadPosts(loadedThreadPosts);
       renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -4796,16 +4888,6 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     }
     function clearPageFilter() {
       setPageFilter(getPageNumber(new URL(location.href)));
-    }
-    function getVisibleThreadPageNumbers(totalPages, currentPage) {
-      if (totalPages <= 11) {
-        return Array.from({ length: totalPages }, (_value, index) => index + 1);
-      }
-      const page = currentPage || 1;
-      const maxVisible = 11;
-      const halfWindow = Math.floor(maxVisible / 2);
-      const start = Math.max(1, Math.min(page - halfWindow, totalPages - maxVisible + 1));
-      return Array.from({ length: maxVisible }, (_value, index) => start + index);
     }
     function applyPageFilter() {
       const posts = getPostsElement();
@@ -4830,96 +4912,25 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       }
       return { total, visible };
     }
-    function getOriginalThreadPageNavTables() {
-      return Array.from(document.querySelectorAll("table.tborder")).filter((table) => {
-        if (!(table instanceof HTMLTableElement)) {
-          return false;
-        }
-        const status = normalizeText(table.querySelector("td.vbmenu_control")?.textContent);
-        return /^Pág \d+ de \d+$/.test(status);
-      });
-    }
-    function createOriginalThreadPageCell(pageNumber, currentPage) {
-      const cell = document.createElement("td");
-      const isCurrent = pageNumber === currentPage;
-      cell.className = isCurrent ? "alt2" : "alt1";
-      if (isCurrent) {
-        const span = document.createElement("span");
-        span.className = "mfont";
-        span.title = `Pagina ${pageNumber}`;
-        const strong = document.createElement("strong");
-        strong.textContent = String(pageNumber);
-        span.append(strong);
-        cell.append(span);
-        return cell;
-      }
-      const link = document.createElement("a");
-      link.className = "mfont";
-      link.href = getThreadPageUrl(pageNumber).href;
-      link.title = `Mostrar pagina ${pageNumber}`;
-      link.textContent = String(pageNumber);
-      cell.append(link);
-      return cell;
-    }
-    function createOriginalThreadPageActionCell(text, pageNumber) {
-      const cell = document.createElement("td");
-      cell.className = "alt1";
-      const link = document.createElement("a");
-      link.className = "smallfont";
-      link.href = getThreadPageUrl(pageNumber).href;
-      link.textContent = text;
-      cell.append(link);
-      return cell;
-    }
-    function updateOriginalThreadPageMenus() {
+    function updateOriginalThreadPageMenus2() {
       if (!isThreadPage() || threadPages.length <= 1 || activeGraphView) {
         return;
       }
       const totalPages = threadPages.length;
       const currentPage = activePageFilter || getPageNumber(new URL(location.href));
-      const visiblePages = getVisibleThreadPageNumbers(totalPages, currentPage);
-      for (const table of getOriginalThreadPageNavTables()) {
-        const body = table.tBodies[0] || table.createTBody();
-        const row = document.createElement("tr");
-        const statusCell = document.createElement("td");
-        statusCell.className = "vbmenu_control";
-        statusCell.style.fontWeight = "normal";
-        statusCell.textContent = `Pág ${currentPage} de ${totalPages}`;
-        row.append(statusCell);
-        for (const pageNumber of visiblePages) {
-          row.append(createOriginalThreadPageCell(pageNumber, currentPage));
-        }
-        if (currentPage < totalPages) {
-          row.append(createOriginalThreadPageActionCell(">", currentPage + 1));
-        }
-        if (currentPage !== totalPages) {
-          row.append(createOriginalThreadPageActionCell("Último »", totalPages));
-        }
-        body.textContent = "";
-        body.append(row);
-      }
-    }
-    function getOriginalThreadPageLinkNumber(link) {
-      const table = link.closest("table.tborder");
-      if (!(table instanceof HTMLTableElement)) {
-        return null;
-      }
-      const status = normalizeText(table.querySelector("td.vbmenu_control")?.textContent);
-      if (!/^Pág \d+ de \d+$/.test(status)) {
-        return null;
-      }
-      const url = toUrl(link.getAttribute("href") || link.href);
-      if (!url || getThreadId(url) !== getThreadId(new URL(location.href))) {
-        return null;
-      }
-      return getPageNumber(url);
+      updateOriginalThreadPageMenus({
+        totalPages,
+        currentPage,
+        visiblePages: getVisiblePageNumbers(totalPages, currentPage),
+        hrefForPage: (pageNumber) => getThreadPageUrl(pageNumber).href
+      });
     }
     function handleThreadPageNavigationClick(event) {
       const link = event.target instanceof Element ? event.target.closest("a[href*='showthread.php']") : null;
       if (!(link instanceof HTMLAnchorElement)) {
         return;
       }
-      const pageNumber = getOriginalThreadPageLinkNumber(link);
+      const pageNumber = getOriginalThreadPageLinkNumber(link, getThreadId(new URL(location.href)));
       if (!pageNumber) {
         return;
       }
@@ -4939,7 +4950,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       pendingGraphView = null;
       activePageFilter = getPageNumber(new URL(location.href));
       updateThreadPageUrl(activePageFilter);
-      updateOriginalThreadPageMenus();
+      updateOriginalThreadPageMenus2();
       renderThreadPosts(loadedThreadPosts);
       renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
     }
@@ -5067,7 +5078,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       pendingGraphView = null;
       activePageFilter = getPageNumber(new URL(location.href));
       updateThreadPageUrl(activePageFilter);
-      updateOriginalThreadPageMenus();
+      updateOriginalThreadPageMenus2();
       renderThreadPosts(loadedThreadPosts);
       renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
     }
@@ -5087,7 +5098,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       activePageFilter = activeGraphView ? null : queryState.authorFilters.length > 0 || queryState.searchQuery ? null : queryState.pageFilter || getPageNumber(url);
       activeAuthorFilters = new Set(queryState.authorFilters);
       activeThreadSearchQuery = queryState.searchQuery;
-      updateOriginalThreadPageMenus();
+      updateOriginalThreadPageMenus2();
       renderThreadPosts(loadedThreadPosts);
       renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
       const hashPostId = getLocationPostHashId(url);
@@ -5568,7 +5579,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       postsElement.append(fragment);
       const filterCounts = applyThreadPostFilters();
       applyPageFilter();
-      updateOriginalThreadPageMenus();
+      updateOriginalThreadPageMenus2();
       renderThreadSearchPanel(filterCounts);
       refreshNavigation({ reset: true });
       if (selectedPostId) {
