@@ -1126,6 +1126,29 @@ export function runForocochesPremium() {
     return false;
   }
 
+  function applyHiddenForumThreadRows(): void {
+    const hiddenThreadIds = new Set(
+      getHiddenForumThreadRecordsForCurrentForum().map((record) => record.id),
+    );
+
+    for (const row of getForumThreadRows()) {
+      const title = row.querySelector(THREAD_TITLE_SELECTOR);
+
+      if (!(title instanceof HTMLAnchorElement)) {
+        row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
+        continue;
+      }
+
+      const threadId = getThreadId(new URL(title.href));
+
+      if (threadId && hiddenThreadIds.has(threadId)) {
+        row.setAttribute(HIDDEN_THREAD_ATTRIBUTE, "true");
+      } else {
+        row.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
+      }
+    }
+  }
+
   function renderForumThreadList(): boolean {
     if (!isForumDisplayPage()) {
       return false;
@@ -1136,12 +1159,16 @@ export function runForocochesPremium() {
     const cachedForumRecords = getCachedForumThreadsForCurrentForum();
     const records = getForumThreadRecordsForTag(activeTagFilter);
 
-    if (
-      cachedForumRecords.length === 0 &&
-      !activeTagFilter &&
-      !activeForumSearchQuery
-    ) {
-      return restoreNativeForumThreadRows();
+    if (!activeTagFilter && !activeForumSearchQuery) {
+      const changed = restoreNativeForumThreadRows();
+      applyHiddenForumThreadRows();
+      return changed;
+    }
+
+    if (cachedForumRecords.length === 0) {
+      const changed = restoreNativeForumThreadRows();
+      applyHiddenForumThreadRows();
+      return changed;
     }
 
     const pageSize = forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE;
