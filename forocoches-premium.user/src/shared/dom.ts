@@ -45,6 +45,10 @@ export function getThreadId(url: URL): string | null {
   return url.searchParams.get("t");
 }
 
+export function getPostQueryId(url: URL): string | null {
+  return url.searchParams.get("p");
+}
+
 export function getPageNumber(url: URL): number {
   const page = Number(url.searchParams.get("page") || "1");
   return Number.isFinite(page) && page > 0 ? page : 1;
@@ -60,7 +64,10 @@ export function getLocationPostHashId(
 export function isThreadPage(): boolean {
   return (
     location.pathname.endsWith("/showthread.php") &&
-    Boolean(getThreadId(new URL(location.href)))
+    Boolean(
+      getThreadId(new URL(location.href)) ||
+        getPostQueryId(new URL(location.href)),
+    )
   );
 }
 

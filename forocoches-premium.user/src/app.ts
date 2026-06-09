@@ -136,6 +136,7 @@ import {
   fetchThreadDocument,
   getMaxThreadPage,
   getQuotedPostId,
+  getThreadIdFromDocument,
   parseHtml,
 } from "./adapters/forocoches/threadParser";
 import {
@@ -2281,12 +2282,18 @@ export function runForocochesPremium() {
     return pages;
   }
 
+  function resolveCurrentThreadId(): string | null {
+    return (
+      getThreadId(new URL(location.href)) ||
+      getThreadIdFromDocument(document) ||
+      threadPages.map((page) => getThreadId(new URL(page.url))).find(Boolean) ||
+      null
+    );
+  }
+
   function getThreadPageUrl(pageNumber: number, options: { includeState?: boolean, preserveHash?: boolean } = {}): URL {
     const currentUrl = new URL(location.href);
-    const threadId =
-      getThreadId(currentUrl) ||
-      threadPages.map((page) => getThreadId(new URL(page.url))).find(Boolean) ||
-      "";
+    const threadId = resolveCurrentThreadId() || "";
     const url = new URL(currentUrl.origin + currentUrl.pathname);
 
     if (threadId) {

@@ -599,6 +599,9 @@
   function getThreadId(url) {
     return url.searchParams.get("t");
   }
+  function getPostQueryId(url) {
+    return url.searchParams.get("p");
+  }
   function getPageNumber(url) {
     const page = Number(url.searchParams.get("page") || "1");
     return Number.isFinite(page) && page > 0 ? page : 1;
@@ -608,7 +611,7 @@
     return match?.[1] || null;
   }
   function isThreadPage() {
-    return location.pathname.endsWith("/showthread.php") && Boolean(getThreadId(new URL(location.href)));
+    return location.pathname.endsWith("/showthread.php") && Boolean(getThreadId(new URL(location.href)) || getPostQueryId(new URL(location.href)));
   }
   function isForumDisplayPage() {
     return location.pathname.endsWith("/forumdisplay.php");
@@ -806,7 +809,7 @@
   // src/adapters/forocoches/threadParser.ts
   function getMaxThreadPage(doc) {
     const currentUrl = new URL(location.href);
-    const currentThreadId = getThreadId(currentUrl);
+    const currentThreadId = getThreadId(currentUrl) || getThreadIdFromDocument(doc);
     let maxPage = getPageNumber(currentUrl);
     for (const link of doc.querySelectorAll("a[href*='showthread.php']")) {
       if (!(link instanceof HTMLAnchorElement)) {
@@ -819,6 +822,19 @@
       maxPage = Math.max(maxPage, getPageNumber(url));
     }
     return maxPage;
+  }
+  function getThreadIdFromDocument(doc = document) {
+    for (const link of doc.querySelectorAll("a[href*='showthread.php?t=']")) {
+      if (!(link instanceof HTMLAnchorElement)) {
+        continue;
+      }
+      const url = toUrl(link.getAttribute("href") || link.href);
+      const threadId = url ? getThreadId(url) : null;
+      if (threadId) {
+        return threadId;
+      }
+    }
+    return null;
   }
   function getPostWrapper(doc, postTable) {
     const posts = doc.querySelector(POSTS_SELECTOR);
@@ -1196,7 +1212,7 @@
     return GRAPH_VIEW_TYPES.includes(type || "");
   }
   function isThreadUrl(url) {
-    return url.pathname.endsWith("/showthread.php") && Boolean(getThreadId(url));
+    return url.pathname.endsWith("/showthread.php") && Boolean(getThreadId(url) || getPostQueryId(url));
   }
   function clearThreadStateQueryParams(url) {
     for (const param of Object.values(THREAD_STATE_QUERY_PARAMS)) {
@@ -4108,9 +4124,12 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       }
       return pages;
     }
+    function resolveCurrentThreadId() {
+      return getThreadId(new URL(location.href)) || getThreadIdFromDocument(document) || threadPages.map((page) => getThreadId(new URL(page.url))).find(Boolean) || null;
+    }
     function getThreadPageUrl(pageNumber, options = {}) {
       const currentUrl = new URL(location.href);
-      const threadId = getThreadId(currentUrl) || threadPages.map((page) => getThreadId(new URL(page.url))).find(Boolean) || "";
+      const threadId = resolveCurrentThreadId() || "";
       const url = new URL(currentUrl.origin + currentUrl.pathname);
       if (threadId) {
         url.searchParams.set("t", threadId);

@@ -9,7 +9,7 @@ import {
 
 export function getMaxThreadPage(doc: Document): number {
   const currentUrl = new URL(location.href);
-  const currentThreadId = getThreadId(currentUrl);
+  const currentThreadId = getThreadId(currentUrl) || getThreadIdFromDocument(doc);
   let maxPage = getPageNumber(currentUrl);
 
   for (const link of doc.querySelectorAll("a[href*='showthread.php']")) {
@@ -27,6 +27,23 @@ export function getMaxThreadPage(doc: Document): number {
   }
 
   return maxPage;
+}
+
+export function getThreadIdFromDocument(doc: Document = document): string | null {
+  for (const link of doc.querySelectorAll("a[href*='showthread.php?t=']")) {
+    if (!(link instanceof HTMLAnchorElement)) {
+      continue;
+    }
+
+    const url = toUrl(link.getAttribute("href") || link.href);
+    const threadId = url ? getThreadId(url) : null;
+
+    if (threadId) {
+      return threadId;
+    }
+  }
+
+  return null;
 }
 
 export function getPostWrapper(doc: Document, postTable: Element): Element {

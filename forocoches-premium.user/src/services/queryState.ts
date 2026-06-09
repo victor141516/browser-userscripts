@@ -10,6 +10,7 @@ import type {
   ThreadQueryState,
 } from "../domain/types";
 import {
+  getPostQueryId,
   getThreadId,
   normalizeAuthorName,
   normalizeText,
@@ -41,7 +42,8 @@ export function isGraphViewType(type: string | null): type is GraphViewType {
 
 export function isThreadUrl(url: URL): boolean {
   return (
-    url.pathname.endsWith("/showthread.php") && Boolean(getThreadId(url))
+    url.pathname.endsWith("/showthread.php") &&
+    Boolean(getThreadId(url) || getPostQueryId(url))
   );
 }
 
