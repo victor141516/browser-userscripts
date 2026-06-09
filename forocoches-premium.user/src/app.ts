@@ -23,14 +23,17 @@ import {
   scrollNavigationElementIntoView as scrollNavigationElementIntoViewInDom,
 } from "./ui/navigationDom";
 import {
-  HiddenThreadsModal,
-  HiddenThreadsModalBody,
-} from "./ui/components/HiddenThreadsModal";
-import {
   ForumLoadingStatus,
   ForumSidebarToggleButton,
-  HiddenThreadsToolbarCell,
 } from "./ui/components/ForumControls";
+import {
+  closeHiddenThreadsModal as closeHiddenThreadsModalInDom,
+  ensureHiddenThreadsModal as ensureHiddenThreadsModalInDom,
+  isHiddenThreadsModalOpen as isHiddenThreadsModalOpenInDom,
+  openHiddenThreadsModal as openHiddenThreadsModalInDom,
+  renderHiddenThreadsModalBody as renderHiddenThreadsModalBodyInDom,
+  renderHiddenThreadsToolbarButton as renderHiddenThreadsToolbarButtonInDom,
+} from "./ui/hiddenThreadsModalDom";
 import { ForumPager } from "./ui/components/ForumPager";
 import {
   TagChip,
@@ -44,10 +47,6 @@ import {
   SHORTCUT_HELP_CONTAINER_ID,
   SHORTCUT_HELP_BUTTON_ID,
   SHORTCUT_HELP_POPOVER_ID,
-  HIDDEN_THREADS_BUTTON_ID,
-  HIDDEN_THREADS_MODAL_ID,
-  HIDDEN_THREADS_MODAL_BODY_ID,
-  MODAL_OPEN_CLASS,
   KEY_NAV_PREVIOUS_POST,
   KEY_NAV_NEXT_POST,
   KEY_NAV_FIRST_POST,
@@ -498,90 +497,49 @@ export function runForocochesPremium() {
       return;
     }
 
-    const row = getForumToolbarRow();
-    const toolsCell = document.getElementById("forumtools");
-
-    if (!row || !(toolsCell instanceof HTMLTableCellElement)) {
-      return;
-    }
-
-    const existing = document.getElementById(HIDDEN_THREADS_BUTTON_ID);
-    const cell = HiddenThreadsToolbarCell({
+    renderHiddenThreadsToolbarButtonInDom({
+      toolbarRow: getForumToolbarRow(),
+      toolsCell: document.getElementById("forumtools"),
       onOpen: openHiddenThreadsModal,
     });
-
-    if (existing instanceof HTMLTableCellElement) {
-      existing.replaceWith(cell);
-    }
-
-    if (cell.parentElement !== row || cell.nextElementSibling !== toolsCell) {
-      row.insertBefore(cell, toolsCell);
-    }
   }
 
   function ensureHiddenThreadsModal(): HTMLElement {
-    let modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
-
-    if (modal instanceof HTMLElement) {
-      return modal;
-    }
-
-    modal = HiddenThreadsModal({
+    return ensureHiddenThreadsModalInDom({
       records: getHiddenForumThreadRecordsForCurrentForum(),
       onClose: closeHiddenThreadsModal,
       onRestore: (threadId) => {
         void setForumThreadHiddenState(threadId, false);
       },
     });
-
-    document.body.append(modal);
-    return modal;
   }
 
   function isHiddenThreadsModalOpen(): boolean {
-    const modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
-    return modal instanceof HTMLElement && !modal.hidden;
+    return isHiddenThreadsModalOpenInDom();
   }
 
   function closeHiddenThreadsModal() {
-    const modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
-
-    if (modal instanceof HTMLElement) {
-      modal.hidden = true;
-    }
-
-    document.documentElement.classList.remove(MODAL_OPEN_CLASS);
-    document.body?.classList.remove(MODAL_OPEN_CLASS);
+    closeHiddenThreadsModalInDom();
   }
 
   function renderHiddenThreadsModalBody() {
-    const modal = ensureHiddenThreadsModal();
-    const body = modal.querySelector(`#${HIDDEN_THREADS_MODAL_BODY_ID}`);
-
-    if (!(body instanceof HTMLElement)) {
-      return;
-    }
-
-    const records = getHiddenForumThreadRecordsForCurrentForum();
-    body.replaceWith(
-      HiddenThreadsModalBody({
-        records,
-        onRestore: (threadId) => {
-          void setForumThreadHiddenState(threadId, false);
-        },
-      }),
-    );
+    renderHiddenThreadsModalBodyInDom({
+      modal: ensureHiddenThreadsModal(),
+      records: getHiddenForumThreadRecordsForCurrentForum(),
+      onRestore: (threadId) => {
+        void setForumThreadHiddenState(threadId, false);
+      },
+    });
   }
 
   function openHiddenThreadsModal() {
-    const modal = ensureHiddenThreadsModal();
-    renderHiddenThreadsModalBody();
-    modal.hidden = false;
-    document.documentElement.classList.add(MODAL_OPEN_CLASS);
-    document.body.classList.add(MODAL_OPEN_CLASS);
-    modal
-      .querySelector("button")
-      ?.focus({ preventScroll: true });
+    openHiddenThreadsModalInDom({
+      modal: ensureHiddenThreadsModal(),
+      records: getHiddenForumThreadRecordsForCurrentForum(),
+      onRestore: (threadId) => {
+        void setForumThreadHiddenState(threadId, false);
+      },
+    });
   }
 
   function isNativeForumControlsTable(table: HTMLTableElement): boolean {

@@ -752,6 +752,41 @@
     return link;
   }
 
+  // src/ui/components/ForumControls.tsx
+  function ForumSidebarToggleButton(props) {
+    return /* @__PURE__ */ createElement("button", {
+      id: FORUM_SIDEBAR_TOGGLE_ID,
+      type: "button",
+      title: props.hidden ? "Mostrar la columna izquierda" : "Ocultar la columna izquierda",
+      "aria-expanded": String(!props.hidden),
+      onClick: props.onToggle
+    }, props.hidden ? "Mostrar panel izquierdo" : "Ocultar panel izquierdo");
+  }
+  function HiddenThreadsToolbarCell(props) {
+    return /* @__PURE__ */ createElement("td", {
+      id: HIDDEN_THREADS_BUTTON_ID,
+      className: "vbmenu_control",
+      noWrap: true,
+      style: "cursor: pointer"
+    }, /* @__PURE__ */ createElement("a", {
+      href: "#",
+      onClick: (event) => {
+        event.preventDefault();
+        props.onOpen();
+      }
+    }, "Hilos escondidos"));
+  }
+  function ForumLoadingStatus() {
+    return /* @__PURE__ */ createElement("span", {
+      id: FORUM_LOADING_STATUS_ID
+    }, /* @__PURE__ */ createElement("span", {
+      className: "fc-premium-spinner",
+      "aria-hidden": "true"
+    }), /* @__PURE__ */ createElement("span", {
+      "data-fc-premium-loading-text": "true"
+    }));
+  }
+
   // src/shared/hash.ts
   function hashString(value) {
     let hash = 0;
@@ -981,39 +1016,67 @@
     }
   }
 
-  // src/ui/components/ForumControls.tsx
-  function ForumSidebarToggleButton(props) {
-    return /* @__PURE__ */ createElement("button", {
-      id: FORUM_SIDEBAR_TOGGLE_ID,
-      type: "button",
-      title: props.hidden ? "Mostrar la columna izquierda" : "Ocultar la columna izquierda",
-      "aria-expanded": String(!props.hidden),
-      onClick: props.onToggle
-    }, props.hidden ? "Mostrar panel izquierdo" : "Ocultar panel izquierdo");
+  // src/ui/hiddenThreadsModalDom.ts
+  function renderHiddenThreadsToolbarButton(options) {
+    if (!options.toolbarRow || !(options.toolsCell instanceof HTMLTableCellElement)) {
+      return;
+    }
+    const existing = document.getElementById(HIDDEN_THREADS_BUTTON_ID);
+    const cell = HiddenThreadsToolbarCell({
+      onOpen: options.onOpen
+    });
+    if (existing instanceof HTMLTableCellElement) {
+      existing.replaceWith(cell);
+    }
+    if (cell.parentElement !== options.toolbarRow || cell.nextElementSibling !== options.toolsCell) {
+      options.toolbarRow.insertBefore(cell, options.toolsCell);
+    }
   }
-  function HiddenThreadsToolbarCell(props) {
-    return /* @__PURE__ */ createElement("td", {
-      id: HIDDEN_THREADS_BUTTON_ID,
-      className: "vbmenu_control",
-      noWrap: true,
-      style: "cursor: pointer"
-    }, /* @__PURE__ */ createElement("a", {
-      href: "#",
-      onClick: (event) => {
-        event.preventDefault();
-        props.onOpen();
-      }
-    }, "Hilos escondidos"));
+  function ensureHiddenThreadsModal(options) {
+    let modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
+    if (modal instanceof HTMLElement) {
+      return modal;
+    }
+    modal = HiddenThreadsModal({
+      records: options.records,
+      onClose: options.onClose,
+      onRestore: options.onRestore
+    });
+    document.body.append(modal);
+    return modal;
   }
-  function ForumLoadingStatus() {
-    return /* @__PURE__ */ createElement("span", {
-      id: FORUM_LOADING_STATUS_ID
-    }, /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-spinner",
-      "aria-hidden": "true"
-    }), /* @__PURE__ */ createElement("span", {
-      "data-fc-premium-loading-text": "true"
+  function isHiddenThreadsModalOpen() {
+    const modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
+    return modal instanceof HTMLElement && !modal.hidden;
+  }
+  function closeHiddenThreadsModal() {
+    const modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
+    if (modal instanceof HTMLElement) {
+      modal.hidden = true;
+    }
+    document.documentElement.classList.remove(MODAL_OPEN_CLASS);
+    document.body?.classList.remove(MODAL_OPEN_CLASS);
+  }
+  function renderHiddenThreadsModalBody(options) {
+    const body = options.modal.querySelector(`#${HIDDEN_THREADS_MODAL_BODY_ID}`);
+    if (!(body instanceof HTMLElement)) {
+      return;
+    }
+    body.replaceWith(HiddenThreadsModalBody({
+      records: options.records,
+      onRestore: options.onRestore
     }));
+  }
+  function openHiddenThreadsModal(options) {
+    renderHiddenThreadsModalBody({
+      modal: options.modal,
+      records: options.records,
+      onRestore: options.onRestore
+    });
+    options.modal.hidden = false;
+    document.documentElement.classList.add(MODAL_OPEN_CLASS);
+    document.body.classList.add(MODAL_OPEN_CLASS);
+    options.modal.querySelector("button")?.focus({ preventScroll: true });
   }
 
   // src/ui/components/ForumPager.tsx
@@ -3485,74 +3548,48 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       const row = toolsCell?.parentElement;
       return row instanceof HTMLTableRowElement ? row : null;
     }
-    function renderHiddenThreadsToolbarButton() {
+    function renderHiddenThreadsToolbarButton2() {
       if (!isForumDisplayPage()) {
         return;
       }
-      const row = getForumToolbarRow();
-      const toolsCell = document.getElementById("forumtools");
-      if (!row || !(toolsCell instanceof HTMLTableCellElement)) {
-        return;
-      }
-      const existing = document.getElementById(HIDDEN_THREADS_BUTTON_ID);
-      const cell = HiddenThreadsToolbarCell({
-        onOpen: openHiddenThreadsModal
+      renderHiddenThreadsToolbarButton({
+        toolbarRow: getForumToolbarRow(),
+        toolsCell: document.getElementById("forumtools"),
+        onOpen: openHiddenThreadsModal2
       });
-      if (existing instanceof HTMLTableCellElement) {
-        existing.replaceWith(cell);
-      }
-      if (cell.parentElement !== row || cell.nextElementSibling !== toolsCell) {
-        row.insertBefore(cell, toolsCell);
-      }
     }
-    function ensureHiddenThreadsModal() {
-      let modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
-      if (modal instanceof HTMLElement) {
-        return modal;
-      }
-      modal = HiddenThreadsModal({
+    function ensureHiddenThreadsModal2() {
+      return ensureHiddenThreadsModal({
         records: getHiddenForumThreadRecordsForCurrentForum(),
-        onClose: closeHiddenThreadsModal,
+        onClose: closeHiddenThreadsModal2,
         onRestore: (threadId) => {
           setForumThreadHiddenState(threadId, false);
         }
       });
-      document.body.append(modal);
-      return modal;
     }
-    function isHiddenThreadsModalOpen() {
-      const modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
-      return modal instanceof HTMLElement && !modal.hidden;
+    function isHiddenThreadsModalOpen2() {
+      return isHiddenThreadsModalOpen();
     }
-    function closeHiddenThreadsModal() {
-      const modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
-      if (modal instanceof HTMLElement) {
-        modal.hidden = true;
-      }
-      document.documentElement.classList.remove(MODAL_OPEN_CLASS);
-      document.body?.classList.remove(MODAL_OPEN_CLASS);
+    function closeHiddenThreadsModal2() {
+      closeHiddenThreadsModal();
     }
-    function renderHiddenThreadsModalBody() {
-      const modal = ensureHiddenThreadsModal();
-      const body = modal.querySelector(`#${HIDDEN_THREADS_MODAL_BODY_ID}`);
-      if (!(body instanceof HTMLElement)) {
-        return;
-      }
-      const records = getHiddenForumThreadRecordsForCurrentForum();
-      body.replaceWith(HiddenThreadsModalBody({
-        records,
+    function renderHiddenThreadsModalBody2() {
+      renderHiddenThreadsModalBody({
+        modal: ensureHiddenThreadsModal2(),
+        records: getHiddenForumThreadRecordsForCurrentForum(),
         onRestore: (threadId) => {
           setForumThreadHiddenState(threadId, false);
         }
-      }));
+      });
     }
-    function openHiddenThreadsModal() {
-      const modal = ensureHiddenThreadsModal();
-      renderHiddenThreadsModalBody();
-      modal.hidden = false;
-      document.documentElement.classList.add(MODAL_OPEN_CLASS);
-      document.body.classList.add(MODAL_OPEN_CLASS);
-      modal.querySelector("button")?.focus({ preventScroll: true });
+    function openHiddenThreadsModal2() {
+      openHiddenThreadsModal({
+        modal: ensureHiddenThreadsModal2(),
+        records: getHiddenForumThreadRecordsForCurrentForum(),
+        onRestore: (threadId) => {
+          setForumThreadHiddenState(threadId, false);
+        }
+      });
     }
     function isNativeForumControlsTable(table) {
       return Boolean(table.querySelector("a[href*='newthread.php'][href*='do=newthread']") && table.querySelector(".pagenav"));
@@ -3753,7 +3790,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       removeForumTitleTables();
       applyForumSidebarVisibility();
       renderForumControlsRow();
-      renderHiddenThreadsToolbarButton();
+      renderHiddenThreadsToolbarButton2();
       hideUnusedTopNavigationBars();
     }
     function getForumThreadRows() {
@@ -3957,8 +3994,8 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       await writeForumThreadCacheRecords([record]);
       cachedForumThreads = await readForumThreadCacheRecords();
       refreshForumTagUi();
-      if (isHiddenThreadsModalOpen()) {
-        renderHiddenThreadsModalBody();
+      if (isHiddenThreadsModalOpen2()) {
+        renderHiddenThreadsModalBody2();
       }
       return true;
     }
@@ -4085,7 +4122,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       const threadListChanged = renderForumThreadList();
       renderTopTagBar();
       renderForumControlsRow();
-      renderHiddenThreadsToolbarButton();
+      renderHiddenThreadsToolbarButton2();
       refreshNavigation({ reset: threadListChanged });
     }
     async function scrapeForumThreadPage(pageNumber, scrapeStartedAt) {
@@ -4569,9 +4606,9 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         openSelectedForumThreadInNewTab();
       } else if (handleHideSelectedThreadShortcut(event)) {
         return;
-      } else if (event.key === KEY_CLEAR_ACTIVE_VIEW && isHiddenThreadsModalOpen()) {
+      } else if (event.key === KEY_CLEAR_ACTIVE_VIEW && isHiddenThreadsModalOpen2()) {
         event.preventDefault();
-        closeHiddenThreadsModal();
+        closeHiddenThreadsModal2();
       } else if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
         event.preventDefault();
         closeShortcutHelpPopover();
