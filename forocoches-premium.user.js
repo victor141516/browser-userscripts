@@ -3015,7 +3015,7 @@
     return isMacKeyboardPlatform() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
   }
 
-  // src/app.ts
+  // src/app/runForocochesPremium.ts
   function runForocochesPremium() {
     let navigationItems = [];
     let selectedNavigationIndex = -1;
@@ -5914,7 +5914,6 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     }
     init();
   }
-
   // src/index.ts
   runForocochesPremium();
 })();
