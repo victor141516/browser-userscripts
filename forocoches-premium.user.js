@@ -68,19 +68,6 @@
     element.setAttribute(name, value === true ? "" : String(value));
   }
 
-  // src/ui/shortcutHelp.tsx
-  function createShortcutHelpRow(item, formatKey) {
-    return /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-shortcut-help-row"
-    }, /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-shortcut-help-keys"
-    }, item.keys.map((key) => /* @__PURE__ */ createElement("kbd", {
-      className: "fc-premium-shortcut-help-key"
-    }, formatKey(key)))), /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-shortcut-help-description"
-    }, item.description));
-  }
-
   // src/config/domIds.ts
   var STYLE_ID = "fc-premium-style";
   var INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
@@ -165,6 +152,45 @@
   var PAGE_LOAD_DELAY_MS = 250;
   var TAG_PATTERN = /\+([A-Za-z0-9_-]+)/g;
   var GRAPH_VIEW_TYPES = ["quoted-sources", "quoted-by", "conversation"];
+  // src/ui/shortcutHelp.tsx
+  function ShortcutHelpContainer(props) {
+    return /* @__PURE__ */ createElement("div", {
+      id: SHORTCUT_HELP_CONTAINER_ID
+    }, /* @__PURE__ */ createElement("button", {
+      id: SHORTCUT_HELP_BUTTON_ID,
+      type: "button",
+      "aria-label": "Mostrar atajos de teclado",
+      "aria-haspopup": "dialog",
+      "aria-expanded": "false",
+      onClick: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        props.onToggle();
+      }
+    }, "?"), /* @__PURE__ */ createElement("div", {
+      id: SHORTCUT_HELP_POPOVER_ID,
+      hidden: true,
+      role: "dialog",
+      "aria-label": "Atajos de teclado"
+    }, /* @__PURE__ */ createElement("div", {
+      className: "fc-premium-shortcut-help-title"
+    }, "Atajos de teclado"), props.items.map((item) => /* @__PURE__ */ createElement(ShortcutHelpRow, {
+      item,
+      formatKey: props.formatKey
+    }))));
+  }
+  function ShortcutHelpRow(props) {
+    return /* @__PURE__ */ createElement("div", {
+      className: "fc-premium-shortcut-help-row"
+    }, /* @__PURE__ */ createElement("span", {
+      className: "fc-premium-shortcut-help-keys"
+    }, props.item.keys.map((key) => /* @__PURE__ */ createElement("kbd", {
+      className: "fc-premium-shortcut-help-key"
+    }, props.formatKey(key)))), /* @__PURE__ */ createElement("span", {
+      className: "fc-premium-shortcut-help-description"
+    }, props.item.description));
+  }
+
   // src/ui/components/ThreadSearchPanel.tsx
   function ThreadSearchPanel(props) {
     return /* @__PURE__ */ createElement("table", {
@@ -3762,34 +3788,14 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       document.getElementById(SHORTCUT_HELP_CONTAINER_ID)?.remove();
       document.getElementById(SHORTCUT_HELP_BUTTON_ID)?.remove();
       document.getElementById(SHORTCUT_HELP_POPOVER_ID)?.remove();
-      const container = document.createElement("div");
-      container.id = SHORTCUT_HELP_CONTAINER_ID;
-      const button = document.createElement("button");
-      button.id = SHORTCUT_HELP_BUTTON_ID;
-      button.type = "button";
-      button.textContent = "?";
-      button.setAttribute("aria-label", "Mostrar atajos de teclado");
-      button.setAttribute("aria-haspopup", "dialog");
-      button.setAttribute("aria-expanded", "false");
-      const popover = document.createElement("div");
-      popover.id = SHORTCUT_HELP_POPOVER_ID;
-      popover.hidden = true;
-      popover.setAttribute("role", "dialog");
-      popover.setAttribute("aria-label", "Atajos de teclado");
-      const title = document.createElement("div");
-      title.className = "fc-premium-shortcut-help-title";
-      title.textContent = "Atajos de teclado";
-      popover.append(title);
-      for (const item of getShortcutHelpItems()) {
-        popover.append(createShortcutHelpRow(item, formatShortcutHelpKey));
-      }
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setShortcutHelpPopoverOpen(!isShortcutHelpPopoverOpen());
+      const container = ShortcutHelpContainer({
+        items: getShortcutHelpItems(),
+        formatKey: formatShortcutHelpKey,
+        onToggle: () => {
+          setShortcutHelpPopoverOpen(!isShortcutHelpPopoverOpen());
+        }
       });
       document.addEventListener("click", handleShortcutHelpDocumentClick, true);
-      container.append(button, popover);
       document.body.prepend(container);
     }
     function openSelectedNavigationItem() {

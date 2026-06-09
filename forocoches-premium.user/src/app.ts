@@ -1,4 +1,4 @@
-import { createShortcutHelpRow } from "./ui/shortcutHelp";
+import { ShortcutHelpContainer } from "./ui/shortcutHelp";
 import { ThreadSearchPanel } from "./ui/components/ThreadSearchPanel";
 import {
   HiddenThreadsModal,
@@ -1984,40 +1984,15 @@ export function runForocochesPremium() {
     document.getElementById(SHORTCUT_HELP_BUTTON_ID)?.remove();
     document.getElementById(SHORTCUT_HELP_POPOVER_ID)?.remove();
 
-    const container = document.createElement("div");
-    container.id = SHORTCUT_HELP_CONTAINER_ID;
-
-    const button = document.createElement("button");
-    button.id = SHORTCUT_HELP_BUTTON_ID;
-    button.type = "button";
-    button.textContent = "?";
-    button.setAttribute("aria-label", "Mostrar atajos de teclado");
-    button.setAttribute("aria-haspopup", "dialog");
-    button.setAttribute("aria-expanded", "false");
-
-    const popover = document.createElement("div");
-    popover.id = SHORTCUT_HELP_POPOVER_ID;
-    popover.hidden = true;
-    popover.setAttribute("role", "dialog");
-    popover.setAttribute("aria-label", "Atajos de teclado");
-
-    const title = document.createElement("div");
-    title.className = "fc-premium-shortcut-help-title";
-    title.textContent = "Atajos de teclado";
-    popover.append(title);
-
-    for (const item of getShortcutHelpItems()) {
-      popover.append(createShortcutHelpRow(item, formatShortcutHelpKey));
-    }
-
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setShortcutHelpPopoverOpen(!isShortcutHelpPopoverOpen());
+    const container = ShortcutHelpContainer({
+      items: getShortcutHelpItems(),
+      formatKey: formatShortcutHelpKey,
+      onToggle: () => {
+        setShortcutHelpPopoverOpen(!isShortcutHelpPopoverOpen());
+      },
     });
 
     document.addEventListener("click", handleShortcutHelpDocumentClick, true);
-    container.append(button, popover);
     document.body.prepend(container);
   }
 
