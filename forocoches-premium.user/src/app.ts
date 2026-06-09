@@ -39,6 +39,11 @@ import {
 import { enhanceQuoteLinks as enhanceQuoteLinksInDom } from "./ui/postQuoteDom";
 import { appendReplyBadge } from "./ui/postReplyBadgeDom";
 import {
+  ensureThreadSummary as ensureThreadSummaryInDom,
+  renderThreadSummaryMenu as renderThreadSummaryMenuInDom,
+  setThreadSummaryMessage,
+} from "./ui/threadSummaryDom";
+import {
   ForumLoadingStatus,
   ForumSidebarToggleButton,
 } from "./ui/components/ForumControls";
@@ -78,10 +83,8 @@ import {
   FORUM_CONTROLS_ROW_ID,
   FORUM_SEARCH_SLOT_ID,
   FORUM_LOADING_STATUS_ID,
-  THREAD_PROGRESS_ID,
   NAVIGATION_STATUS_ID,
   THREAD_SUMMARY_ID,
-  THREAD_CONTROLS_ID,
   THREAD_SEARCH_PANEL_ID,
   THREAD_SEARCH_AUTHOR_INPUT_ID,
   FORUM_SIDEBAR_HIDDEN_CLASS,
@@ -2098,88 +2101,22 @@ export function runForocochesPremium() {
   }
 
   function ensureThreadSummary(): HTMLElement | null {
-    const posts = getPostsElement();
-
-    if (!posts) {
-      return null;
-    }
-
-    const existing = document.getElementById(THREAD_SUMMARY_ID);
-
-    if (existing instanceof HTMLElement) {
-      installStickySummaryShadow(existing);
-      return existing;
-    }
-
-    const summary = document.createElement("div");
-    summary.id = THREAD_SUMMARY_ID;
-    posts.before(summary);
-    installStickySummaryShadow(summary);
-    return summary;
+    return ensureThreadSummaryInDom(getPostsElement());
   }
 
   function setSummary(summary: HTMLElement | null, message: string) {
-    if (!summary) {
-      return;
-    }
-
-    summary.innerHTML = message;
-  }
-
-  function renderThreadProgress(summary: HTMLElement | null, state: ThreadLoadState) {
-    document.getElementById(THREAD_PROGRESS_ID)?.remove();
-
-    if (!(summary instanceof HTMLElement) || !state.isLoading) {
-      return;
-    }
-
-    const progress = document.createElement("span");
-    progress.id = THREAD_PROGRESS_ID;
-
-    const spinner = document.createElement("span");
-    spinner.className = "fc-premium-spinner";
-    spinner.setAttribute("aria-hidden", "true");
-    progress.append(spinner);
-
-    const text = document.createElement("span");
-    const pageLabel = `${state.loadedPages}/${state.targetPages}`;
-    text.textContent = `paginas ${pageLabel}`;
-    progress.append(text);
-    summary.append(progress);
-  }
-
-  function installStickySummaryShadow(summary: HTMLElement | null) {
-    if (!summary || summary.dataset.fcPremiumStickyInstalled === "true") {
-      return;
-    }
-
-    summary.dataset.fcPremiumStickyInstalled = "true";
-
-    const updateShadow = () => {
-      summary.classList.toggle(
-        "fc-premium-summary-stuck",
-        summary.getBoundingClientRect().top <= 0,
-      );
-    };
-
-    window.addEventListener("scroll", updateShadow, { passive: true });
-    window.addEventListener("resize", updateShadow);
-    updateShadow();
+    setThreadSummaryMessage(summary, message);
   }
 
   function renderThreadSummaryMenu(summary: HTMLElement | null) {
-    if (!(summary instanceof HTMLElement)) {
-      return;
-    }
-
-    summary.textContent = "";
-    summary.hidden = true;
-    const controlsTarget = renderThreadControls(summary);
-
-    if (controlsTarget === summary) {
-      summary.hidden = !threadLoadState.isLoading;
-      renderThreadProgress(summary, threadLoadState);
-    }
+    renderThreadSummaryMenuInDom({
+      summary,
+      state: threadLoadState,
+      onRefreshCache: async () => {
+        await clearCurrentThreadCache();
+        location.reload();
+      },
+    });
   }
 
   function enhanceThreadHeader() {
@@ -2246,51 +2183,6 @@ export function runForocochesPremium() {
     }
 
     selectPostById(postId);
-  }
-
-  function renderThreadControls(summary: HTMLElement | null): HTMLElement | null {
-    document.getElementById(THREAD_CONTROLS_ID)?.remove();
-
-    const threadToolsCell = document.getElementById("threadtools");
-    const toolbarRow = threadToolsCell?.parentElement;
-
-    if (!summary && !(toolbarRow instanceof HTMLTableRowElement)) {
-      return null;
-    }
-
-    const controls =
-      toolbarRow instanceof HTMLTableRowElement
-        ? document.createElement("td")
-        : document.createElement("div");
-    controls.id = THREAD_CONTROLS_ID;
-
-    if (controls instanceof HTMLTableCellElement) {
-      controls.className = "vbmenu_control fc-premium-thread-toolbar-controls";
-      controls.noWrap = true;
-    }
-
-    const cacheButton = document.createElement("button");
-    cacheButton.type = "button";
-    cacheButton.textContent = "Actualizar cache";
-    cacheButton.title =
-      "Borrar la cache de este hilo y volver a cargar paginas";
-    cacheButton.addEventListener("click", async () => {
-      await clearCurrentThreadCache();
-      location.reload();
-    });
-    controls.append(cacheButton);
-    renderThreadProgress(controls, threadLoadState);
-
-    if (
-      toolbarRow instanceof HTMLTableRowElement &&
-      threadToolsCell instanceof HTMLTableCellElement
-    ) {
-      toolbarRow.insertBefore(controls, threadToolsCell);
-      return controls;
-    }
-
-    summary?.append(controls);
-    return summary || null;
   }
 
   function hasActiveThreadPostFilters(): boolean {

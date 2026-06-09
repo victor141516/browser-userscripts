@@ -1329,6 +1329,104 @@
     }
   }
 
+  // src/ui/threadSummaryDom.ts
+  function ensureThreadSummary(posts) {
+    if (!posts) {
+      return null;
+    }
+    const existing = document.getElementById(THREAD_SUMMARY_ID);
+    if (existing instanceof HTMLElement) {
+      installStickySummaryShadow(existing);
+      return existing;
+    }
+    const summary = document.createElement("div");
+    summary.id = THREAD_SUMMARY_ID;
+    posts.before(summary);
+    installStickySummaryShadow(summary);
+    return summary;
+  }
+  function setThreadSummaryMessage(summary, message) {
+    if (!summary) {
+      return;
+    }
+    summary.innerHTML = message;
+  }
+  function renderThreadSummaryMenu(options) {
+    const summary = options.summary;
+    if (!(summary instanceof HTMLElement)) {
+      return;
+    }
+    summary.textContent = "";
+    summary.hidden = true;
+    const controlsTarget = renderThreadControls({
+      summary,
+      state: options.state,
+      onRefreshCache: options.onRefreshCache
+    });
+    if (controlsTarget === summary) {
+      summary.hidden = !options.state.isLoading;
+      renderThreadProgress(summary, options.state);
+    }
+  }
+  function renderThreadControls(options) {
+    document.getElementById(THREAD_CONTROLS_ID)?.remove();
+    const threadToolsCell = document.getElementById("threadtools");
+    const toolbarRow = threadToolsCell?.parentElement;
+    if (!options.summary && !(toolbarRow instanceof HTMLTableRowElement)) {
+      return null;
+    }
+    const controls = toolbarRow instanceof HTMLTableRowElement ? document.createElement("td") : document.createElement("div");
+    controls.id = THREAD_CONTROLS_ID;
+    if (controls instanceof HTMLTableCellElement) {
+      controls.className = "vbmenu_control fc-premium-thread-toolbar-controls";
+      controls.noWrap = true;
+    }
+    const cacheButton = document.createElement("button");
+    cacheButton.type = "button";
+    cacheButton.textContent = "Actualizar cache";
+    cacheButton.title = "Borrar la cache de este hilo y volver a cargar paginas";
+    cacheButton.addEventListener("click", () => {
+      options.onRefreshCache();
+    });
+    controls.append(cacheButton);
+    renderThreadProgress(controls, options.state);
+    if (toolbarRow instanceof HTMLTableRowElement && threadToolsCell instanceof HTMLTableCellElement) {
+      toolbarRow.insertBefore(controls, threadToolsCell);
+      return controls;
+    }
+    options.summary?.append(controls);
+    return options.summary || null;
+  }
+  function renderThreadProgress(summary, state) {
+    document.getElementById(THREAD_PROGRESS_ID)?.remove();
+    if (!(summary instanceof HTMLElement) || !state.isLoading) {
+      return;
+    }
+    const progress = document.createElement("span");
+    progress.id = THREAD_PROGRESS_ID;
+    const spinner = document.createElement("span");
+    spinner.className = "fc-premium-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    progress.append(spinner);
+    const text = document.createElement("span");
+    const pageLabel = `${state.loadedPages}/${state.targetPages}`;
+    text.textContent = `paginas ${pageLabel}`;
+    progress.append(text);
+    summary.append(progress);
+  }
+  function installStickySummaryShadow(summary) {
+    if (!summary || summary.dataset.fcPremiumStickyInstalled === "true") {
+      return;
+    }
+    summary.dataset.fcPremiumStickyInstalled = "true";
+    const updateShadow = () => {
+      summary.classList.toggle("fc-premium-summary-stuck", summary.getBoundingClientRect().top <= 0);
+    };
+    window.addEventListener("scroll", updateShadow, { passive: true });
+    window.addEventListener("resize", updateShadow);
+    updateShadow();
+  }
+
   // src/ui/components/ForumControls.tsx
   function ForumSidebarToggleButton(props) {
     return /* @__PURE__ */ createElement("button", {
@@ -5147,68 +5245,21 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       const posts = document.querySelector(POSTS_SELECTOR);
       return posts instanceof HTMLElement ? posts : null;
     }
-    function ensureThreadSummary() {
-      const posts = getPostsElement();
-      if (!posts) {
-        return null;
-      }
-      const existing = document.getElementById(THREAD_SUMMARY_ID);
-      if (existing instanceof HTMLElement) {
-        installStickySummaryShadow(existing);
-        return existing;
-      }
-      const summary = document.createElement("div");
-      summary.id = THREAD_SUMMARY_ID;
-      posts.before(summary);
-      installStickySummaryShadow(summary);
-      return summary;
+    function ensureThreadSummary2() {
+      return ensureThreadSummary(getPostsElement());
     }
     function setSummary(summary, message) {
-      if (!summary) {
-        return;
-      }
-      summary.innerHTML = message;
+      setThreadSummaryMessage(summary, message);
     }
-    function renderThreadProgress(summary, state) {
-      document.getElementById(THREAD_PROGRESS_ID)?.remove();
-      if (!(summary instanceof HTMLElement) || !state.isLoading) {
-        return;
-      }
-      const progress = document.createElement("span");
-      progress.id = THREAD_PROGRESS_ID;
-      const spinner = document.createElement("span");
-      spinner.className = "fc-premium-spinner";
-      spinner.setAttribute("aria-hidden", "true");
-      progress.append(spinner);
-      const text = document.createElement("span");
-      const pageLabel = `${state.loadedPages}/${state.targetPages}`;
-      text.textContent = `paginas ${pageLabel}`;
-      progress.append(text);
-      summary.append(progress);
-    }
-    function installStickySummaryShadow(summary) {
-      if (!summary || summary.dataset.fcPremiumStickyInstalled === "true") {
-        return;
-      }
-      summary.dataset.fcPremiumStickyInstalled = "true";
-      const updateShadow = () => {
-        summary.classList.toggle("fc-premium-summary-stuck", summary.getBoundingClientRect().top <= 0);
-      };
-      window.addEventListener("scroll", updateShadow, { passive: true });
-      window.addEventListener("resize", updateShadow);
-      updateShadow();
-    }
-    function renderThreadSummaryMenu(summary) {
-      if (!(summary instanceof HTMLElement)) {
-        return;
-      }
-      summary.textContent = "";
-      summary.hidden = true;
-      const controlsTarget = renderThreadControls(summary);
-      if (controlsTarget === summary) {
-        summary.hidden = !threadLoadState.isLoading;
-        renderThreadProgress(summary, threadLoadState);
-      }
+    function renderThreadSummaryMenu2(summary) {
+      renderThreadSummaryMenu({
+        summary,
+        state: threadLoadState,
+        onRefreshCache: async () => {
+          await clearCurrentThreadCache();
+          location.reload();
+        }
+      });
     }
     function enhanceThreadHeader() {
       const titleTable = getThreadTitleTable();
@@ -5253,39 +5304,9 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         updateThreadPageUrl(post.pageNumber);
         updateOriginalThreadPageMenus2();
         renderThreadPosts(loadedThreadPosts);
-        renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+        renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
       }
       selectPostById(postId);
-    }
-    function renderThreadControls(summary) {
-      document.getElementById(THREAD_CONTROLS_ID)?.remove();
-      const threadToolsCell = document.getElementById("threadtools");
-      const toolbarRow = threadToolsCell?.parentElement;
-      if (!summary && !(toolbarRow instanceof HTMLTableRowElement)) {
-        return null;
-      }
-      const controls = toolbarRow instanceof HTMLTableRowElement ? document.createElement("td") : document.createElement("div");
-      controls.id = THREAD_CONTROLS_ID;
-      if (controls instanceof HTMLTableCellElement) {
-        controls.className = "vbmenu_control fc-premium-thread-toolbar-controls";
-        controls.noWrap = true;
-      }
-      const cacheButton = document.createElement("button");
-      cacheButton.type = "button";
-      cacheButton.textContent = "Actualizar cache";
-      cacheButton.title = "Borrar la cache de este hilo y volver a cargar paginas";
-      cacheButton.addEventListener("click", async () => {
-        await clearCurrentThreadCache();
-        location.reload();
-      });
-      controls.append(cacheButton);
-      renderThreadProgress(controls, threadLoadState);
-      if (toolbarRow instanceof HTMLTableRowElement && threadToolsCell instanceof HTMLTableCellElement) {
-        toolbarRow.insertBefore(controls, threadToolsCell);
-        return controls;
-      }
-      summary?.append(controls);
-      return summary || null;
     }
     function hasActiveThreadPostFilters() {
       return Boolean(activeThreadSearchQuery) || activeAuthorFilters.size > 0;
@@ -5442,7 +5463,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       syncThreadStateUrl();
       if (hadGraphView || options.render) {
         renderThreadPosts(loadedThreadPosts);
-        renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+        renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
         return;
       }
       const counts = applyThreadPostFilters();
@@ -5461,7 +5482,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       updateThreadPageUrl(pageNumber, { history: "push" });
       updateOriginalThreadPageMenus2();
       renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
       window.scrollTo({ top: 0, behavior: "auto" });
     }
     function togglePageFilter(pageNumber) {
@@ -5520,7 +5541,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       updateThreadPageUrl(activePageFilter);
       updateOriginalThreadPageMenus2();
       renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
     }
     function toggleAuthorFilter(author) {
       if (!isThreadPage()) {
@@ -5574,7 +5595,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       activePageFilter = null;
       syncThreadStateUrl({ history: options.history || "push" });
       renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
       if (options.scrollToFirstPost || options.scrollToFirstReply) {
         const viewPosts = getPostsForGraphView(activeGraphView, threadGraph, loadedThreadPosts);
         const targetPost = options.scrollToFirstPost ? viewPosts[0] || null : viewPosts.find((post) => post.id !== rootPostId) || null;
@@ -5607,7 +5628,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       updateThreadPageUrl(activePageFilter);
       updateOriginalThreadPageMenus2();
       renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
     }
     function getValidGraphViewFromQueryState(queryState) {
       return getValidGraphView(queryState.graphView, threadGraph);
@@ -5624,7 +5645,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       activeThreadSearchQuery = queryState.searchQuery;
       updateOriginalThreadPageMenus2();
       renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
       const hashPostId = getLocationPostHashId(url);
       if (hashPostId) {
         selectPostById(hashPostId, { scroll: true, updateUrl: false });
@@ -5762,7 +5783,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       enhanceThreadHeader();
       hideNativeThreadSearchMenu();
       hideUnusedTopNavigationBars();
-      const summary = ensureThreadSummary();
+      const summary = ensureThreadSummary2();
       const queryState = readThreadQueryState();
       const allPages = getThreadPages();
       const currentPageNumber = getPageNumber(new URL(location.href));
@@ -5801,7 +5822,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       if (summary) {
         summary.textContent = "";
       }
-      renderThreadSummaryMenu(summary);
+      renderThreadSummaryMenu2(summary);
       renderThreadSearchPanel();
       const cachedThread = await readCurrentThreadCache();
       if (cachedThread && isCompleteThreadCache(cachedThread)) {
@@ -5817,7 +5838,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
           isLoading: false
         };
         renderThreadPosts(loadedThreadPosts);
-        renderThreadSummaryMenu(summary);
+        renderThreadSummaryMenu2(summary);
         return;
       }
       const currentPageDocument = parseHtml(document.documentElement.outerHTML);
@@ -5835,7 +5856,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
           isLoading: true
         };
         renderThreadPosts(loadedThreadPosts);
-        renderThreadSummaryMenu(summary);
+        renderThreadSummaryMenu2(summary);
         const lastPage = pages[pages.length - 1];
         if (lastPage && page.pageNumber !== lastPage.pageNumber) {
           await sleep(PAGE_LOAD_DELAY_MS);
@@ -5848,7 +5869,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         isLoading: false
       };
       renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu(summary);
+      renderThreadSummaryMenu2(summary);
       if (loadedThreadPageNumbers.size >= pages.length) {
         await writeCurrentThreadCache(loadedThreadPosts, allPages.length, loadedThreadPageNumbers);
       }
@@ -5883,7 +5904,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       try {
         await enhanceThreadPage();
       } catch (error) {
-        const summary = ensureThreadSummary();
+        const summary = ensureThreadSummary2();
         setSummary(summary, `<strong>Forocoches Premium:</strong> no se pudo ordenar el hilo: ${String(error)}`);
       } finally {
         await cleanupThreadCache();
