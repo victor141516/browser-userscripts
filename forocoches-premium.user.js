@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Forocoches Premium
 // @namespace    http://tampermonkey.net/
-// @version      2026-06-09-12
+// @version      2026-06-09-18
 // @description  Improves Forocoches thread reading
 // @author       victor141516
 // @match        https://forocoches.com/foro/*
@@ -16,24 +16,24 @@
 
   const STYLE_ID = "fc-premium-style";
   const INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
-  const SCRIPT_INSTANCE_VERSION = "2026-06-09-12";
+  const SCRIPT_INSTANCE_VERSION = "2026-06-09-18";
   const SHORTCUT_HELP_CONTAINER_ID = "fc-premium-shortcut-help-container";
   const SHORTCUT_HELP_BUTTON_ID = "fc-premium-shortcut-help-button";
   const SHORTCUT_HELP_POPOVER_ID = "fc-premium-shortcut-help-popover";
+  const HIDDEN_THREADS_BUTTON_ID = "fc-premium-hidden-threads-button";
+  const HIDDEN_THREADS_MODAL_ID = "fc-premium-hidden-threads-modal";
+  const HIDDEN_THREADS_MODAL_BODY_ID = "fc-premium-hidden-threads-modal-body";
+  const MODAL_OPEN_CLASS = "fc-premium-modal-open";
   const KEY_NAV_PREVIOUS_POST = "ArrowUp";
   const KEY_NAV_NEXT_POST = "ArrowDown";
   const KEY_NAV_FIRST_POST = "Home";
   const KEY_NAV_LAST_POST = "End";
   const KEY_CLEAR_ACTIVE_VIEW = "Escape";
-  const KEY_PREVIOUS_CITED_POST = "[";
-  const KEY_NEXT_CITED_POST = "]";
-  const KEY_THREAD_VIEW_RANKED = "1";
-  const KEY_THREAD_VIEW_ORIGINAL = "2";
-  const KEY_THREAD_VIEW_CITED = "3";
   const KEY_OPEN_SHORTCUT_HELP = "?";
   const KEY_QUOTE_SELECTED_POST = "Enter";
   const KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB = "Enter";
   const KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB_MODIFIER = "Cmd/Ctrl";
+  const KEY_HIDE_SELECTED_THREAD = "h";
   const KEY_NEW_THREAD_REPLY = "n";
   const KEY_MULTIQUOTE_SELECTED_POST = "m";
   const TOP_TAGS_ID = "fc-premium-top-tags";
@@ -49,7 +49,6 @@
   const FORUM_SIDEBAR_HIDDEN_CLASS = "fc-premium-forum-sidebar-hidden";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
   const FORUM_SIDEBAR_STORAGE_KEY = "fcPremiumForumSidebarHidden";
-  const THREAD_VIEW_MODE_STORAGE_KEY = "fcPremiumThreadViewMode";
   // Cached thread messages older than this are considered stale.
   const THREAD_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
   // Approximate maximum total size for cached thread records in IndexedDB.
@@ -57,7 +56,7 @@
   // IndexedDB database used for the heavier per-thread message cache.
   const THREAD_CACHE_DB_NAME = "fcPremiumThreadCache";
   // Bump this when the IndexedDB object store schema changes.
-  const THREAD_CACHE_DB_VERSION = 2;
+  const THREAD_CACHE_DB_VERSION = 3;
   // Object store containing one cached record per thread id.
   const THREAD_CACHE_STORE_NAME = "threads";
   // Object store containing thread-list records keyed by thread id.
@@ -72,16 +71,18 @@
   const FORUM_THREAD_CACHE_MAX_RECORDS = 1000;
   // Fallback page size used until the native forum page reveals its own size.
   const FORUM_THREAD_FALLBACK_PAGE_SIZE = 40;
+  // Delay before applying the local IndexedDB thread search while typing.
+  const FORUM_LIVE_SEARCH_DEBOUNCE_MS = 220;
   // Old localStorage prefix kept only so legacy cache entries can be removed.
   const THREAD_CACHE_LEGACY_STORAGE_PREFIX = "fcPremiumThreadCache:";
   const THREAD_STATE_QUERY_PARAMS = {
-    mode: "fcp_mode",
     graphType: "fcp_graph",
     graphRoot: "fcp_root",
     graphRelated: "fcp_related",
     pageFilter: "fcp_page",
     authorFilter: "fcp_author",
   };
+  const LEGACY_THREAD_STATE_QUERY_PARAMS = ["fcp_mode"];
   const FORUM_STATE_QUERY_PARAMS = {
     tag: "fcp_tag",
   };
@@ -96,7 +97,6 @@
   const HIDDEN_POST_PAGE_ATTRIBUTE = "data-fc-premium-page-hidden";
   const PAGE_LOAD_DELAY_MS = 250;
   const TAG_PATTERN = /\+([A-Za-z0-9_-]+)/g;
-  const THREAD_VIEW_MODES = ["ranked", "original", "cited"];
   const GRAPH_VIEW_TYPES = ["quoted-sources", "quoted-by", "conversation"];
 
   /**
@@ -130,10 +130,6 @@
    * @typedef {object} ThreadPage
    * @property {number} pageNumber
    * @property {string} url
-   */
-
-  /**
-   * @typedef {"ranked" | "original" | "cited"} ThreadViewMode
    */
 
   /**
@@ -182,6 +178,8 @@
    * @property {number} recentIndex
    * @property {number} lastSeen
    * @property {number} updatedAt
+   * @property {boolean} isHidden
+   * @property {number} hiddenAt
    */
 
   /**
@@ -199,7 +197,6 @@
 
   /**
    * @typedef {object} ThreadQueryState
-   * @property {ThreadViewMode | null} mode
    * @property {ActiveGraphView | null} graphView
    * @property {number | null} pageFilter
    * @property {string | null} authorFilter
@@ -236,15 +233,14 @@
   let activeGraphView = null;
   /** @type {ActiveGraphView | null} */
   let pendingGraphView = initialThreadQueryState.graphView;
-  /** @type {ThreadViewMode} */
-  let currentThreadViewMode =
-    initialThreadQueryState.mode || getSavedThreadViewMode();
   const compactModeEnabled = true;
   let forumSidebarHidden = getSavedForumSidebarHidden();
   const initialForumQueryState = readForumQueryState();
   /** @type {string | null} */
   let activeTagFilter = initialForumQueryState.tag;
   let activeForumTagPage = initialForumQueryState.page;
+  let activeForumSearchQuery = "";
+  let forumLiveSearchTimer = 0;
   /** @type {number | null} */
   let activePageFilter = initialThreadQueryState.pageFilter;
   /** @type {string | null} */
@@ -410,14 +406,6 @@
   }
 
   /**
-   * @param {string | null} mode
-   * @returns {mode is ThreadViewMode}
-   */
-  function isThreadViewMode(mode) {
-    return THREAD_VIEW_MODES.includes(mode || "");
-  }
-
-  /**
    * @param {string | null} type
    * @returns {type is GraphViewType}
    */
@@ -442,6 +430,10 @@
     for (const param of Object.values(THREAD_STATE_QUERY_PARAMS)) {
       url.searchParams.delete(param);
     }
+
+    for (const param of LEGACY_THREAD_STATE_QUERY_PARAMS) {
+      url.searchParams.delete(param);
+    }
   }
 
   /**
@@ -450,7 +442,6 @@
    */
   function readThreadQueryState(url = new URL(location.href)) {
     const emptyState = {
-      mode: null,
       graphView: null,
       pageFilter: null,
       authorFilter: null,
@@ -460,7 +451,6 @@
       return emptyState;
     }
 
-    const mode = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.mode);
     const graphType = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.graphType);
     const graphRoot = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.graphRoot);
     const graphRelated = url.searchParams.get(
@@ -483,7 +473,6 @@
         : null;
 
     return {
-      mode: isThreadViewMode(mode) ? mode : null,
       graphView,
       pageFilter:
         !graphView && Number.isFinite(pageFilter) && pageFilter > 0
@@ -498,13 +487,6 @@
    */
   function writeCurrentThreadStateQueryParams(url) {
     clearThreadStateQueryParams(url);
-
-    if (currentThreadViewMode !== "ranked") {
-      url.searchParams.set(
-        THREAD_STATE_QUERY_PARAMS.mode,
-        currentThreadViewMode,
-      );
-    }
 
     const graphView = activeGraphView || pendingGraphView;
 
@@ -568,22 +550,6 @@
     await new Promise((resolve) => {
       window.addEventListener("DOMContentLoaded", resolve, { once: true });
     });
-  }
-
-  /**
-   * @returns {ThreadViewMode}
-   */
-  function getSavedThreadViewMode() {
-    const mode = localStorage.getItem(THREAD_VIEW_MODE_STORAGE_KEY);
-    return isThreadViewMode(mode) ? mode : "ranked";
-  }
-
-  /**
-   * @param {ThreadViewMode} mode
-   */
-  function setSavedThreadViewMode(mode) {
-    currentThreadViewMode = mode;
-    localStorage.setItem(THREAD_VIEW_MODE_STORAGE_KEY, mode);
   }
 
   function applyCompactMode() {
@@ -753,6 +719,8 @@
       recentIndex: Number(record.recentIndex) || 0,
       lastSeen: Number(record.lastSeen) || 0,
       updatedAt: Number(record.updatedAt) || 0,
+      isHidden: Boolean(record.isHidden),
+      hiddenAt: Number(record.hiddenAt) || 0,
     };
   }
 
@@ -807,6 +775,14 @@
 
         if (forumStore && !forumStore.indexNames.contains("lastSeen")) {
           forumStore.createIndex("lastSeen", "lastSeen", { unique: false });
+        }
+
+        if (forumStore && !forumStore.indexNames.contains("isHidden")) {
+          forumStore.createIndex("isHidden", "isHidden", { unique: false });
+        }
+
+        if (forumStore && !forumStore.indexNames.contains("hiddenAt")) {
+          forumStore.createIndex("hiddenAt", "hiddenAt", { unique: false });
         }
       };
 
@@ -1241,6 +1217,10 @@
       const idsToDelete = records
         .slice()
         .sort((left, right) => {
+          if (left.isHidden !== right.isHidden) {
+            return left.isHidden ? 1 : -1;
+          }
+
           const leftHasTags = left.tags.length > 0;
           const rightHasTags = right.tags.length > 0;
 
@@ -1660,6 +1640,124 @@
       #${FORUM_SIDEBAR_TOGGLE_ID}:hover {
         background: #f2f5f8;
         color: #0b57d0;
+      }
+
+      html.${MODAL_OPEN_CLASS},
+      body.${MODAL_OPEN_CLASS} {
+        overflow: hidden !important;
+        overscroll-behavior: none;
+      }
+
+      #${HIDDEN_THREADS_MODAL_ID} {
+        align-items: center;
+        background: rgba(0, 0, 0, 0.48);
+        box-sizing: border-box;
+        display: flex;
+        inset: 0;
+        justify-content: center;
+        padding: 20px;
+        position: fixed;
+        z-index: 2147483645;
+      }
+
+      #${HIDDEN_THREADS_MODAL_ID}[hidden] {
+        display: none !important;
+      }
+
+      .fc-premium-hidden-threads-dialog {
+        background: #f7faff;
+        border: 1px solid #555576;
+        box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.28);
+        box-sizing: border-box;
+        color: #17324d;
+        display: flex;
+        flex-direction: column;
+        font: 11px/1.35 Verdana, Arial, sans-serif;
+        height: calc(100vh - 40px);
+        max-width: calc(100vw - 40px);
+        overflow: hidden;
+        width: 860px;
+      }
+
+      .fc-premium-hidden-threads-header {
+        align-items: center;
+        background: #555576;
+        color: #fff;
+        display: flex;
+        font-weight: 700;
+        justify-content: space-between;
+        padding: 6px 8px;
+      }
+
+      .fc-premium-hidden-threads-header button,
+      .fc-premium-hidden-thread-restore {
+        background: #e6e9ed;
+        border: 1px solid #7f8c99;
+        border-left-color: #f8f8f8;
+        border-radius: 2px;
+        border-top-color: #f8f8f8;
+        box-shadow: inset -1px -1px 0 #bcc3ca;
+        color: #1f3550;
+        cursor: pointer;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 3px 7px 4px;
+      }
+
+      .fc-premium-hidden-threads-header button:hover,
+      .fc-premium-hidden-thread-restore:hover {
+        background: #f2f5f8;
+        color: #0b57d0;
+      }
+
+      #${HIDDEN_THREADS_MODAL_BODY_ID} {
+        flex: 1 1 auto;
+        min-height: 0;
+        overscroll-behavior: contain;
+        overflow: auto;
+        padding: 8px;
+      }
+
+      .fc-premium-hidden-threads-table {
+        background: #555576;
+        border-collapse: separate;
+        border-spacing: 1px;
+        width: 100%;
+      }
+
+      .fc-premium-hidden-threads-table th {
+        background: #d5e6ee;
+        color: #17324d;
+        font-weight: 700;
+        padding: 5px;
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      .fc-premium-hidden-threads-table td {
+        background: #f1f1f1;
+        padding: 5px;
+        vertical-align: top;
+      }
+
+      .fc-premium-hidden-threads-table tr:nth-child(even) td {
+        background: #fff;
+      }
+
+      .fc-premium-hidden-thread-title {
+        font-weight: 700;
+      }
+
+      .fc-premium-hidden-thread-meta {
+        color: #3c4043;
+        font-size: 10px;
+        margin-top: 3px;
+      }
+
+      .fc-premium-hidden-threads-empty {
+        background: #fff;
+        border: 1px solid #b7d1ff;
+        padding: 14px;
+        text-align: center;
       }
 
       .fc-premium-quote-actions {
@@ -2641,6 +2739,245 @@
   }
 
   /**
+   * @returns {HTMLTableRowElement | null}
+   */
+  function getForumToolbarRow() {
+    const toolsCell = document.getElementById("forumtools");
+    const row = toolsCell?.parentElement;
+
+    return row instanceof HTMLTableRowElement ? row : null;
+  }
+
+  function renderHiddenThreadsToolbarButton() {
+    if (!isForumDisplayPage()) {
+      return;
+    }
+
+    const row = getForumToolbarRow();
+    const toolsCell = document.getElementById("forumtools");
+
+    if (!row || !(toolsCell instanceof HTMLTableCellElement)) {
+      return;
+    }
+
+    let cell = document.getElementById(HIDDEN_THREADS_BUTTON_ID);
+
+    if (!(cell instanceof HTMLTableCellElement)) {
+      cell = document.createElement("td");
+      cell.id = HIDDEN_THREADS_BUTTON_ID;
+      cell.className = "vbmenu_control";
+      cell.noWrap = true;
+      cell.style.cursor = "pointer";
+    }
+
+    const link = document.createElement("a");
+    link.href = "#";
+    link.textContent = "Hilos escondidos";
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      openHiddenThreadsModal();
+    });
+
+    cell.textContent = "";
+    cell.append(link);
+
+    if (cell.parentElement !== row || cell.nextElementSibling !== toolsCell) {
+      row.insertBefore(cell, toolsCell);
+    }
+  }
+
+  /**
+   * @returns {HTMLElement}
+   */
+  function ensureHiddenThreadsModal() {
+    let modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
+
+    if (modal instanceof HTMLElement) {
+      return modal;
+    }
+
+    modal = document.createElement("div");
+    modal.id = HIDDEN_THREADS_MODAL_ID;
+    modal.hidden = true;
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-label", "Hilos escondidos");
+
+    const dialog = document.createElement("div");
+    dialog.className = "fc-premium-hidden-threads-dialog";
+
+    const header = document.createElement("div");
+    header.className = "fc-premium-hidden-threads-header";
+
+    const title = document.createElement("span");
+    title.textContent = "Hilos escondidos";
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.textContent = "Cerrar";
+    closeButton.addEventListener("click", closeHiddenThreadsModal);
+
+    header.append(title, closeButton);
+
+    const body = document.createElement("div");
+    body.id = HIDDEN_THREADS_MODAL_BODY_ID;
+
+    dialog.append(header, body);
+    modal.append(dialog);
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) {
+        closeHiddenThreadsModal();
+      }
+    });
+
+    document.body.append(modal);
+    return modal;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  function isHiddenThreadsModalOpen() {
+    const modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
+    return modal instanceof HTMLElement && !modal.hidden;
+  }
+
+  function closeHiddenThreadsModal() {
+    const modal = document.getElementById(HIDDEN_THREADS_MODAL_ID);
+
+    if (modal instanceof HTMLElement) {
+      modal.hidden = true;
+    }
+
+    document.documentElement.classList.remove(MODAL_OPEN_CLASS);
+    document.body?.classList.remove(MODAL_OPEN_CLASS);
+  }
+
+  /**
+   * @param {number} timestamp
+   * @returns {string}
+   */
+  function formatHiddenThreadDate(timestamp) {
+    if (!timestamp) {
+      return "Sin fecha";
+    }
+
+    try {
+      return new Date(timestamp).toLocaleString();
+    } catch (_error) {
+      return "Sin fecha";
+    }
+  }
+
+  /**
+   * @param {string[]} tags
+   * @returns {DocumentFragment}
+   */
+  function createHiddenThreadTagsFragment(tags) {
+    const fragment = document.createDocumentFragment();
+
+    for (const tag of tags.slice(0, 5)) {
+      const chip = document.createElement("span");
+      chip.className = "fc-premium-tag-chip";
+      chip.textContent = `+${tag}`;
+      fragment.append(chip);
+    }
+
+    if (tags.length > 5) {
+      fragment.append(document.createTextNode(` +${tags.length - 5}`));
+    }
+
+    return fragment;
+  }
+
+  function renderHiddenThreadsModalBody() {
+    const modal = ensureHiddenThreadsModal();
+    const body = modal.querySelector(`#${HIDDEN_THREADS_MODAL_BODY_ID}`);
+
+    if (!(body instanceof HTMLElement)) {
+      return;
+    }
+
+    body.textContent = "";
+
+    const records = getHiddenForumThreadRecordsForCurrentForum();
+
+    if (records.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "fc-premium-hidden-threads-empty";
+      empty.textContent = "No hay hilos escondidos en este foro.";
+      body.append(empty);
+      return;
+    }
+
+    const table = document.createElement("table");
+    table.className = "fc-premium-hidden-threads-table";
+
+    const head = table.createTHead();
+    const headRow = head.insertRow();
+
+    for (const label of ["Hilo", "Info", "Oculto", "Accion"]) {
+      const cell = document.createElement("th");
+      cell.textContent = label;
+      headRow.append(cell);
+    }
+
+    const tableBody = table.createTBody();
+
+    for (const record of records) {
+      const row = tableBody.insertRow();
+
+      const titleCell = row.insertCell();
+      const title = document.createElement("a");
+      title.className = "fc-premium-hidden-thread-title";
+      title.href = record.url;
+      title.textContent = record.title || `Hilo ${record.id}`;
+      titleCell.append(title);
+
+      if (record.tags.length > 0) {
+        const tags = document.createElement("div");
+        tags.className = "fc-premium-hidden-thread-meta";
+        tags.append(createHiddenThreadTagsFragment(record.tags));
+        titleCell.append(tags);
+      }
+
+      const infoCell = row.insertCell();
+      const info = [
+        record.author ? `Autor: ${record.author}` : "",
+        record.statsText,
+        record.lastPostText,
+      ].filter(Boolean);
+      infoCell.textContent = info.length > 0 ? info.join(" · ") : "-";
+
+      const hiddenAtCell = row.insertCell();
+      hiddenAtCell.textContent = formatHiddenThreadDate(record.hiddenAt);
+
+      const actionsCell = row.insertCell();
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "fc-premium-hidden-thread-restore";
+      restore.textContent = "Restaurar";
+      restore.addEventListener("click", () => {
+        void setForumThreadHiddenState(record.id, false);
+      });
+      actionsCell.append(restore);
+    }
+
+    body.append(table);
+  }
+
+  function openHiddenThreadsModal() {
+    const modal = ensureHiddenThreadsModal();
+    renderHiddenThreadsModalBody();
+    modal.hidden = false;
+    document.documentElement.classList.add(MODAL_OPEN_CLASS);
+    document.body.classList.add(MODAL_OPEN_CLASS);
+    modal
+      .querySelector("button")
+      ?.focus({ preventScroll: true });
+  }
+
+  /**
    * @param {HTMLTableElement} table
    * @returns {boolean}
    */
@@ -2739,6 +3076,51 @@
   }
 
   /**
+   * @param {string} query
+   */
+  function applyForumLiveSearchQuery(query) {
+    const normalizedQuery = normalizeText(query);
+
+    if (normalizedQuery === activeForumSearchQuery) {
+      return;
+    }
+
+    activeForumSearchQuery = normalizedQuery;
+    activeForumTagPage = 1;
+    refreshForumTagUi({ readUrlState: false });
+  }
+
+  /**
+   * @param {string} query
+   */
+  function scheduleForumLiveSearch(query) {
+    window.clearTimeout(forumLiveSearchTimer);
+    forumLiveSearchTimer = window.setTimeout(() => {
+      applyForumLiveSearchQuery(query);
+    }, FORUM_LIVE_SEARCH_DEBOUNCE_MS);
+  }
+
+  /**
+   * @param {HTMLFormElement | HTMLElement | null} root
+   */
+  function installForumLiveSearch(root) {
+    const input = root?.querySelector("input[name='query']");
+
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+
+    if (input.dataset.fcPremiumLiveSearchInstalled === "true") {
+      return;
+    }
+
+    input.dataset.fcPremiumLiveSearchInstalled = "true";
+    input.addEventListener("input", () => {
+      scheduleForumLiveSearch(input.value);
+    });
+  }
+
+  /**
    * @param {HTMLTableElement} controlsTable
    * @returns {HTMLFormElement | null}
    */
@@ -2756,9 +3138,49 @@
   }
 
   /**
+   * @param {HTMLTableElement} table
+   */
+  function refreshExistingForumControlsRow(table) {
+    table.classList.add("fc-premium-forum-controls-table");
+    table.removeAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE);
+
+    const toggleCell = table.querySelector(
+      ".fc-premium-forum-sidebar-toggle-cell",
+    );
+
+    if (toggleCell instanceof HTMLTableCellElement) {
+      const button = getOrCreateForumSidebarToggleButton();
+
+      if (!toggleCell.contains(button)) {
+        toggleCell.textContent = "";
+        toggleCell.append(button);
+      }
+    }
+
+    installForumLiveSearch(table);
+
+    if (!document.getElementById(FORUM_LOADING_STATUS_ID)) {
+      const searchCell = table.querySelector(`#${FORUM_SEARCH_SLOT_ID}`);
+
+      if (searchCell instanceof HTMLElement) {
+        searchCell.append(createForumLoadingStatus());
+      }
+    }
+
+    renderForumLoadingStatus();
+  }
+
+  /**
    * @returns {HTMLTableElement | null}
    */
   function renderForumControlsRow() {
+    const existing = document.getElementById(FORUM_CONTROLS_ROW_ID);
+
+    if (existing instanceof HTMLTableElement) {
+      refreshExistingForumControlsRow(existing);
+      return existing;
+    }
+
     const table = getNativeForumControlsTable();
 
     if (!(table instanceof HTMLTableElement)) {
@@ -2806,6 +3228,7 @@
       moveForumHeaderSearchForm(searchCell);
     }
 
+    installForumLiveSearch(searchCell);
     searchCell.append(createForumLoadingStatus());
 
     const pagerCell = row.insertCell();
@@ -2889,6 +3312,7 @@
     removeForumTitleTables();
     applyForumSidebarVisibility();
     renderForumControlsRow();
+    renderHiddenThreadsToolbarButton();
     hideUnusedTopNavigationBars();
   }
 
@@ -2999,6 +3423,58 @@
   }
 
   /**
+   * @returns {ForumThreadRecord[]}
+   */
+  function getVisibleCachedForumThreadsForCurrentForum() {
+    return getCachedForumThreadsForCurrentForum().filter(
+      (record) => !record.isHidden,
+    );
+  }
+
+  /**
+   * @returns {ForumThreadRecord[]}
+   */
+  function getHiddenForumThreadRecordsForCurrentForum() {
+    return sortForumThreadRecords(
+      getCachedForumThreadsForCurrentForum().filter(
+        (record) => record.isHidden,
+      ),
+    ).sort((left, right) => right.hiddenAt - left.hiddenAt);
+  }
+
+  /**
+   * @param {string | null | undefined} query
+   * @returns {string[]}
+   */
+  function getForumSearchTokens(query) {
+    return normalizeLayoutText(query)
+      .split(/\s+/)
+      .filter(Boolean);
+  }
+
+  /**
+   * @param {ForumThreadRecord} record
+   * @returns {string}
+   */
+  function getForumThreadTitleSearchText(record) {
+    return normalizeLayoutText(record.title);
+  }
+
+  /**
+   * @param {ForumThreadRecord} record
+   * @param {string[]} tokens
+   * @returns {boolean}
+   */
+  function forumThreadMatchesSearchTokens(record, tokens) {
+    if (tokens.length === 0) {
+      return true;
+    }
+
+    const text = getForumThreadTitleSearchText(record);
+    return tokens.every((token) => text.includes(token));
+  }
+
+  /**
    * @param {ForumThreadRecord[]} records
    * @returns {ForumThreadRecord[]}
    */
@@ -3021,10 +3497,15 @@
    * @returns {ForumThreadRecord[]}
    */
   function getForumThreadRecordsForTag(tag) {
-    const records = getCachedForumThreadsForCurrentForum();
+    const records = getVisibleCachedForumThreadsForCurrentForum();
+    const tokens = getForumSearchTokens(activeForumSearchQuery);
 
     return sortForumThreadRecords(
-      tag ? records.filter((record) => record.tags.includes(tag)) : records,
+      records.filter(
+        (record) =>
+          (!tag || record.tags.includes(tag)) &&
+          forumThreadMatchesSearchTokens(record, tokens),
+      ),
     );
   }
 
@@ -3171,8 +3652,10 @@
    */
   function setForumTagPage(pageNumber) {
     activeForumTagPage = pageNumber;
-    syncForumTagUrl({ history: "push" });
-    refreshForumTagUi();
+    if (!activeForumSearchQuery) {
+      syncForumTagUrl({ history: "push" });
+    }
+    refreshForumTagUi({ readUrlState: !activeForumSearchQuery });
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
@@ -3233,9 +3716,14 @@
 
     captureNativeForumThreadRows();
 
+    const cachedForumRecords = getCachedForumThreadsForCurrentForum();
     const records = getForumThreadRecordsForTag(activeTagFilter);
 
-    if (records.length === 0 && !activeTagFilter) {
+    if (
+      cachedForumRecords.length === 0 &&
+      !activeTagFilter &&
+      !activeForumSearchQuery
+    ) {
       return restoreNativeForumThreadRows();
     }
 
@@ -3251,6 +3739,7 @@
       [
         "dynamic",
         activeTagFilter || "",
+        activeForumSearchQuery,
         activeForumTagPage,
         pageSize,
       ].join(":"),
@@ -3373,6 +3862,8 @@
       recentIndex,
       lastSeen: scrapeStartedAt,
       updatedAt: Date.now(),
+      isHidden: false,
+      hiddenAt: 0,
     };
   }
 
@@ -3428,6 +3919,135 @@
   }
 
   /**
+   * @returns {ForumThreadRecord[]}
+   */
+  function collectCurrentForumThreadRecords() {
+    const forumId = getForumId();
+
+    if (!forumId) {
+      return [];
+    }
+
+    return collectForumThreadRecords(
+      document,
+      location.href,
+      forumId,
+      getPageNumber(new URL(location.href)),
+      Date.now(),
+    );
+  }
+
+  /**
+   * @param {string} threadId
+   * @returns {ForumThreadRecord | null}
+   */
+  function getCurrentForumThreadRecord(threadId) {
+    return (
+      collectCurrentForumThreadRecords().find(
+        (record) => record.id === threadId,
+      ) || null
+    );
+  }
+
+  /**
+   * @returns {Promise<void>}
+   */
+  async function cacheCurrentForumThreadRows() {
+    const records = collectCurrentForumThreadRecords();
+
+    if (records.length === 0) {
+      return;
+    }
+
+    mergeCachedForumThreadRecords(records);
+    await writeForumThreadCacheRecords(
+      records
+        .map((record) =>
+          cachedForumThreads.find(
+            (cachedRecord) => cachedRecord.id === record.id,
+          ),
+        )
+        .filter((record) => record !== undefined),
+    );
+  }
+
+  /**
+   * @param {string} threadId
+   * @param {boolean} hidden
+   * @returns {Promise<boolean>}
+   */
+  async function setForumThreadHiddenState(threadId, hidden) {
+    if (!isForumDisplayPage() || !threadId) {
+      return false;
+    }
+
+    const now = Date.now();
+    let existing =
+      cachedForumThreads.find((record) => record.id === threadId) ||
+      getCurrentForumThreadRecord(threadId);
+
+    if (hidden && getCachedForumThreadsForCurrentForum().length === 0) {
+      await cacheCurrentForumThreadRows();
+      existing =
+        cachedForumThreads.find((record) => record.id === threadId) ||
+        existing;
+    }
+
+    if (!existing) {
+      return false;
+    }
+
+    const record = {
+      ...existing,
+      isHidden: hidden,
+      hiddenAt: hidden ? now : 0,
+      updatedAt: now,
+    };
+
+    cachedForumThreads = cachedForumThreads
+      .filter((cachedRecord) => cachedRecord.id !== threadId)
+      .concat(record);
+
+    await writeForumThreadCacheRecords([record]);
+    cachedForumThreads = await readForumThreadCacheRecords();
+    refreshForumTagUi();
+
+    if (isHiddenThreadsModalOpen()) {
+      renderHiddenThreadsModalBody();
+    }
+
+    return true;
+  }
+
+  /**
+   * @returns {Promise<boolean>}
+   */
+  async function hideSelectedForumThread() {
+    if (!isForumDisplayPage()) {
+      return false;
+    }
+
+    const selected = getSelectedNavigationItem();
+    const link = selected?.link;
+    const threadId = link ? getThreadId(new URL(link.href)) : null;
+
+    if (!threadId) {
+      return false;
+    }
+
+    const previousIndex = Math.max(selectedNavigationIndex, 0);
+    const hidden = await setForumThreadHiddenState(threadId, true);
+
+    if (hidden && navigationItems.length > 0) {
+      selectNavigationIndex(
+        Math.min(previousIndex, navigationItems.length - 1),
+      );
+    }
+
+    return hidden;
+  }
+
+  /**
    * @param {ForumThreadRecord[]} records
    */
   function mergeCachedForumThreadRecords(records) {
@@ -3440,7 +4060,12 @@
     );
 
     for (const record of records) {
-      byId.set(record.id, record);
+      const previous = byId.get(record.id);
+      byId.set(record.id, {
+        ...record,
+        isHidden: Boolean(previous?.isHidden || record.isHidden),
+        hiddenAt: previous?.hiddenAt || record.hiddenAt || 0,
+      });
     }
 
     cachedForumThreads = Array.from(byId.values());
@@ -3463,19 +4088,26 @@
     return url;
   }
 
-  function refreshForumTagUi() {
-    const queryState = readForumQueryState();
-    activeTagFilter = queryState.tag;
-    activeForumTagPage = queryState.page;
+  /**
+   * @param {{ readUrlState?: boolean }} [options]
+   */
+  function refreshForumTagUi(options = {}) {
+    if (options.readUrlState !== false) {
+      const queryState = readForumQueryState();
+      activeTagFilter = queryState.tag;
+
+      if (!activeForumSearchQuery) {
+        activeForumTagPage = queryState.page;
+      }
+    }
+
     const threadListChanged = renderForumThreadList();
     renderTopTagBar();
     renderForumControlsRow();
+    renderHiddenThreadsToolbarButton();
     refreshNavigation({ reset: threadListChanged });
   }
 
-  /**
-   * @returns {Promise<void>}
-   */
   /**
    * @param {number} pageNumber
    * @param {number} scrapeStartedAt
@@ -3509,7 +4141,15 @@
    */
   async function saveScrapedForumThreadRecords(records) {
     mergeCachedForumThreadRecords(records);
-    await writeForumThreadCacheRecords(records);
+    await writeForumThreadCacheRecords(
+      records
+        .map((record) =>
+          cachedForumThreads.find(
+            (cachedRecord) => cachedRecord.id === record.id,
+          ),
+        )
+        .filter((record) => record !== undefined),
+    );
     cachedForumThreads = await readForumThreadCacheRecords();
     refreshForumTagUi();
   }
@@ -3641,7 +4281,7 @@
   function getTopTitleTags() {
     const tagsByName = new Map();
     let titleIndex = 0;
-    const forumRecords = getCachedForumThreadsForCurrentForum();
+    const forumRecords = getVisibleCachedForumThreadsForCurrentForum();
 
     if (forumRecords.length > 0) {
       for (const record of sortForumThreadRecords(forumRecords)) {
@@ -4019,45 +4659,6 @@
   }
 
   /**
-   * @param {number} direction
-   * @returns {boolean}
-   */
-  function moveCitedPostNavigation(direction) {
-    if (!isThreadPage()) {
-      return false;
-    }
-
-    if (navigationItems.length === 0) {
-      refreshNavigation({ reset: true });
-    }
-
-    if (navigationItems.length === 0) {
-      return false;
-    }
-
-    const startIndex = Math.min(
-      Math.max(selectedNavigationIndex, 0),
-      navigationItems.length - 1,
-    );
-
-    for (
-      let index = startIndex + direction;
-      index >= 0 && index < navigationItems.length;
-      index += direction
-    ) {
-      const item = navigationItems[index];
-
-      if (item.element.hasAttribute("data-fc-premium-reply-count")) {
-        selectedNavigationIndex = index;
-        renderNavigationSelection({ scroll: true, updateUrl: true });
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
    * @returns {HTMLElement | null}
    */
   function getSelectedPostWrapper() {
@@ -4246,24 +4847,16 @@
         description: "Abrir hilo seleccionado en nueva pestaña",
       },
       {
+        keys: [KEY_HIDE_SELECTED_THREAD],
+        description: "Esconder hilo seleccionado",
+      },
+      {
         keys: [KEY_NEW_THREAD_REPLY],
         description: "Responder sin cita",
       },
       {
         keys: [KEY_MULTIQUOTE_SELECTED_POST],
         description: "Alternar multicita",
-      },
-      {
-        keys: [KEY_PREVIOUS_CITED_POST, KEY_NEXT_CITED_POST],
-        description: "Moverse por mensajes citados",
-      },
-      {
-        keys: [
-          KEY_THREAD_VIEW_RANKED,
-          KEY_THREAD_VIEW_ORIGINAL,
-          KEY_THREAD_VIEW_CITED,
-        ],
-        description: "Cambiar vista del hilo",
       },
       {
         keys: [KEY_CLEAR_ACTIVE_VIEW],
@@ -4478,26 +5071,6 @@
   }
 
   /**
-   * @param {string} key
-   * @returns {ThreadViewMode | null}
-   */
-  function getThreadViewModeShortcut(key) {
-    if (key === KEY_THREAD_VIEW_RANKED) {
-      return "ranked";
-    }
-
-    if (key === KEY_THREAD_VIEW_ORIGINAL) {
-      return "original";
-    }
-
-    if (key === KEY_THREAD_VIEW_CITED) {
-      return "cited";
-    }
-
-    return null;
-  }
-
-  /**
    * @param {KeyboardEvent} event
    * @returns {boolean}
    */
@@ -4548,6 +5121,24 @@
    * @param {KeyboardEvent} event
    * @returns {boolean}
    */
+  function handleHideSelectedThreadShortcut(event) {
+    if (
+      !isForumDisplayPage() ||
+      hasKeyboardModifier(event) ||
+      !keyboardShortcutMatches(event, KEY_HIDE_SELECTED_THREAD)
+    ) {
+      return false;
+    }
+
+    event.preventDefault();
+    void hideSelectedForumThread();
+    return true;
+  }
+
+  /**
+   * @param {KeyboardEvent} event
+   * @returns {boolean}
+   */
   function handleSelectedPostActionShortcut(event) {
     if (!isThreadPage() || hasKeyboardModifier(event)) {
       return false;
@@ -4581,59 +5172,6 @@
 
   /**
    * @param {KeyboardEvent} event
-   * @returns {boolean}
-   */
-  function handleCitedPostShortcut(event) {
-    if (
-      !isThreadPage() ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      loadedThreadPosts.length === 0
-    ) {
-      return false;
-    }
-
-    if (
-      event.key !== KEY_PREVIOUS_CITED_POST &&
-      event.key !== KEY_NEXT_CITED_POST
-    ) {
-      return false;
-    }
-
-    event.preventDefault();
-    moveCitedPostNavigation(event.key === KEY_NEXT_CITED_POST ? 1 : -1);
-    return true;
-  }
-
-  /**
-   * @param {KeyboardEvent} event
-   * @returns {boolean}
-   */
-  function handleThreadViewShortcut(event) {
-    if (
-      !isThreadPage() ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      loadedThreadPosts.length === 0
-    ) {
-      return false;
-    }
-
-    const mode = getThreadViewModeShortcut(event.key);
-
-    if (!mode) {
-      return false;
-    }
-
-    event.preventDefault();
-    switchThreadViewMode(mode);
-    return true;
-  }
-
-  /**
-   * @param {KeyboardEvent} event
    */
   function onNavigationKeyDown(event) {
     if (isEditableTarget(event.target)) {
@@ -4654,6 +5192,14 @@
     } else if (isOpenSelectedThreadInNewTabShortcut(event)) {
       event.preventDefault();
       openSelectedForumThreadInNewTab();
+    } else if (handleHideSelectedThreadShortcut(event)) {
+      return;
+    } else if (
+      event.key === KEY_CLEAR_ACTIVE_VIEW &&
+      isHiddenThreadsModalOpen()
+    ) {
+      event.preventDefault();
+      closeHiddenThreadsModal();
     } else if (
       event.key === KEY_CLEAR_ACTIVE_VIEW &&
       isShortcutHelpPopoverOpen()
@@ -4676,10 +5222,6 @@
       }
       selectNavigationIndex(navigationItems.length - 1);
     } else if (handleSelectedPostActionShortcut(event)) {
-      return;
-    } else if (handleCitedPostShortcut(event)) {
-      return;
-    } else if (handleThreadViewShortcut(event)) {
       return;
     } else if (event.key === KEY_CLEAR_ACTIVE_VIEW && activeTagFilter) {
       event.preventDefault();
@@ -5044,28 +5586,6 @@
   }
 
   /**
-   * @param {ThreadViewMode} mode
-   * @returns {boolean}
-   */
-  function switchThreadViewMode(mode) {
-    if (!isThreadViewMode(mode) || loadedThreadPosts.length === 0) {
-      return false;
-    }
-
-    if (currentThreadViewMode !== mode) {
-      setSavedThreadViewMode(mode);
-      syncThreadStateUrl();
-      renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
-    } else {
-      syncThreadStateUrl();
-    }
-
-    const summary = document.getElementById(THREAD_SUMMARY_ID);
-    renderThreadSummaryMenu(summary instanceof HTMLElement ? summary : null);
-    return true;
-  }
-
-  /**
    * @param {HTMLElement | null} summary
    */
   function renderThreadSummaryMenu(summary) {
@@ -5295,7 +5815,7 @@
       activePageFilter = post.pageNumber;
       updateThreadPageUrl(post.pageNumber);
       updateOriginalThreadPageMenus();
-      renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+      renderThreadPosts(loadedThreadPosts);
       renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
     }
 
@@ -5364,7 +5884,7 @@
     pendingGraphView = null;
     updateThreadPageUrl(pageNumber, { history: "push" });
     updateOriginalThreadPageMenus();
-    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadPosts(loadedThreadPosts);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
     window.scrollTo({ top: 0, behavior: "auto" });
   }
@@ -5612,7 +6132,7 @@
     activePageFilter = getPageNumber(new URL(location.href));
     updateThreadPageUrl(activePageFilter);
     updateOriginalThreadPageMenus();
-    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadPosts(loadedThreadPosts);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
 
@@ -5936,7 +6456,7 @@
     pendingGraphView = null;
     activePageFilter = null;
     syncThreadStateUrl({ history: options.history || "push" });
-    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadPosts(loadedThreadPosts);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
 
     if (options.scrollToFirstPost || options.scrollToFirstReply) {
@@ -5985,7 +6505,7 @@
     activePageFilter = getPageNumber(new URL(location.href));
     updateThreadPageUrl(activePageFilter);
     updateOriginalThreadPageMenus();
-    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadPosts(loadedThreadPosts);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
 
@@ -6020,12 +6540,8 @@
       : queryState.pageFilter || getPageNumber(url);
     activeAuthorFilter = queryState.authorFilter;
 
-    if (queryState.mode) {
-      currentThreadViewMode = queryState.mode;
-    }
-
     updateOriginalThreadPageMenus();
-    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadPosts(loadedThreadPosts);
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
 
     const hashPostId = getLocationPostHashId(url);
@@ -6139,29 +6655,10 @@
   }
 
   /**
-   * @param {ThreadViewMode} mode
-   * @returns {string}
-   */
-  function getThreadViewModeLabel(mode) {
-    if (mode === "original") {
-      return "Original";
-    }
-
-    if (mode === "cited") {
-      return "Solo citados";
-    }
-
-    return "Citas";
-  }
-
-  /**
    * @param {PostRecord[]} posts
-   * @param {ThreadViewMode} mode
    * @returns {PostRecord[]}
    */
-  function getPostsForView(posts, mode) {
-    void mode;
-
+  function getThreadViewPosts(posts) {
     if (activeGraphView) {
       return getPostsForGraphView(activeGraphView);
     }
@@ -6972,9 +7469,8 @@
 
   /**
    * @param {PostRecord[]} posts
-   * @param {ThreadViewMode} mode
    */
-  function renderThreadPosts(posts, mode) {
+  function renderThreadPosts(posts) {
     const postsElement = getPostsElement();
 
     if (!postsElement) {
@@ -6992,7 +7488,7 @@
     const fragment = document.createDocumentFragment();
     const postById = new Map(posts.map((post) => [post.id, post]));
     const rankByPostId = getReplyRankByPostId(posts);
-    const viewPosts = getPostsForView(posts, mode);
+    const viewPosts = getThreadViewPosts(posts);
 
     for (const [index, post] of viewPosts.entries()) {
       fragment.append(
@@ -7075,7 +7571,6 @@
       ? null
       : queryState.pageFilter || currentPageNumber;
     activeAuthorFilter = queryState.authorFilter;
-    currentThreadViewMode = queryState.mode || currentThreadViewMode;
 
     if (activePageFilter) {
       updateThreadPageUrl(activePageFilter, {
@@ -7117,7 +7612,7 @@
         loadedPosts: loadedThreadPosts.length,
         isLoading: false,
       };
-      renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+      renderThreadPosts(loadedThreadPosts);
       renderThreadSummaryMenu(summary);
       return;
     }
@@ -7142,7 +7637,7 @@
         isLoading: true,
       };
 
-      renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+      renderThreadPosts(loadedThreadPosts);
       renderThreadSummaryMenu(summary);
 
       if (page.pageNumber !== pages[pages.length - 1].pageNumber) {
@@ -7156,7 +7651,7 @@
       loadedPosts: loadedThreadPosts.length,
       isLoading: false,
     };
-    renderThreadPosts(loadedThreadPosts, currentThreadViewMode);
+    renderThreadPosts(loadedThreadPosts);
     renderThreadSummaryMenu(summary);
 
     if (loadedThreadPageNumbers.size >= pages.length) {
