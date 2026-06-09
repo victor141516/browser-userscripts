@@ -37,6 +37,7 @@ import {
   updateRenderedCompactPostLayouts as updateRenderedCompactPostLayoutsInDom,
 } from "./ui/postCompactLayoutDom";
 import { enhanceQuoteLinks as enhanceQuoteLinksInDom } from "./ui/postQuoteDom";
+import { appendReplyBadge } from "./ui/postReplyBadgeDom";
 import {
   ForumLoadingStatus,
   ForumSidebarToggleButton,
@@ -2861,78 +2862,21 @@ export function runForocochesPremium() {
       wrapper.dataset.fcPremiumOriginalPoster = "true";
     }
 
-    if (post.replyCount > 0) {
-      wrapper.dataset.fcPremiumReplyCount = String(post.replyCount);
-      wrapper.dataset.fcPremiumRank = String(rank);
-
-      const badge = document.createElement("span");
-      badge.className = "fc-premium-reply-badge";
-      badge.textContent = `${
-        post.replyCount === 1 ? "1 cita" : `${post.replyCount} citas`
-      }`;
-      appendReplyLinks(badge, post, postById);
-      (header.dateCell || header.numberCell)?.append(badge);
-    }
+    appendReplyBadge({
+      container: header.dateCell || header.numberCell,
+      post,
+      rank,
+      postById,
+      onJumpToPost: jumpToLoadedPost,
+      onShowQuotedBy: (postId) => {
+        setActiveGraphView("quoted-by", postId, null, {
+          scrollToFirstReply: true,
+        });
+      },
+    });
 
     updatePostCompactLayout(wrapper, compactModeEnabled);
     return wrapper;
-  }
-
-  function appendReplyLinks(badge: HTMLElement, post: PostRecord, postById: Map<string, PostRecord>) {
-    const maxLinks = 3;
-    const visibleReplyIds = post.replyingPostIds.slice(0, maxLinks);
-
-    if (visibleReplyIds.length === 0) {
-      return;
-    }
-
-    const label = document.createElement("span");
-    label.className = "fc-premium-original-position";
-    label.textContent = "·";
-    badge.append(label);
-
-    for (const replyingPostId of visibleReplyIds) {
-      const reply = postById.get(replyingPostId);
-      const link = document.createElement("a");
-
-      link.href = new URL(
-        `showthread.php?p=${replyingPostId}#post${replyingPostId}`,
-        location.href,
-      ).href;
-      link.textContent = `#${reply?.postNumber || replyingPostId}`;
-      link.addEventListener("click", (event) => {
-        if (!document.getElementById(`post${replyingPostId}`)) {
-          return;
-        }
-
-        event.preventDefault();
-        jumpToLoadedPost(replyingPostId);
-      });
-      badge.append(link);
-      badge.append(document.createTextNode(" "));
-    }
-
-    if (post.replyingPostIds.length > visibleReplyIds.length) {
-      const remaining = document.createElement("span");
-      remaining.className = "fc-premium-original-position";
-      remaining.textContent = ` +${post.replyingPostIds.length - visibleReplyIds.length}`;
-      badge.append(remaining);
-    }
-
-    if (post.replyingPostIds.length > 1) {
-      const quotedByButton = document.createElement("button");
-      quotedByButton.type = "button";
-      quotedByButton.textContent = "Ver todas";
-      quotedByButton.title = "Ver citadores";
-      quotedByButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setActiveGraphView("quoted-by", post.id, null, {
-          scrollToFirstReply: true,
-        });
-      });
-      badge.append(quotedByButton);
-    }
   }
 
   function renderThreadPosts(posts: PostRecord[]) {
