@@ -394,6 +394,35 @@
     }
     return getConversationChainPosts(view, graph);
   }
+  function getValidGraphView(view, graph) {
+    if (view && graph.postById.has(view.rootPostId)) {
+      return view;
+    }
+    return null;
+  }
+  function getThreadViewPosts(options) {
+    if (options.activeGraphView) {
+      return getPostsForGraphView(options.activeGraphView, options.graph, options.posts);
+    }
+    return getFeaturedChronologicalPosts(options.posts, {
+      shouldPromoteCitedPosts: options.shouldPromoteCitedPosts
+    });
+  }
+  function getReplyIndentDepth(options) {
+    if (!options.activeGraphView) {
+      return 0;
+    }
+    if (options.activeGraphView.type === "quoted-by") {
+      return options.post.id === options.activeGraphView.rootPostId ? 0 : 1;
+    }
+    if (options.activeGraphView.type === "conversation") {
+      return options.index === 0 ? 0 : 1;
+    }
+    if (options.activeGraphView.type === "quoted-sources") {
+      return options.post.id === options.activeGraphView.rootPostId ? 1 : 0;
+    }
+    return 0;
+  }
   function ensureGraphSet(map, key) {
     if (!map.has(key)) {
       map.set(key, new Set);
@@ -5484,10 +5513,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
     }
     function getValidGraphViewFromQueryState(queryState) {
-      if (queryState.graphView && threadGraph.postById.has(queryState.graphView.rootPostId)) {
-        return queryState.graphView;
-      }
-      return null;
+      return getValidGraphView(queryState.graphView, threadGraph);
     }
     function applyThreadUrlState(url = new URL(location.href)) {
       if (!isThreadPage() || loadedThreadPosts.length === 0) {
@@ -5515,28 +5541,20 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     function installThreadHistoryNavigation() {
       window.addEventListener("popstate", onThreadHistoryPopState);
     }
-    function getThreadViewPosts(posts) {
-      if (activeGraphView) {
-        return getPostsForGraphView(activeGraphView, threadGraph, posts);
-      }
-      return getFeaturedChronologicalPosts(posts, {
+    function getThreadViewPosts2(posts) {
+      return getThreadViewPosts({
+        posts,
+        activeGraphView,
+        graph: threadGraph,
         shouldPromoteCitedPosts: !activePageFilter && !hasActiveThreadPostFilters()
       });
     }
-    function getReplyIndentDepth(post, index) {
-      if (!activeGraphView) {
-        return 0;
-      }
-      if (activeGraphView.type === "quoted-by") {
-        return post.id === activeGraphView.rootPostId ? 0 : 1;
-      }
-      if (activeGraphView.type === "conversation") {
-        return index === 0 ? 0 : 1;
-      }
-      if (activeGraphView.type === "quoted-sources") {
-        return post.id === activeGraphView.rootPostId ? 1 : 0;
-      }
-      return 0;
+    function getReplyIndentDepth2(post, index) {
+      return getReplyIndentDepth({
+        post,
+        index,
+        activeGraphView
+      });
     }
     function selectPostById(postId, options = {}) {
       const table = document.getElementById(`post${postId}`);
@@ -5678,9 +5696,9 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       const fragment = document.createDocumentFragment();
       const postById = new Map(posts.map((post) => [post.id, post]));
       const rankByPostId = getReplyRankByPostId(posts);
-      const viewPosts = getThreadViewPosts(posts);
+      const viewPosts = getThreadViewPosts2(posts);
       for (const [index, post] of viewPosts.entries()) {
-        fragment.append(renderPost(post, rankByPostId.get(post.id) || 0, postById, getReplyIndentDepth(post, index)));
+        fragment.append(renderPost(post, rankByPostId.get(post.id) || 0, postById, getReplyIndentDepth2(post, index)));
       }
       postsElement.append(fragment);
       const filterCounts = applyThreadPostFilters();

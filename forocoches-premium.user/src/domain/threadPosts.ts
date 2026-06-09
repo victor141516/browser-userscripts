@@ -182,6 +182,60 @@ export function getPostsForGraphView(
   return getConversationChainPosts(view, graph);
 }
 
+export function getValidGraphView(
+  view: ActiveGraphView | null,
+  graph: ThreadGraph,
+): ActiveGraphView | null {
+  if (view && graph.postById.has(view.rootPostId)) {
+    return view;
+  }
+
+  return null;
+}
+
+export function getThreadViewPosts(options: {
+  posts: PostRecord[];
+  activeGraphView: ActiveGraphView | null;
+  graph: ThreadGraph;
+  shouldPromoteCitedPosts: boolean;
+}): PostRecord[] {
+  if (options.activeGraphView) {
+    return getPostsForGraphView(
+      options.activeGraphView,
+      options.graph,
+      options.posts,
+    );
+  }
+
+  return getFeaturedChronologicalPosts(options.posts, {
+    shouldPromoteCitedPosts: options.shouldPromoteCitedPosts,
+  });
+}
+
+export function getReplyIndentDepth(options: {
+  post: PostRecord;
+  index: number;
+  activeGraphView: ActiveGraphView | null;
+}): number {
+  if (!options.activeGraphView) {
+    return 0;
+  }
+
+  if (options.activeGraphView.type === "quoted-by") {
+    return options.post.id === options.activeGraphView.rootPostId ? 0 : 1;
+  }
+
+  if (options.activeGraphView.type === "conversation") {
+    return options.index === 0 ? 0 : 1;
+  }
+
+  if (options.activeGraphView.type === "quoted-sources") {
+    return options.post.id === options.activeGraphView.rootPostId ? 1 : 0;
+  }
+
+  return 0;
+}
+
 export function getGraphViewLabel(
   view: ActiveGraphView,
   graph: ThreadGraph,

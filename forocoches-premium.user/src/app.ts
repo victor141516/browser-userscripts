@@ -142,10 +142,12 @@ import {
   applyReplyCounts,
   buildThreadGraph,
   createEmptyThreadGraph,
-  getFeaturedChronologicalPosts,
   getGraphViewLabel,
   getPostsForGraphView,
+  getReplyIndentDepth as getReplyIndentDepthForView,
   getReplyRankByPostId,
+  getThreadViewPosts as getPostsForThreadView,
+  getValidGraphView,
   sortPostsChronologically,
 } from "./domain/threadPosts";
 import {
@@ -2745,14 +2747,7 @@ export function runForocochesPremium() {
   }
 
   function getValidGraphViewFromQueryState(queryState: ThreadQueryState): ActiveGraphView | null {
-    if (
-      queryState.graphView &&
-      threadGraph.postById.has(queryState.graphView.rootPostId)
-    ) {
-      return queryState.graphView;
-    }
-
-    return null;
+    return getValidGraphView(queryState.graphView, threadGraph);
   }
 
   function applyThreadUrlState(url = new URL(location.href)): void {
@@ -2793,33 +2788,21 @@ export function runForocochesPremium() {
   }
 
   function getThreadViewPosts(posts: PostRecord[]): PostRecord[] {
-    if (activeGraphView) {
-      return getPostsForGraphView(activeGraphView, threadGraph, posts);
-    }
-
-    return getFeaturedChronologicalPosts(posts, {
-      shouldPromoteCitedPosts: !activePageFilter && !hasActiveThreadPostFilters(),
+    return getPostsForThreadView({
+      posts,
+      activeGraphView,
+      graph: threadGraph,
+      shouldPromoteCitedPosts:
+        !activePageFilter && !hasActiveThreadPostFilters(),
     });
   }
 
   function getReplyIndentDepth(post: PostRecord, index: number): number {
-    if (!activeGraphView) {
-      return 0;
-    }
-
-    if (activeGraphView.type === "quoted-by") {
-      return post.id === activeGraphView.rootPostId ? 0 : 1;
-    }
-
-    if (activeGraphView.type === "conversation") {
-      return index === 0 ? 0 : 1;
-    }
-
-    if (activeGraphView.type === "quoted-sources") {
-      return post.id === activeGraphView.rootPostId ? 1 : 0;
-    }
-
-    return 0;
+    return getReplyIndentDepthForView({
+      post,
+      index,
+      activeGraphView,
+    });
   }
 
   function selectPostById(postId: string, options: { scroll?: boolean, updateUrl?: boolean } = {}) {
