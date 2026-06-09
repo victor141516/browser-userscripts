@@ -177,6 +177,13 @@ import {
   restoreForumThreadRowsFromHtml,
 } from "./adapters/forocoches/forumThreadListDom";
 import {
+  clickPostQuoteAction,
+  isQuickReplyLink,
+  isQuoteReplyLink,
+  openThreadReplyWithoutQuote as openThreadReplyWithoutQuoteAction,
+  togglePostMultiquote,
+} from "./adapters/forocoches/postReplyActions";
+import {
   clearForumStateQueryParams,
   clearThreadStateQueryParams,
   isThreadUrl,
@@ -1843,113 +1850,21 @@ export function runForocochesPremium() {
     return marked instanceof HTMLElement ? marked : null;
   }
 
-  function isMultiQuoteReplyLink(link: HTMLAnchorElement): boolean {
-    const image = link.querySelector("img");
-    const label = `${image?.id || ""} ${image?.alt || ""} ${
-      image?.title || ""
-    } ${image?.getAttribute("src") || ""}`;
-
-    return /mq_\d+|multiquote|multi-cita/i.test(label);
-  }
-
-  function isSingleQuoteReplyLink(link: HTMLAnchorElement): boolean {
-    return isQuoteReplyLink(link) && !isMultiQuoteReplyLink(link);
-  }
-
-  function getPostReplyActionLink(wrapper: HTMLElement, action: "quote" | "multiquote"): HTMLAnchorElement | null {
-    const links = Array.from(
-      wrapper.querySelectorAll(
-        ".fc-premium-post-reply-actions a[href*='newreply.php?do=newreply']",
-      ),
-    ).filter((link) => link instanceof HTMLAnchorElement);
-
-    return (
-      links.find((link) =>
-        action === "quote"
-          ? isSingleQuoteReplyLink(link)
-          : isMultiQuoteReplyLink(link),
-      ) || null
-    );
-  }
-
   function quoteSelectedPost(wrapper: HTMLElement): boolean {
-    const link = getPostReplyActionLink(wrapper, "quote");
-
-    if (!link) {
-      return false;
-    }
-
-    link.click();
-    return true;
+    return clickPostQuoteAction(wrapper);
   }
 
   function toggleSelectedPostMultiquote(wrapper: HTMLElement): boolean {
-    const link = getPostReplyActionLink(wrapper, "multiquote");
-    const target = link?.querySelector("img[id^='mq_']");
-    const postId =
-      target?.id.replace(/^mq_/, "") || getPostIdFromNavigationElement(wrapper);
-
-    if (postId && typeof window.mq_click === "function") {
-      window.mq_click(postId);
-      return true;
-    }
-
-    if (target instanceof HTMLElement) {
-      target.click();
-      return true;
-    }
-
-    if (!link) {
-      return false;
-    }
-
-    link.click();
-    return true;
-  }
-
-  function isThreadReplyWithoutQuoteLink(link: HTMLAnchorElement): boolean {
-    const image = link.querySelector("img");
-    const label = `${image?.alt || ""} ${image?.title || ""} ${
-      image?.getAttribute("src") || ""
-    }`;
-
-    return (
-      link.href.includes("newreply.php") &&
-      link.href.includes("do=newreply") &&
-      link.href.includes("noquote=1") &&
-      /reply\.gif|respuesta/i.test(label)
-    );
-  }
-
-  function getThreadReplyWithoutQuoteLink(): HTMLAnchorElement | null {
-    return (
-      Array.from(
-        document.querySelectorAll("a[href*='newreply.php'][href*='noquote=1']"),
-      )
-        .filter((link) => link instanceof HTMLAnchorElement)
-        .find(isThreadReplyWithoutQuoteLink) || null
+    return togglePostMultiquote(
+      wrapper,
+      getPostIdFromNavigationElement(wrapper),
     );
   }
 
   function openThreadReplyWithoutQuote(): boolean {
-    const link = getThreadReplyWithoutQuoteLink();
-
-    if (link) {
-      link.click();
-      return true;
-    }
-
-    const threadId = getThreadId(new URL(location.href));
-
-    if (!threadId) {
-      return false;
-    }
-
-    location.href = new URL(
-      `newreply.php?do=newreply&t=${threadId}`,
-      location.href,
-    ).href;
-    return true;
+    return openThreadReplyWithoutQuoteAction(
+      getThreadId(new URL(location.href)),
+    );
   }
 
   function getShortcutHelpItems(): ShortcutHelpItem[] {
@@ -3549,24 +3464,6 @@ export function runForocochesPremium() {
     const link = footerRow?.querySelector("a[href*='report.php?p=']");
 
     return link instanceof HTMLAnchorElement ? link : null;
-  }
-
-  function isQuickReplyLink(link: HTMLAnchorElement): boolean {
-    const image = link.querySelector("img");
-    const label = `${link.id} ${image?.alt || ""} ${image?.title || ""} ${
-      image?.getAttribute("src") || ""
-    }`;
-
-    return /quickreply|respuesta rapida|qr_\d+/i.test(label);
-  }
-
-  function isQuoteReplyLink(link: HTMLAnchorElement): boolean {
-    const image = link.querySelector("img");
-    const label = `${image?.alt || ""} ${image?.title || ""} ${
-      image?.getAttribute("src") || ""
-    }`;
-
-    return /quote\.gif|multiquote|multi-cita|responder con cita/i.test(label);
   }
 
   function relocatePostFooterControls(wrapper: HTMLElement) {

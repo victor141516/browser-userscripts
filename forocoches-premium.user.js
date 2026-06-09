@@ -1362,6 +1362,76 @@
     }
   }
 
+  // src/adapters/forocoches/postReplyActions.ts
+  function clickPostQuoteAction(wrapper) {
+    const link = getPostReplyActionLink(wrapper, "quote");
+    if (!link) {
+      return false;
+    }
+    link.click();
+    return true;
+  }
+  function togglePostMultiquote(wrapper, postId) {
+    const link = getPostReplyActionLink(wrapper, "multiquote");
+    const target = link?.querySelector("img[id^='mq_']");
+    const multiquotePostId = target?.id.replace(/^mq_/, "") || postId;
+    if (multiquotePostId && typeof window.mq_click === "function") {
+      window.mq_click(multiquotePostId);
+      return true;
+    }
+    if (target instanceof HTMLElement) {
+      target.click();
+      return true;
+    }
+    if (!link) {
+      return false;
+    }
+    link.click();
+    return true;
+  }
+  function openThreadReplyWithoutQuote(threadId) {
+    const link = getThreadReplyWithoutQuoteLink();
+    if (link) {
+      link.click();
+      return true;
+    }
+    if (!threadId) {
+      return false;
+    }
+    location.href = new URL(`newreply.php?do=newreply&t=${threadId}`, location.href).href;
+    return true;
+  }
+  function isQuickReplyLink(link) {
+    const image = link.querySelector("img");
+    const label = `${link.id} ${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
+    return /quickreply|respuesta rapida|qr_\d+/i.test(label);
+  }
+  function isQuoteReplyLink(link) {
+    const image = link.querySelector("img");
+    const label = `${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
+    return /quote\.gif|multiquote|multi-cita|responder con cita/i.test(label);
+  }
+  function getPostReplyActionLink(wrapper, action) {
+    const links = Array.from(wrapper.querySelectorAll(".fc-premium-post-reply-actions a[href*='newreply.php?do=newreply']")).filter((link) => link instanceof HTMLAnchorElement);
+    return links.find((link) => action === "quote" ? isSingleQuoteReplyLink(link) : isMultiQuoteReplyLink(link)) || null;
+  }
+  function isMultiQuoteReplyLink(link) {
+    const image = link.querySelector("img");
+    const label = `${image?.id || ""} ${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
+    return /mq_\d+|multiquote|multi-cita/i.test(label);
+  }
+  function isSingleQuoteReplyLink(link) {
+    return isQuoteReplyLink(link) && !isMultiQuoteReplyLink(link);
+  }
+  function isThreadReplyWithoutQuoteLink(link) {
+    const image = link.querySelector("img");
+    const label = `${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
+    return link.href.includes("newreply.php") && link.href.includes("do=newreply") && link.href.includes("noquote=1") && /reply\.gif|respuesta/i.test(label);
+  }
+  function getThreadReplyWithoutQuoteLink() {
+    return Array.from(document.querySelectorAll("a[href*='newreply.php'][href*='noquote=1']")).filter((link) => link instanceof HTMLAnchorElement).find(isThreadReplyWithoutQuoteLink) || null;
+  }
+
   // src/services/queryState.ts
   function readForumQueryState(url = new URL(location.href)) {
     const tag = normalizeAuthorName(url.searchParams.get(FORUM_STATE_QUERY_PARAMS.tag));
@@ -3966,64 +4036,14 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       const marked = document.querySelector(`.fc-premium-post-wrapper[${SELECTED_ATTRIBUTE}]`);
       return marked instanceof HTMLElement ? marked : null;
     }
-    function isMultiQuoteReplyLink(link) {
-      const image = link.querySelector("img");
-      const label = `${image?.id || ""} ${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
-      return /mq_\d+|multiquote|multi-cita/i.test(label);
-    }
-    function isSingleQuoteReplyLink(link) {
-      return isQuoteReplyLink(link) && !isMultiQuoteReplyLink(link);
-    }
-    function getPostReplyActionLink(wrapper, action) {
-      const links = Array.from(wrapper.querySelectorAll(".fc-premium-post-reply-actions a[href*='newreply.php?do=newreply']")).filter((link) => link instanceof HTMLAnchorElement);
-      return links.find((link) => action === "quote" ? isSingleQuoteReplyLink(link) : isMultiQuoteReplyLink(link)) || null;
-    }
     function quoteSelectedPost(wrapper) {
-      const link = getPostReplyActionLink(wrapper, "quote");
-      if (!link) {
-        return false;
-      }
-      link.click();
-      return true;
+      return clickPostQuoteAction(wrapper);
     }
     function toggleSelectedPostMultiquote(wrapper) {
-      const link = getPostReplyActionLink(wrapper, "multiquote");
-      const target = link?.querySelector("img[id^='mq_']");
-      const postId = target?.id.replace(/^mq_/, "") || getPostIdFromNavigationElement(wrapper);
-      if (postId && typeof window.mq_click === "function") {
-        window.mq_click(postId);
-        return true;
-      }
-      if (target instanceof HTMLElement) {
-        target.click();
-        return true;
-      }
-      if (!link) {
-        return false;
-      }
-      link.click();
-      return true;
+      return togglePostMultiquote(wrapper, getPostIdFromNavigationElement(wrapper));
     }
-    function isThreadReplyWithoutQuoteLink(link) {
-      const image = link.querySelector("img");
-      const label = `${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
-      return link.href.includes("newreply.php") && link.href.includes("do=newreply") && link.href.includes("noquote=1") && /reply\.gif|respuesta/i.test(label);
-    }
-    function getThreadReplyWithoutQuoteLink() {
-      return Array.from(document.querySelectorAll("a[href*='newreply.php'][href*='noquote=1']")).filter((link) => link instanceof HTMLAnchorElement).find(isThreadReplyWithoutQuoteLink) || null;
-    }
-    function openThreadReplyWithoutQuote() {
-      const link = getThreadReplyWithoutQuoteLink();
-      if (link) {
-        link.click();
-        return true;
-      }
-      const threadId = getThreadId(new URL(location.href));
-      if (!threadId) {
-        return false;
-      }
-      location.href = new URL(`newreply.php?do=newreply&t=${threadId}`, location.href).href;
-      return true;
+    function openThreadReplyWithoutQuote2() {
+      return openThreadReplyWithoutQuote(getThreadId(new URL(location.href)));
     }
     function getShortcutHelpItems() {
       return [
@@ -4192,7 +4212,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       }
       if (keyboardShortcutMatches(event, KEY_NEW_THREAD_REPLY)) {
         event.preventDefault();
-        openThreadReplyWithoutQuote();
+        openThreadReplyWithoutQuote2();
         return true;
       }
       const selected = getSelectedPostWrapper();
@@ -5162,16 +5182,6 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       const footerRow = getPostFooterRow(wrapper);
       const link = footerRow?.querySelector("a[href*='report.php?p=']");
       return link instanceof HTMLAnchorElement ? link : null;
-    }
-    function isQuickReplyLink(link) {
-      const image = link.querySelector("img");
-      const label = `${link.id} ${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
-      return /quickreply|respuesta rapida|qr_\d+/i.test(label);
-    }
-    function isQuoteReplyLink(link) {
-      const image = link.querySelector("img");
-      const label = `${image?.alt || ""} ${image?.title || ""} ${image?.getAttribute("src") || ""}`;
-      return /quote\.gif|multiquote|multi-cita|responder con cita/i.test(label);
     }
     function relocatePostFooterControls(wrapper) {
       const footerRow = getPostFooterRow(wrapper);
