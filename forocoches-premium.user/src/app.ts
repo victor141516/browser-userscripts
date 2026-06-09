@@ -130,6 +130,12 @@ import {
   sortForumThreadRecords,
 } from "./domain/forumThreads";
 import {
+  getThreadAuthorOptionByKey as getThreadAuthorOptionByKeyFromOptions,
+  getThreadAuthorOptionLabel,
+  getThreadAuthorOptions as buildThreadAuthorOptions,
+  resolveThreadAuthorInputValue as resolveThreadAuthorInputValueFromOptions,
+} from "./domain/threadAuthors";
+import {
   clampForumThreadListPage,
   getForumThreadListPage,
   getForumThreadListTotalPages,
@@ -2439,10 +2445,6 @@ export function runForocochesPremium() {
     return Boolean(activeThreadSearchQuery) || activeAuthorFilters.size > 0;
   }
 
-  function getThreadOriginalPosterName(posts: PostRecord[] = loadedThreadPosts): string {
-    return sortPostsChronologically(posts)[0]?.author || "";
-  }
-
   function getAuthenticatedUsername(): string {
     const profileLink = Array.from(
       document.querySelectorAll("a[href*='member.php?u=']"),
@@ -2485,102 +2487,21 @@ export function runForocochesPremium() {
   function getThreadAuthorOptions(
     posts: PostRecord[] = loadedThreadPosts,
   ): ThreadAuthorOption[] {
-    const optionsByKey = new Map<string, ThreadAuthorOption>();
-    const originalPosterKey = normalizeAuthorName(
-      getThreadOriginalPosterName(posts),
-    );
-    const currentUserKey = normalizeAuthorName(getAuthenticatedUsername());
-
-    for (const post of posts) {
-      const key = normalizeAuthorName(post.author);
-
-      if (!key) {
-        continue;
-      }
-
-      const option = optionsByKey.get(key) || {
-        key,
-        name: post.author,
-        count: 0,
-        isOriginalPoster: key === originalPosterKey,
-        isCurrentUser: key === currentUserKey,
-      };
-
-      option.count += 1;
-      option.isOriginalPoster = option.isOriginalPoster || key === originalPosterKey;
-      option.isCurrentUser = option.isCurrentUser || key === currentUserKey;
-      optionsByKey.set(key, option);
-    }
-
-    if (currentUserKey && !optionsByKey.has(currentUserKey)) {
-      optionsByKey.set(currentUserKey, {
-        key: currentUserKey,
-        name: getAuthenticatedUsername(),
-        count: 0,
-        isOriginalPoster: currentUserKey === originalPosterKey,
-        isCurrentUser: true,
-      });
-    }
-
-    return Array.from(optionsByKey.values()).sort((left, right) => {
-      if (left.isOriginalPoster !== right.isOriginalPoster) {
-        return left.isOriginalPoster ? -1 : 1;
-      }
-
-      if (left.isCurrentUser !== right.isCurrentUser) {
-        return left.isCurrentUser ? -1 : 1;
-      }
-
-      return left.name.localeCompare(right.name, "es", {
-        sensitivity: "base",
-      });
-    });
-  }
-
-  function getThreadAuthorOptionLabel(option: ThreadAuthorOption): string {
-    const markers = [];
-
-    if (option.isOriginalPoster) {
-      markers.push("autor");
-    }
-
-    if (option.isCurrentUser) {
-      markers.push("tú");
-    }
-
-    return markers.length > 0
-      ? `${option.name} (${markers.join(", ")})`
-      : option.name;
+    return buildThreadAuthorOptions(posts, getAuthenticatedUsername());
   }
 
   function getThreadAuthorOptionByKey(authorKey: string): ThreadAuthorOption | null {
-    return (
-      getThreadAuthorOptions().find((option) => option.key === authorKey) ||
-      null
+    return getThreadAuthorOptionByKeyFromOptions(
+      getThreadAuthorOptions(),
+      authorKey,
     );
   }
 
   function resolveThreadAuthorInputValue(value: string): string | null {
-    const input = normalizeText(value);
-    const inputKey = normalizeAuthorName(input);
-
-    if (!inputKey) {
-      return null;
-    }
-
-    for (const option of getThreadAuthorOptions()) {
-      const labelKey = normalizeAuthorName(getThreadAuthorOptionLabel(option));
-
-      if (
-        option.key === inputKey ||
-        normalizeAuthorName(option.name) === inputKey ||
-        labelKey === inputKey
-      ) {
-        return option.key;
-      }
-    }
-
-    return null;
+    return resolveThreadAuthorInputValueFromOptions(
+      value,
+      getThreadAuthorOptions(),
+    );
   }
 
   function getThreadPostSearchText(post: PostRecord): string {

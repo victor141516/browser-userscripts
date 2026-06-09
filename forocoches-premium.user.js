@@ -806,6 +806,80 @@
     return sortForumThreadRecords(getVisibleForumThreadRecords(records).filter((record) => (!filters.tag || record.tags.includes(filters.tag)) && forumThreadMatchesSearchTokens(record, tokens)));
   }
 
+  // src/domain/threadAuthors.ts
+  function getThreadOriginalPosterName(posts) {
+    return sortPostsChronologically(posts)[0]?.author || "";
+  }
+  function getThreadAuthorOptions(posts, currentUsername) {
+    const optionsByKey = new Map;
+    const originalPosterKey = normalizeAuthorName(getThreadOriginalPosterName(posts));
+    const currentUserKey = normalizeAuthorName(currentUsername);
+    for (const post of posts) {
+      const key = normalizeAuthorName(post.author);
+      if (!key) {
+        continue;
+      }
+      const option = optionsByKey.get(key) || {
+        key,
+        name: post.author,
+        count: 0,
+        isOriginalPoster: key === originalPosterKey,
+        isCurrentUser: key === currentUserKey
+      };
+      option.count += 1;
+      option.isOriginalPoster = option.isOriginalPoster || key === originalPosterKey;
+      option.isCurrentUser = option.isCurrentUser || key === currentUserKey;
+      optionsByKey.set(key, option);
+    }
+    if (currentUserKey && !optionsByKey.has(currentUserKey)) {
+      optionsByKey.set(currentUserKey, {
+        key: currentUserKey,
+        name: currentUsername,
+        count: 0,
+        isOriginalPoster: currentUserKey === originalPosterKey,
+        isCurrentUser: true
+      });
+    }
+    return Array.from(optionsByKey.values()).sort((left, right) => {
+      if (left.isOriginalPoster !== right.isOriginalPoster) {
+        return left.isOriginalPoster ? -1 : 1;
+      }
+      if (left.isCurrentUser !== right.isCurrentUser) {
+        return left.isCurrentUser ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name, "es", {
+        sensitivity: "base"
+      });
+    });
+  }
+  function getThreadAuthorOptionLabel(option) {
+    const markers = [];
+    if (option.isOriginalPoster) {
+      markers.push("autor");
+    }
+    if (option.isCurrentUser) {
+      markers.push("tú");
+    }
+    return markers.length > 0 ? `${option.name} (${markers.join(", ")})` : option.name;
+  }
+  function getThreadAuthorOptionByKey(options, authorKey) {
+    return options.find((option) => option.key === authorKey) || null;
+  }
+  function resolveThreadAuthorInputValue(value, options) {
+    const input = normalizeText(value);
+    const inputKey = normalizeAuthorName(input);
+    if (!inputKey) {
+      return null;
+    }
+    for (const option of options) {
+      const labelKey = normalizeAuthorName(getThreadAuthorOptionLabel(option));
+      if (option.key === inputKey || normalizeAuthorName(option.name) === inputKey || labelKey === inputKey) {
+        return option.key;
+      }
+    }
+    return null;
+  }
+
   // src/domain/forumThreadList.ts
   function getForumThreadRowsSignature(rowHtmlList, scope) {
     return `${scope}|${rowHtmlList.length}|${rowHtmlList.map((html) => hashString(html).toString(36)).join(":")}`;
@@ -4466,9 +4540,6 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     function hasActiveThreadPostFilters() {
       return Boolean(activeThreadSearchQuery) || activeAuthorFilters.size > 0;
     }
-    function getThreadOriginalPosterName(posts = loadedThreadPosts) {
-      return sortPostsChronologically(posts)[0]?.author || "";
-    }
     function getAuthenticatedUsername() {
       const profileLink = Array.from(document.querySelectorAll("a[href*='member.php?u=']")).find((link) => link instanceof HTMLAnchorElement && normalizeText(link.textContent) === "Tu Perfil");
       const profileUserId = profileLink instanceof HTMLAnchorElement ? toUrl(profileLink.href)?.searchParams.get("u") || "" : "";
@@ -4486,74 +4557,14 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       }
       return normalizeText(document.querySelector("#navbar_username")?.textContent);
     }
-    function getThreadAuthorOptions(posts = loadedThreadPosts) {
-      const optionsByKey = new Map;
-      const originalPosterKey = normalizeAuthorName(getThreadOriginalPosterName(posts));
-      const currentUserKey = normalizeAuthorName(getAuthenticatedUsername());
-      for (const post of posts) {
-        const key = normalizeAuthorName(post.author);
-        if (!key) {
-          continue;
-        }
-        const option = optionsByKey.get(key) || {
-          key,
-          name: post.author,
-          count: 0,
-          isOriginalPoster: key === originalPosterKey,
-          isCurrentUser: key === currentUserKey
-        };
-        option.count += 1;
-        option.isOriginalPoster = option.isOriginalPoster || key === originalPosterKey;
-        option.isCurrentUser = option.isCurrentUser || key === currentUserKey;
-        optionsByKey.set(key, option);
-      }
-      if (currentUserKey && !optionsByKey.has(currentUserKey)) {
-        optionsByKey.set(currentUserKey, {
-          key: currentUserKey,
-          name: getAuthenticatedUsername(),
-          count: 0,
-          isOriginalPoster: currentUserKey === originalPosterKey,
-          isCurrentUser: true
-        });
-      }
-      return Array.from(optionsByKey.values()).sort((left, right) => {
-        if (left.isOriginalPoster !== right.isOriginalPoster) {
-          return left.isOriginalPoster ? -1 : 1;
-        }
-        if (left.isCurrentUser !== right.isCurrentUser) {
-          return left.isCurrentUser ? -1 : 1;
-        }
-        return left.name.localeCompare(right.name, "es", {
-          sensitivity: "base"
-        });
-      });
+    function getThreadAuthorOptions2(posts = loadedThreadPosts) {
+      return getThreadAuthorOptions(posts, getAuthenticatedUsername());
     }
-    function getThreadAuthorOptionLabel(option) {
-      const markers = [];
-      if (option.isOriginalPoster) {
-        markers.push("autor");
-      }
-      if (option.isCurrentUser) {
-        markers.push("tú");
-      }
-      return markers.length > 0 ? `${option.name} (${markers.join(", ")})` : option.name;
+    function getThreadAuthorOptionByKey2(authorKey) {
+      return getThreadAuthorOptionByKey(getThreadAuthorOptions2(), authorKey);
     }
-    function getThreadAuthorOptionByKey(authorKey) {
-      return getThreadAuthorOptions().find((option) => option.key === authorKey) || null;
-    }
-    function resolveThreadAuthorInputValue(value) {
-      const input = normalizeText(value);
-      const inputKey = normalizeAuthorName(input);
-      if (!inputKey) {
-        return null;
-      }
-      for (const option of getThreadAuthorOptions()) {
-        const labelKey = normalizeAuthorName(getThreadAuthorOptionLabel(option));
-        if (option.key === inputKey || normalizeAuthorName(option.name) === inputKey || labelKey === inputKey) {
-          return option.key;
-        }
-      }
-      return null;
+    function resolveThreadAuthorInputValue2(value) {
+      return resolveThreadAuthorInputValue(value, getThreadAuthorOptions2());
     }
     function getThreadPostSearchText(post) {
       const cached = threadPostSearchTextById.get(post.id);
@@ -4590,7 +4601,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         return;
       }
       datalist.textContent = "";
-      for (const option of getThreadAuthorOptions()) {
+      for (const option of getThreadAuthorOptions2()) {
         if (activeAuthorFilters.has(option.key)) {
           continue;
         }
@@ -4607,7 +4618,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       }
       container.textContent = "";
       for (const authorKey of activeAuthorFilters) {
-        const option = getThreadAuthorOptionByKey(authorKey);
+        const option = getThreadAuthorOptionByKey2(authorKey);
         const chip = document.createElement("span");
         chip.className = "fc-premium-thread-author-chip";
         chip.textContent = option ? getThreadAuthorOptionLabel(option) : authorKey;
@@ -4692,7 +4703,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       if (!(input instanceof HTMLInputElement)) {
         return;
       }
-      const authorKey = resolveThreadAuthorInputValue(input.value);
+      const authorKey = resolveThreadAuthorInputValue2(input.value);
       if (!authorKey) {
         return;
       }
