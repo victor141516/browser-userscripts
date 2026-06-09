@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Forocoches Premium
 // @namespace    http://tampermonkey.net/
-// @version      2026-06-09-18
+// @version      2026-06-09-19
 // @description  Improves Forocoches thread reading
 // @author       victor141516
 // @match        https://forocoches.com/foro/*
@@ -16,7 +16,7 @@
 
   const STYLE_ID = "fc-premium-style";
   const INSTANCE_KEY = "__fcPremiumThreadEnhancerStarted";
-  const SCRIPT_INSTANCE_VERSION = "2026-06-09-18";
+  const SCRIPT_INSTANCE_VERSION = "2026-06-09-19";
   const SHORTCUT_HELP_CONTAINER_ID = "fc-premium-shortcut-help-container";
   const SHORTCUT_HELP_BUTTON_ID = "fc-premium-shortcut-help-button";
   const SHORTCUT_HELP_POPOVER_ID = "fc-premium-shortcut-help-popover";
@@ -46,6 +46,15 @@
   const NAVIGATION_STATUS_ID = "fc-premium-navigation-status";
   const THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
+  const THREAD_SEARCH_PANEL_ID = "fc-premium-thread-search-panel";
+  const THREAD_SEARCH_TEXT_INPUT_ID = "fc-premium-thread-search-text";
+  const THREAD_SEARCH_AUTHOR_INPUT_ID = "fc-premium-thread-search-author";
+  const THREAD_SEARCH_AUTHOR_DATALIST_ID =
+    "fc-premium-thread-search-authors";
+  const THREAD_SEARCH_SELECTED_AUTHORS_ID =
+    "fc-premium-thread-search-selected-authors";
+  const THREAD_SEARCH_STATUS_ID = "fc-premium-thread-search-status";
+  const THREAD_SEARCH_EMPTY_ID = "fc-premium-thread-search-empty";
   const FORUM_SIDEBAR_HIDDEN_CLASS = "fc-premium-forum-sidebar-hidden";
   const COMPACT_MODE_CLASS = "fc-premium-compact";
   const FORUM_SIDEBAR_STORAGE_KEY = "fcPremiumForumSidebarHidden";
@@ -81,6 +90,7 @@
     graphRelated: "fcp_related",
     pageFilter: "fcp_page",
     authorFilter: "fcp_author",
+    searchQuery: "fcp_search",
   };
   const LEGACY_THREAD_STATE_QUERY_PARAMS = ["fcp_mode"];
   const FORUM_STATE_QUERY_PARAMS = {
@@ -93,7 +103,7 @@
   const THREAD_TITLE_SELECTOR =
     "a[id^='thread_title_'][href*='showthread.php?t=']";
   const HIDDEN_THREAD_ATTRIBUTE = "data-fc-premium-tag-hidden";
-  const HIDDEN_POST_ATTRIBUTE = "data-fc-premium-author-hidden";
+  const HIDDEN_POST_FILTER_ATTRIBUTE = "data-fc-premium-filter-hidden";
   const HIDDEN_POST_PAGE_ATTRIBUTE = "data-fc-premium-page-hidden";
   const PAGE_LOAD_DELAY_MS = 250;
   const TAG_PATTERN = /\+([A-Za-z0-9_-]+)/g;
@@ -199,7 +209,8 @@
    * @typedef {object} ThreadQueryState
    * @property {ActiveGraphView | null} graphView
    * @property {number | null} pageFilter
-   * @property {string | null} authorFilter
+   * @property {string[]} authorFilters
+   * @property {string} searchQuery
    */
 
   /**
@@ -243,10 +254,13 @@
   let forumLiveSearchTimer = 0;
   /** @type {number | null} */
   let activePageFilter = initialThreadQueryState.pageFilter;
-  /** @type {string | null} */
-  let activeAuthorFilter = initialThreadQueryState.authorFilter;
+  /** @type {Set<string>} */
+  let activeAuthorFilters = new Set(initialThreadQueryState.authorFilters);
+  let activeThreadSearchQuery = initialThreadQueryState.searchQuery;
   /** @type {string | null} */
   let pendingInitialHashPostId = getLocationPostHashId();
+  /** @type {Map<string, string>} */
+  let threadPostSearchTextById = new Map();
   /** @type {Promise<IDBDatabase> | null} */
   let threadCacheDbPromise = null;
   /** @type {ForumThreadRecord[]} */
@@ -444,7 +458,8 @@
     const emptyState = {
       graphView: null,
       pageFilter: null,
-      authorFilter: null,
+      authorFilters: [],
+      searchQuery: "",
     };
 
     if (!isThreadUrl(url)) {
@@ -459,8 +474,16 @@
     const pageFilter = Number(
       url.searchParams.get(THREAD_STATE_QUERY_PARAMS.pageFilter) || "",
     );
-    const authorFilter = normalizeAuthorName(
-      url.searchParams.get(THREAD_STATE_QUERY_PARAMS.authorFilter),
+    const authorFilters = Array.from(
+      new Set(
+        url.searchParams
+          .getAll(THREAD_STATE_QUERY_PARAMS.authorFilter)
+          .map((author) => normalizeAuthorName(author))
+          .filter(Boolean),
+      ),
+    );
+    const searchQuery = normalizeText(
+      url.searchParams.get(THREAD_STATE_QUERY_PARAMS.searchQuery),
     );
 
     const graphView =
@@ -475,10 +498,15 @@
     return {
       graphView,
       pageFilter:
-        !graphView && Number.isFinite(pageFilter) && pageFilter > 0
+        !graphView &&
+        authorFilters.length === 0 &&
+        !searchQuery &&
+        Number.isFinite(pageFilter) &&
+        pageFilter > 0
           ? pageFilter
           : null,
-      authorFilter: authorFilter || null,
+      authorFilters,
+      searchQuery,
     };
   }
 
@@ -505,11 +533,15 @@
       }
     }
 
-    if (activeAuthorFilter) {
+    if (activeThreadSearchQuery) {
       url.searchParams.set(
-        THREAD_STATE_QUERY_PARAMS.authorFilter,
-        activeAuthorFilter,
+        THREAD_STATE_QUERY_PARAMS.searchQuery,
+        activeThreadSearchQuery,
       );
+    }
+
+    for (const author of activeAuthorFilters) {
+      url.searchParams.append(THREAD_STATE_QUERY_PARAMS.authorFilter, author);
     }
   }
 
@@ -1521,6 +1553,117 @@
         padding: 0 6px;
       }
 
+      #${THREAD_SEARCH_PANEL_ID} {
+        margin: 0 0 8px;
+        width: 100%;
+      }
+
+      #${THREAD_SEARCH_PANEL_ID} .fc-premium-thread-search-cell {
+        padding: 5px 6px;
+      }
+
+      .fc-premium-thread-search-layout {
+        align-items: end;
+        display: grid;
+        gap: 5px 8px;
+        grid-template-columns: minmax(180px, 1fr) minmax(170px, 250px) auto auto minmax(115px, auto);
+      }
+
+      .fc-premium-thread-search-field {
+        color: #17324d;
+        display: grid;
+        font: 700 10px/1.25 Verdana, Arial, sans-serif;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .fc-premium-thread-search-field input {
+        border: 1px solid #7f9db9;
+        box-sizing: border-box;
+        font: 11px Verdana, Arial, sans-serif;
+        height: 20px;
+        min-width: 0;
+        padding: 2px 4px;
+        width: 100%;
+      }
+
+      .fc-premium-thread-search-button {
+        background: #e6e9ed;
+        border: 1px solid #7f8c99;
+        border-left-color: #f8f8f8;
+        border-radius: 2px;
+        border-top-color: #f8f8f8;
+        box-shadow: inset -1px -1px 0 #bcc3ca;
+        color: #1f3550;
+        cursor: pointer;
+        font: 700 10px/1 Verdana, Arial, sans-serif;
+        height: 20px;
+        padding: 2px 7px 3px;
+        white-space: nowrap;
+      }
+
+      .fc-premium-thread-search-button:hover {
+        background: #f2f5f8;
+        color: #0b57d0;
+      }
+
+      .fc-premium-thread-search-button:disabled {
+        color: #80868b;
+        cursor: default;
+        opacity: 0.65;
+      }
+
+      #${THREAD_SEARCH_SELECTED_AUTHORS_ID} {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 5px;
+      }
+
+      .fc-premium-thread-author-chip {
+        align-items: center;
+        background: #f7faff;
+        border: 1px solid #9db7e5;
+        border-radius: 2px;
+        color: #17324d;
+        display: inline-flex;
+        font: 10px/1 Verdana, Arial, sans-serif;
+        gap: 3px;
+        padding: 2px 4px;
+      }
+
+      .fc-premium-thread-author-chip button {
+        background: transparent;
+        border: 0;
+        color: #0b57d0;
+        cursor: pointer;
+        font: 700 11px/1 Verdana, Arial, sans-serif;
+        padding: 0 1px;
+      }
+
+      #${THREAD_SEARCH_STATUS_ID} {
+        color: #3c4043;
+        font: 10px/1.25 Verdana, Arial, sans-serif;
+        min-width: 0;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      #${THREAD_SEARCH_EMPTY_ID} {
+        background: #fff;
+        border: 1px solid #b7d1ff;
+        box-sizing: border-box;
+        color: #3c4043;
+        font: 11px/1.35 Verdana, Arial, sans-serif;
+        margin: 0 0 8px;
+        padding: 8px 10px;
+        text-align: center;
+      }
+
+      #${THREAD_SEARCH_EMPTY_ID}[hidden] {
+        display: none !important;
+      }
+
       #${TOP_TAGS_ID} {
         align-items: center;
         background: #f7faff;
@@ -1796,7 +1939,7 @@
         display: none !important;
       }
 
-      .fc-premium-post-wrapper[${HIDDEN_POST_ATTRIBUTE}] {
+      .fc-premium-post-wrapper[${HIDDEN_POST_FILTER_ATTRIBUTE}] {
         display: none !important;
       }
 
@@ -5228,7 +5371,7 @@
       clearTagFilter();
     } else if (
       event.key === KEY_CLEAR_ACTIVE_VIEW &&
-      (activeAuthorFilter || activeGraphView)
+      (hasActiveThreadPostFilters() || activeGraphView)
     ) {
       event.preventDefault();
       clearThreadFilters();
@@ -5744,6 +5887,24 @@
     return true;
   }
 
+  function hideForumHeaderSearchForm() {
+    const parts = getForumHeaderSearchFormParts();
+
+    if (parts?.oldContainer instanceof HTMLElement) {
+      hideElementAndAdjacentSpacers(parts.oldContainer);
+    }
+  }
+
+  function hideNativeThreadSearchMenu() {
+    for (const id of ["threadsearch", "threadsearch_menu"]) {
+      const element = document.getElementById(id);
+
+      if (element instanceof HTMLElement) {
+        element.setAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE, "true");
+      }
+    }
+  }
+
   function enhanceThreadHeader() {
     const titleTable = getThreadTitleTable();
 
@@ -5784,17 +5945,8 @@
     }
 
     layout.append(breadcrumbSlot);
-
-    const searchSlot = document.createElement("div");
-    searchSlot.className = "fc-premium-thread-header-search";
-    const movedHeaderSearch = moveForumHeaderSearchForm(searchSlot);
-
-    if (!movedHeaderSearch && searchLink) {
-      searchSlot.append(searchLink);
-    }
-
-    layout.append(searchSlot);
     cell.append(layout);
+    hideForumHeaderSearchForm();
 
     if (searchParentCell instanceof HTMLElement) {
       searchParentCell.setAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE, "true");
@@ -5869,6 +6021,553 @@
 
     summary?.append(controls);
     return summary || null;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  function hasActiveThreadPostFilters() {
+    return Boolean(activeThreadSearchQuery) || activeAuthorFilters.size > 0;
+  }
+
+  /**
+   * @param {PostRecord[]} [posts]
+   * @returns {string}
+   */
+  function getThreadOriginalPosterName(posts = loadedThreadPosts) {
+    return sortPostsChronologically(posts)[0]?.author || "";
+  }
+
+  /**
+   * @returns {string}
+   */
+  function getAuthenticatedUsername() {
+    const profileLink = Array.from(
+      document.querySelectorAll("a[href*='member.php?u=']"),
+    ).find(
+      (link) =>
+        link instanceof HTMLAnchorElement &&
+        normalizeText(link.textContent) === "Tu Perfil",
+    );
+    const profileUserId =
+      profileLink instanceof HTMLAnchorElement
+        ? toUrl(profileLink.href)?.searchParams.get("u") || ""
+        : "";
+
+    if (profileUserId) {
+      const usernameLink = Array.from(
+        document.querySelectorAll("a[href*='member.php?u=']"),
+      ).find((link) => {
+        if (!(link instanceof HTMLAnchorElement)) {
+          return false;
+        }
+
+        const text = normalizeText(link.textContent);
+        return (
+          text &&
+          text !== "Tu Perfil" &&
+          toUrl(link.href)?.searchParams.get("u") === profileUserId
+        );
+      });
+
+      if (usernameLink instanceof HTMLAnchorElement) {
+        return normalizeText(usernameLink.textContent);
+      }
+    }
+
+    return normalizeText(
+      document.querySelector("#navbar_username")?.textContent,
+    );
+  }
+
+  /**
+   * @typedef {object} ThreadAuthorOption
+   * @property {string} key
+   * @property {string} name
+   * @property {number} count
+   * @property {boolean} isOriginalPoster
+   * @property {boolean} isCurrentUser
+   */
+
+  /**
+   * @param {PostRecord[]} [posts]
+   * @returns {ThreadAuthorOption[]}
+   */
+  function getThreadAuthorOptions(posts = loadedThreadPosts) {
+    /** @type {Map<string, ThreadAuthorOption>} */
+    const optionsByKey = new Map();
+    const originalPosterKey = normalizeAuthorName(
+      getThreadOriginalPosterName(posts),
+    );
+    const currentUserKey = normalizeAuthorName(getAuthenticatedUsername());
+
+    for (const post of posts) {
+      const key = normalizeAuthorName(post.author);
+
+      if (!key) {
+        continue;
+      }
+
+      const option = optionsByKey.get(key) || {
+        key,
+        name: post.author,
+        count: 0,
+        isOriginalPoster: key === originalPosterKey,
+        isCurrentUser: key === currentUserKey,
+      };
+
+      option.count += 1;
+      option.isOriginalPoster = option.isOriginalPoster || key === originalPosterKey;
+      option.isCurrentUser = option.isCurrentUser || key === currentUserKey;
+      optionsByKey.set(key, option);
+    }
+
+    if (currentUserKey && !optionsByKey.has(currentUserKey)) {
+      optionsByKey.set(currentUserKey, {
+        key: currentUserKey,
+        name: getAuthenticatedUsername(),
+        count: 0,
+        isOriginalPoster: currentUserKey === originalPosterKey,
+        isCurrentUser: true,
+      });
+    }
+
+    return Array.from(optionsByKey.values()).sort((left, right) => {
+      if (left.isOriginalPoster !== right.isOriginalPoster) {
+        return left.isOriginalPoster ? -1 : 1;
+      }
+
+      if (left.isCurrentUser !== right.isCurrentUser) {
+        return left.isCurrentUser ? -1 : 1;
+      }
+
+      return left.name.localeCompare(right.name, "es", {
+        sensitivity: "base",
+      });
+    });
+  }
+
+  /**
+   * @param {ThreadAuthorOption} option
+   * @returns {string}
+   */
+  function getThreadAuthorOptionLabel(option) {
+    const markers = [];
+
+    if (option.isOriginalPoster) {
+      markers.push("autor");
+    }
+
+    if (option.isCurrentUser) {
+      markers.push("tú");
+    }
+
+    return markers.length > 0
+      ? `${option.name} (${markers.join(", ")})`
+      : option.name;
+  }
+
+  /**
+   * @param {string} authorKey
+   * @returns {ThreadAuthorOption | null}
+   */
+  function getThreadAuthorOptionByKey(authorKey) {
+    return (
+      getThreadAuthorOptions().find((option) => option.key === authorKey) ||
+      null
+    );
+  }
+
+  /**
+   * @param {string} value
+   * @returns {string | null}
+   */
+  function resolveThreadAuthorInputValue(value) {
+    const input = normalizeText(value);
+    const inputKey = normalizeAuthorName(input);
+
+    if (!inputKey) {
+      return null;
+    }
+
+    for (const option of getThreadAuthorOptions()) {
+      const labelKey = normalizeAuthorName(getThreadAuthorOptionLabel(option));
+
+      if (
+        option.key === inputKey ||
+        normalizeAuthorName(option.name) === inputKey ||
+        labelKey === inputKey
+      ) {
+        return option.key;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * @param {PostRecord} post
+   * @returns {string}
+   */
+  function getThreadPostSearchText(post) {
+    const cached = threadPostSearchTextById.get(post.id);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const doc = parseHtml(post.html);
+    const message =
+      doc.getElementById(`post_message_${post.id}`) || doc.body || null;
+    const text = normalizeLayoutText(message?.textContent || "");
+    threadPostSearchTextById.set(post.id, text);
+    return text;
+  }
+
+  /**
+   * @returns {HTMLTableElement | null}
+   */
+  function ensureThreadSearchPanel() {
+    const existing = document.getElementById(THREAD_SEARCH_PANEL_ID);
+
+    if (existing instanceof HTMLTableElement) {
+      return existing;
+    }
+
+    const posts = getPostsElement();
+
+    if (!posts) {
+      return null;
+    }
+
+    const panel = document.createElement("table");
+    panel.id = THREAD_SEARCH_PANEL_ID;
+    panel.className = "tborder";
+    panel.cellPadding = "4";
+    panel.cellSpacing = "1";
+    panel.border = "0";
+
+    const body = panel.createTBody();
+    const titleRow = body.insertRow();
+    const titleCell = titleRow.insertCell();
+    titleCell.className = "thead";
+    titleCell.textContent = "Buscar mensajes";
+
+    const contentRow = body.insertRow();
+    const contentCell = contentRow.insertCell();
+    contentCell.className = "alt1 fc-premium-thread-search-cell";
+
+    const layout = document.createElement("div");
+    layout.className = "fc-premium-thread-search-layout";
+
+    const textLabel = document.createElement("label");
+    textLabel.className = "fc-premium-thread-search-field";
+    textLabel.textContent = "Texto";
+
+    const textInput = document.createElement("input");
+    textInput.id = THREAD_SEARCH_TEXT_INPUT_ID;
+    textInput.type = "search";
+    textInput.className = "bginput";
+    textInput.placeholder = "Buscar en mensajes";
+    textInput.value = activeThreadSearchQuery;
+    textInput.addEventListener("input", () => {
+      setThreadSearchQuery(textInput.value);
+    });
+    textLabel.append(textInput);
+
+    const authorLabel = document.createElement("label");
+    authorLabel.className = "fc-premium-thread-search-field";
+    authorLabel.textContent = "Usuario";
+
+    const authorInput = document.createElement("input");
+    authorInput.id = THREAD_SEARCH_AUTHOR_INPUT_ID;
+    authorInput.type = "text";
+    authorInput.className = "bginput";
+    authorInput.placeholder = "Escribe un usuario";
+    authorInput.setAttribute("list", THREAD_SEARCH_AUTHOR_DATALIST_ID);
+    authorInput.autocomplete = "off";
+    authorInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+
+      event.preventDefault();
+      addThreadAuthorFilterFromInput();
+    });
+    authorLabel.append(authorInput);
+
+    const datalist = document.createElement("datalist");
+    datalist.id = THREAD_SEARCH_AUTHOR_DATALIST_ID;
+
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "fc-premium-thread-search-button";
+    addButton.textContent = "Añadir";
+    addButton.addEventListener("click", () => {
+      addThreadAuthorFilterFromInput();
+    });
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "fc-premium-thread-search-button";
+    clearButton.textContent = "Limpiar";
+    clearButton.addEventListener("click", () => {
+      clearThreadPostFilters();
+    });
+
+    const status = document.createElement("span");
+    status.id = THREAD_SEARCH_STATUS_ID;
+
+    layout.append(textLabel, authorLabel, addButton, clearButton, status);
+    contentCell.append(layout, datalist);
+
+    const selectedAuthors = document.createElement("div");
+    selectedAuthors.id = THREAD_SEARCH_SELECTED_AUTHORS_ID;
+    contentCell.append(selectedAuthors);
+
+    posts.before(panel);
+    return panel;
+  }
+
+  function refreshThreadAuthorDatalist() {
+    const datalist = document.getElementById(THREAD_SEARCH_AUTHOR_DATALIST_ID);
+
+    if (!(datalist instanceof HTMLDataListElement)) {
+      return;
+    }
+
+    datalist.textContent = "";
+
+    for (const option of getThreadAuthorOptions()) {
+      if (activeAuthorFilters.has(option.key)) {
+        continue;
+      }
+
+      const element = document.createElement("option");
+      element.value = getThreadAuthorOptionLabel(option);
+      element.label = `${option.count} mensajes`;
+      datalist.append(element);
+    }
+  }
+
+  function refreshSelectedThreadAuthors() {
+    const container = document.getElementById(
+      THREAD_SEARCH_SELECTED_AUTHORS_ID,
+    );
+
+    if (!(container instanceof HTMLElement)) {
+      return;
+    }
+
+    container.textContent = "";
+
+    for (const authorKey of activeAuthorFilters) {
+      const option = getThreadAuthorOptionByKey(authorKey);
+      const chip = document.createElement("span");
+      chip.className = "fc-premium-thread-author-chip";
+      chip.textContent = option
+        ? getThreadAuthorOptionLabel(option)
+        : authorKey;
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "x";
+      remove.title = "Quitar usuario";
+      remove.addEventListener("click", () => {
+        removeThreadAuthorFilter(authorKey);
+      });
+      chip.append(remove);
+      container.append(chip);
+    }
+  }
+
+  /**
+   * @param {{ total: number, visible: number }} [counts]
+   */
+  function renderThreadSearchStatus(counts) {
+    const status = document.getElementById(THREAD_SEARCH_STATUS_ID);
+
+    if (!(status instanceof HTMLElement)) {
+      return;
+    }
+
+    const total = counts?.total ?? loadedThreadPosts.length;
+    const visible =
+      counts?.visible ??
+      Array.from(
+        document.querySelectorAll(".fc-premium-post-wrapper"),
+      ).filter((wrapper) => wrapper instanceof HTMLElement && isVisible(wrapper))
+        .length;
+    const loading = threadLoadState.isLoading
+      ? ` · cargando ${threadLoadState.loadedPages}/${threadLoadState.targetPages}`
+      : "";
+
+    status.textContent = hasActiveThreadPostFilters()
+      ? `${visible}/${total} mensajes${loading}`
+      : `${total} mensajes${loading}`;
+  }
+
+  /**
+   * @param {{ total: number, visible: number }} [counts]
+   */
+  function renderThreadSearchEmptyState(counts) {
+    const posts = getPostsElement();
+
+    if (!posts) {
+      return;
+    }
+
+    let empty = document.getElementById(THREAD_SEARCH_EMPTY_ID);
+
+    if (!empty) {
+      empty = document.createElement("div");
+      empty.id = THREAD_SEARCH_EMPTY_ID;
+      posts.before(empty);
+    }
+
+    empty.textContent = threadLoadState.isLoading
+      ? "No hay mensajes cargados que coincidan con estos filtros."
+      : "No hay mensajes que coincidan con estos filtros.";
+    empty.hidden = !(
+      hasActiveThreadPostFilters() && (counts?.visible ?? 0) === 0
+    );
+  }
+
+  /**
+   * @param {{ total: number, visible: number }} [counts]
+   */
+  function refreshThreadSearchPanel(counts) {
+    if (!isThreadPage()) {
+      return;
+    }
+
+    const panel = ensureThreadSearchPanel();
+
+    if (!panel) {
+      return;
+    }
+
+    const textInput = document.getElementById(THREAD_SEARCH_TEXT_INPUT_ID);
+
+    if (
+      textInput instanceof HTMLInputElement &&
+      document.activeElement !== textInput
+    ) {
+      textInput.value = activeThreadSearchQuery;
+    }
+
+    refreshThreadAuthorDatalist();
+    refreshSelectedThreadAuthors();
+    renderThreadSearchStatus(counts);
+    renderThreadSearchEmptyState(counts);
+  }
+
+  /**
+   * @param {{ total: number, visible: number }} [counts]
+   */
+  function renderThreadSearchPanel(counts) {
+    refreshThreadSearchPanel(counts);
+  }
+
+  /**
+   * @param {string} query
+   */
+  function setThreadSearchQuery(query) {
+    const hadFilters = hasActiveThreadPostFilters();
+    const nextQuery = normalizeText(query);
+
+    if (activeThreadSearchQuery === nextQuery) {
+      return;
+    }
+
+    activeThreadSearchQuery = nextQuery;
+    updateThreadPostFilters({
+      render: hadFilters !== hasActiveThreadPostFilters(),
+    });
+  }
+
+  /**
+   * @param {string} authorKey
+   */
+  function addThreadAuthorFilter(authorKey) {
+    if (!authorKey || activeAuthorFilters.has(authorKey)) {
+      return;
+    }
+
+    const hadFilters = hasActiveThreadPostFilters();
+    activeAuthorFilters.add(authorKey);
+    updateThreadPostFilters({
+      render: hadFilters !== hasActiveThreadPostFilters(),
+    });
+  }
+
+  function addThreadAuthorFilterFromInput() {
+    const input = document.getElementById(THREAD_SEARCH_AUTHOR_INPUT_ID);
+
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const authorKey = resolveThreadAuthorInputValue(input.value);
+
+    if (!authorKey) {
+      return;
+    }
+
+    input.value = "";
+    addThreadAuthorFilter(authorKey);
+  }
+
+  /**
+   * @param {string} authorKey
+   */
+  function removeThreadAuthorFilter(authorKey) {
+    if (!activeAuthorFilters.delete(authorKey)) {
+      return;
+    }
+
+    updateThreadPostFilters({
+      render: !hasActiveThreadPostFilters(),
+    });
+  }
+
+  function clearThreadPostFilters() {
+    if (!hasActiveThreadPostFilters()) {
+      return;
+    }
+
+    activeThreadSearchQuery = "";
+    activeAuthorFilters.clear();
+    updateThreadPostFilters({ render: true });
+  }
+
+  /**
+   * @param {{ render?: boolean }} [options]
+   */
+  function updateThreadPostFilters(options = {}) {
+    const hadGraphView = Boolean(activeGraphView || pendingGraphView);
+
+    if (hasActiveThreadPostFilters()) {
+      activeGraphView = null;
+      pendingGraphView = null;
+      activePageFilter = null;
+    } else if (!activePageFilter) {
+      activePageFilter = getPageNumber(new URL(location.href));
+    }
+
+    syncThreadStateUrl();
+
+    if (hadGraphView || options.render) {
+      renderThreadPosts(loadedThreadPosts);
+      renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
+      return;
+    }
+
+    const counts = applyThreadPostFilters();
+    applyPageFilter();
+    updateOriginalThreadPageMenus();
+    refreshThreadSearchPanel(counts);
+    refreshNavigation({ reset: true });
   }
 
   /**
@@ -6122,11 +6821,12 @@
   }
 
   function clearThreadFilters() {
-    if (!activeAuthorFilter && !activeGraphView) {
+    if (!hasActiveThreadPostFilters() && !activeGraphView) {
       return;
     }
 
-    activeAuthorFilter = null;
+    activeThreadSearchQuery = "";
+    activeAuthorFilters.clear();
     activeGraphView = null;
     pendingGraphView = null;
     activePageFilter = getPageNumber(new URL(location.href));
@@ -6150,29 +6850,32 @@
       return;
     }
 
-    activeAuthorFilter = activeAuthorFilter === authorKey ? null : authorKey;
-    syncThreadStateUrl();
-    applyAuthorFilter();
-    renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
-    refreshNavigation({ reset: true });
+    const hadFilters = hasActiveThreadPostFilters();
+
+    if (activeAuthorFilters.has(authorKey)) {
+      activeAuthorFilters.delete(authorKey);
+    } else {
+      activeAuthorFilters.add(authorKey);
+    }
+
+    updateThreadPostFilters({
+      render: hadFilters !== hasActiveThreadPostFilters(),
+    });
   }
 
   function clearAuthorFilter() {
-    if (!activeAuthorFilter) {
+    if (activeAuthorFilters.size === 0) {
       return;
     }
 
-    activeAuthorFilter = null;
-    syncThreadStateUrl();
-    applyAuthorFilter();
-    renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
-    refreshNavigation({ reset: true });
+    activeAuthorFilters.clear();
+    updateThreadPostFilters({ render: true });
   }
 
   /**
    * @returns {{ total: number, visible: number }}
    */
-  function applyAuthorFilter() {
+  function applyThreadPostFilters() {
     const posts = getPostsElement();
     let total = 0;
     let visible = 0;
@@ -6181,21 +6884,30 @@
       return { total, visible };
     }
 
+    const query = normalizeLayoutText(activeThreadSearchQuery);
+    const postById = new Map(loadedThreadPosts.map((post) => [post.id, post]));
+
     for (const wrapper of posts.querySelectorAll(".fc-premium-post-wrapper")) {
       if (!(wrapper instanceof HTMLElement)) {
         continue;
       }
 
       const authorKey = wrapper.dataset.fcPremiumAuthor || "";
-      const matches = !activeAuthorFilter || authorKey === activeAuthorFilter;
+      const postId = getPostIdFromNavigationElement(wrapper);
+      const post = postId ? postById.get(postId) : null;
+      const matchesAuthor =
+        activeAuthorFilters.size === 0 || activeAuthorFilters.has(authorKey);
+      const matchesText =
+        !query || (post ? getThreadPostSearchText(post).includes(query) : false);
+      const matches = matchesAuthor && matchesText;
 
       total += 1;
 
       if (matches) {
         visible += 1;
-        wrapper.removeAttribute(HIDDEN_POST_ATTRIBUTE);
+        wrapper.removeAttribute(HIDDEN_POST_FILTER_ATTRIBUTE);
       } else {
-        wrapper.setAttribute(HIDDEN_POST_ATTRIBUTE, "true");
+        wrapper.setAttribute(HIDDEN_POST_FILTER_ATTRIBUTE, "true");
       }
     }
 
@@ -6537,8 +7249,11 @@
     pendingGraphView = null;
     activePageFilter = activeGraphView
       ? null
-      : queryState.pageFilter || getPageNumber(url);
-    activeAuthorFilter = queryState.authorFilter;
+      : queryState.authorFilters.length > 0 || queryState.searchQuery
+        ? null
+        : queryState.pageFilter || getPageNumber(url);
+    activeAuthorFilters = new Set(queryState.authorFilters);
+    activeThreadSearchQuery = queryState.searchQuery;
 
     updateOriginalThreadPageMenus();
     renderThreadPosts(loadedThreadPosts);
@@ -6632,7 +7347,7 @@
   function getFeaturedChronologicalPosts(posts) {
     const chronologicalPosts = sortPostsChronologically(posts);
 
-    if (activePageFilter) {
+    if (activePageFilter || hasActiveThreadPostFilters()) {
       return chronologicalPosts;
     }
 
@@ -7502,9 +8217,10 @@
     }
 
     postsElement.append(fragment);
-    applyAuthorFilter();
+    const filterCounts = applyThreadPostFilters();
     applyPageFilter();
     updateOriginalThreadPageMenus();
+    renderThreadSearchPanel(filterCounts);
     refreshNavigation({ reset: true });
 
     if (selectedPostId) {
@@ -7537,6 +8253,7 @@
     applyOriginalPosterFlags(posts);
     loadedThreadPosts = posts.slice();
     threadGraph = buildThreadGraph(loadedThreadPosts);
+    threadPostSearchTextById.clear();
     activatePendingGraphView();
   }
 
@@ -7546,7 +8263,9 @@
   async function enhanceThreadPage() {
     ensureStyle();
     hideUnusedTopNavigationBars();
+    hideNativeThreadSearchMenu();
     enhanceThreadHeader();
+    hideNativeThreadSearchMenu();
     hideUnusedTopNavigationBars();
 
     const summary = ensureThreadSummary();
@@ -7569,8 +8288,11 @@
     pendingGraphView = queryState.graphView;
     activePageFilter = queryState.graphView
       ? null
-      : queryState.pageFilter || currentPageNumber;
-    activeAuthorFilter = queryState.authorFilter;
+      : queryState.authorFilters.length > 0 || queryState.searchQuery
+        ? null
+        : queryState.pageFilter || currentPageNumber;
+    activeAuthorFilters = new Set(queryState.authorFilters);
+    activeThreadSearchQuery = queryState.searchQuery;
 
     if (activePageFilter) {
       updateThreadPageUrl(activePageFilter, {
@@ -7597,6 +8319,7 @@
     }
 
     renderThreadSummaryMenu(summary);
+    renderThreadSearchPanel();
 
     const cachedThread = await readCurrentThreadCache();
 
