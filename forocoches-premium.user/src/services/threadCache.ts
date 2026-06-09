@@ -15,6 +15,7 @@ import type {
   PostRecord,
   ThreadCacheRecord,
 } from "../domain/types";
+import { getTagsFromText } from "../domain/tags";
 import {
   getThreadId,
   normalizeAuthorName,
@@ -129,17 +130,15 @@ export function normalizeForumThreadRecord(
     return null;
   }
 
+  const title = normalizeText(record.title);
+
   return {
     version: record.version,
     id: record.id,
     forumId: record.forumId,
     url: record.url,
-    title: normalizeText(record.title),
-    tags: Array.from(
-      new Set(
-        record.tags.map((tag) => normalizeAuthorName(tag)).filter(Boolean),
-      ),
-    ),
+    title,
+    tags: getTagsFromText(title),
     html: record.html,
     preview: normalizeText(record.preview),
     author: normalizeText(record.author),

@@ -332,22 +332,24 @@
     return parts;
   }
   function matchTagAfterPlus(source) {
+    const leadingWhitespaceLength = source.match(/^\s*/)?.[0].length || 0;
+    const candidate = source.slice(leadingWhitespaceLength);
     for (const special of SPECIAL_TAG_PATTERNS) {
-      const match = source.match(special.pattern);
+      const match = candidate.match(special.pattern);
       if (match?.[0]) {
         return {
           tag: normalizeTag(special.tag),
-          length: match[0].length
+          length: leadingWhitespaceLength + match[0].length
         };
       }
     }
-    const wordMatch = source.match(SINGLE_WORD_TAG_PATTERN);
+    const wordMatch = candidate.match(SINGLE_WORD_TAG_PATTERN);
     if (!wordMatch?.[0]) {
       return null;
     }
     return {
       tag: normalizeTag(wordMatch[0]),
-      length: wordMatch[0].length
+      length: leadingWhitespaceLength + wordMatch[0].length
     };
   }
   function escapeRegExp(value) {
@@ -1294,13 +1296,14 @@
     if (record.version !== FORUM_THREAD_CACHE_RECORD_VERSION || typeof record.id !== "string" || typeof record.forumId !== "string" || typeof record.url !== "string" || typeof record.title !== "string" || typeof record.html !== "string" || !Array.isArray(record.tags)) {
       return null;
     }
+    const title = normalizeText(record.title);
     return {
       version: record.version,
       id: record.id,
       forumId: record.forumId,
       url: record.url,
-      title: normalizeText(record.title),
-      tags: Array.from(new Set(record.tags.map((tag) => normalizeAuthorName(tag)).filter(Boolean))),
+      title,
+      tags: getTagsFromText(title),
       html: record.html,
       preview: normalizeText(record.preview),
       author: normalizeText(record.author),
@@ -3247,8 +3250,11 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     }
     function restoreNativeForumThreadRows() {
       if (nativeForumThreadRowHtml.length > 0) {
-        return renderForumThreadRows(nativeForumThreadRowHtml, getForumThreadRowsSignature(nativeForumThreadRowHtml, "native"));
+        const changed = renderForumThreadRows(nativeForumThreadRowHtml, getForumThreadRowsSignature(nativeForumThreadRowHtml, "native"));
+        renderVisibleForumThreadTitleTags();
+        return changed;
       }
+      renderVisibleForumThreadTitleTags();
       return false;
     }
     function applyHiddenForumThreadRows() {
@@ -3388,6 +3394,76 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         url.searchParams.set("page", String(pageNumber));
       }
       return url;
+    }
+    function replaceForumPagersFromDocument(doc) {
+      const currentPagers = Array.from(document.querySelectorAll(".pagenav"));
+      const nextPagers = Array.from(doc.querySelectorAll(".pagenav"));
+      currentPagers.forEach((pager, index) => {
+        const nextPager = nextPagers[index];
+        if (pager instanceof HTMLElement && nextPager instanceof HTMLElement) {
+          pager.innerHTML = nextPager.innerHTML;
+        }
+      });
+    }
+    async function loadForumDisplayPageWithJavascript(url) {
+      const forumId = getForumId(url);
+      if (!forumId) {
+        location.href = url.href;
+        return;
+      }
+      setForumThreadLoadState({ isLoading: true });
+      try {
+        const pageNumber = getPageNumber(url);
+        const doc = pageNumber === getPageNumber(new URL(location.href)) && url.pathname === location.pathname ? parseHtml(document.documentElement.outerHTML) : await fetchThreadDocument(url.href);
+        const records = collectForumThreadRecords(doc, url.href, forumId, pageNumber, forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE, Date.now());
+        if (records.length === 0) {
+          location.href = url.href;
+          return;
+        }
+        replaceForumPagersFromDocument(doc);
+        activeTagFilter = null;
+        activeForumSearchQuery = "";
+        activeForumTagPage = pageNumber;
+        nativeForumThreadRowHtml = records.map((record) => record.html);
+        forumThreadsPerPage = records.length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
+        renderedForumThreadListSignature = null;
+        renderForumThreadRows(nativeForumThreadRowHtml, getForumThreadRowsSignature(nativeForumThreadRowHtml, `native-page-${pageNumber}`));
+        applyHiddenForumThreadRows();
+        updateBrowserHistory(url, "push");
+        mergeCachedForumThreadRecords(records);
+        await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
+        cachedForumThreads = await readForumThreadCacheRecords();
+        renderTopTagBar();
+        refreshNavigation({ reset: true });
+        window.scrollTo({ top: 0, behavior: "auto" });
+      } catch (error) {
+        console.warn("Forocoches Premium: no se pudo cargar la pagina del foro con JavaScript", error);
+        location.href = url.href;
+      } finally {
+        setForumThreadLoadState({ isLoading: false });
+      }
+    }
+    function handleForumPageNavigationClick(event) {
+      if (event.defaultPrevented || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return;
+      }
+      const link = event.target instanceof Element ? event.target.closest(".pagenav a[href*='forumdisplay.php']") : null;
+      if (!(link instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const url = toUrl(link.getAttribute("href") || link.href);
+      if (!url || url.pathname !== location.pathname || getForumId(url) !== getForumId()) {
+        return;
+      }
+      event.preventDefault();
+      if (activeTagFilter || activeForumSearchQuery) {
+        setForumTagPage(getPageNumber(url));
+        return;
+      }
+      loadForumDisplayPageWithJavascript(url);
+    }
+    function installForumPageNavigation() {
+      document.addEventListener("click", handleForumPageNavigationClick, true);
     }
     function refreshForumTagUi(options = {}) {
       if (options.readUrlState !== false) {
@@ -5508,6 +5584,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       if (isForumDisplayPage()) {
         enhanceForumDisplayPage();
         installForumHistoryNavigation();
+        installForumPageNavigation();
         await initializeForumThreadCache();
         refreshNavigation({ reset: true });
       }

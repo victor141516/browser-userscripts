@@ -1007,12 +1007,15 @@ export function runForocochesPremium() {
 
   function restoreNativeForumThreadRows(): boolean {
     if (nativeForumThreadRowHtml.length > 0) {
-      return renderForumThreadRows(
+      const changed = renderForumThreadRows(
         nativeForumThreadRowHtml,
         getForumThreadRowsSignature(nativeForumThreadRowHtml, "native"),
       );
+      renderVisibleForumThreadTitleTags();
+      return changed;
     }
 
+    renderVisibleForumThreadTitleTags();
     return false;
   }
 
@@ -1228,6 +1231,128 @@ export function runForocochesPremium() {
     }
 
     return url;
+  }
+
+  function replaceForumPagersFromDocument(doc: Document): void {
+    const currentPagers = Array.from(document.querySelectorAll(".pagenav"));
+    const nextPagers = Array.from(doc.querySelectorAll(".pagenav"));
+
+    currentPagers.forEach((pager, index) => {
+      const nextPager = nextPagers[index];
+
+      if (pager instanceof HTMLElement && nextPager instanceof HTMLElement) {
+        pager.innerHTML = nextPager.innerHTML;
+      }
+    });
+  }
+
+  async function loadForumDisplayPageWithJavascript(url: URL): Promise<void> {
+    const forumId = getForumId(url);
+
+    if (!forumId) {
+      location.href = url.href;
+      return;
+    }
+
+    setForumThreadLoadState({ isLoading: true });
+
+    try {
+      const pageNumber = getPageNumber(url);
+      const doc =
+        pageNumber === getPageNumber(new URL(location.href)) &&
+        url.pathname === location.pathname
+          ? parseHtml(document.documentElement.outerHTML)
+          : await fetchThreadDocument(url.href);
+      const records = collectForumThreadRecords(
+        doc,
+        url.href,
+        forumId,
+        pageNumber,
+        forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE,
+        Date.now(),
+      );
+
+      if (records.length === 0) {
+        location.href = url.href;
+        return;
+      }
+
+      replaceForumPagersFromDocument(doc);
+      activeTagFilter = null;
+      activeForumSearchQuery = "";
+      activeForumTagPage = pageNumber;
+      nativeForumThreadRowHtml = records.map((record) => record.html);
+      forumThreadsPerPage = records.length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
+      renderedForumThreadListSignature = null;
+      renderForumThreadRows(
+        nativeForumThreadRowHtml,
+        getForumThreadRowsSignature(nativeForumThreadRowHtml, `native-page-${pageNumber}`),
+      );
+      applyHiddenForumThreadRows();
+      updateBrowserHistory(url, "push");
+      mergeCachedForumThreadRecords(records);
+      await writeForumThreadCacheRecords(
+        records
+          .map((record) =>
+            cachedForumThreads.find(
+              (cachedRecord) => cachedRecord.id === record.id,
+            ),
+          )
+          .filter((record) => record !== undefined),
+      );
+      cachedForumThreads = await readForumThreadCacheRecords();
+      renderTopTagBar();
+      refreshNavigation({ reset: true });
+      window.scrollTo({ top: 0, behavior: "auto" });
+    } catch (error) {
+      console.warn(
+        "Forocoches Premium: no se pudo cargar la pagina del foro con JavaScript",
+        error,
+      );
+      location.href = url.href;
+    } finally {
+      setForumThreadLoadState({ isLoading: false });
+    }
+  }
+
+  function handleForumPageNavigationClick(event: MouseEvent): void {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey
+    ) {
+      return;
+    }
+
+    const link = (event.target instanceof Element
+      ? event.target.closest(".pagenav a[href*='forumdisplay.php']")
+      : null);
+
+    if (!(link instanceof HTMLAnchorElement)) {
+      return;
+    }
+
+    const url = toUrl(link.getAttribute("href") || link.href);
+
+    if (!url || url.pathname !== location.pathname || getForumId(url) !== getForumId()) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (activeTagFilter || activeForumSearchQuery) {
+      setForumTagPage(getPageNumber(url));
+      return;
+    }
+
+    void loadForumDisplayPageWithJavascript(url);
+  }
+
+  function installForumPageNavigation(): void {
+    document.addEventListener("click", handleForumPageNavigationClick, true);
   }
 
   function refreshForumTagUi(options: { readUrlState?: boolean } = {}) {
@@ -4281,6 +4406,7 @@ export function runForocochesPremium() {
     if (isForumDisplayPage()) {
       enhanceForumDisplayPage();
       installForumHistoryNavigation();
+      installForumPageNavigation();
       await initializeForumThreadCache();
       refreshNavigation({ reset: true });
     }

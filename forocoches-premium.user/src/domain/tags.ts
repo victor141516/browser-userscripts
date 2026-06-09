@@ -92,18 +92,21 @@ export function splitTextByTags(source: string): TextTagPart[] {
 }
 
 function matchTagAfterPlus(source: string): { tag: string; length: number } | null {
+  const leadingWhitespaceLength = source.match(/^\s*/)?.[0].length || 0;
+  const candidate = source.slice(leadingWhitespaceLength);
+
   for (const special of SPECIAL_TAG_PATTERNS) {
-    const match = source.match(special.pattern);
+    const match = candidate.match(special.pattern);
 
     if (match?.[0]) {
       return {
         tag: normalizeTag(special.tag),
-        length: match[0].length,
+        length: leadingWhitespaceLength + match[0].length,
       };
     }
   }
 
-  const wordMatch = source.match(SINGLE_WORD_TAG_PATTERN);
+  const wordMatch = candidate.match(SINGLE_WORD_TAG_PATTERN);
 
   if (!wordMatch?.[0]) {
     return null;
@@ -111,7 +114,7 @@ function matchTagAfterPlus(source: string): { tag: string; length: number } | nu
 
   return {
     tag: normalizeTag(wordMatch[0]),
-    length: wordMatch[0].length,
+    length: leadingWhitespaceLength + wordMatch[0].length,
   };
 }
 
