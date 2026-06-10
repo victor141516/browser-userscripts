@@ -12,13 +12,15 @@ export const HIDDEN_THREADS_BUTTON_ID = "fc-premium-hidden-threads-button";
 
 export const HIDDEN_THREADS_MODAL_ID = "fc-premium-hidden-threads-modal";
 
-export const HIDDEN_THREADS_MODAL_BODY_ID = "fc-premium-hidden-threads-modal-body";
+export const HIDDEN_THREADS_MODAL_BODY_ID =
+  "fc-premium-hidden-threads-modal-body";
 
 export const MODAL_OPEN_CLASS = "fc-premium-modal-open";
 
 export const TOP_TAGS_ID = "fc-premium-top-tags";
 
-export const FORUM_SIDEBAR_TOGGLE_BAR_ID = "fc-premium-forum-sidebar-toggle-bar";
+export const FORUM_SIDEBAR_TOGGLE_BAR_ID =
+  "fc-premium-forum-sidebar-toggle-bar";
 
 export const FORUM_SIDEBAR_TOGGLE_ID = "fc-premium-forum-sidebar-toggle";
 
@@ -53,5 +55,3 @@ export const THREAD_SEARCH_STATUS_ID = "fc-premium-thread-search-status";
 export const THREAD_SEARCH_EMPTY_ID = "fc-premium-thread-search-empty";
 
 export const FORUM_SIDEBAR_HIDDEN_CLASS = "fc-premium-forum-sidebar-hidden";
-
-export const COMPACT_MODE_CLASS = "fc-premium-compact";

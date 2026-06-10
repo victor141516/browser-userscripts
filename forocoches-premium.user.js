@@ -3123,29 +3123,29 @@ tr[data-fc-premium-selected] > td {
   background: #eef5ff !important;
 }
 
-body.fc-premium-compact #posts table[id^="post"] {
+body #posts table[id^="post"] {
   table-layout: auto !important;
 }
 
-body.fc-premium-compact #posts .fc-premium-author-cell {
+body #posts .fc-premium-author-cell {
   display: none !important;
 }
 
-body.fc-premium-compact #posts table[id^="post"] td {
+body #posts table[id^="post"] td {
   padding-bottom: 4px !important;
   padding-top: 4px !important;
 }
 
-body.fc-premium-compact .fc-premium-post-wrapper div[id^="edit"] > br,
-body.fc-premium-compact .fc-premium-post-wrapper div[id^="edit"] > table.cajasprin {
+body .fc-premium-post-wrapper div[id^="edit"] > br,
+body .fc-premium-post-wrapper div[id^="edit"] > table.cajasprin {
   display: none !important;
 }
 
-body.fc-premium-compact .fc-premium-post-wrapper {
+body .fc-premium-post-wrapper {
   margin-bottom: 6px;
 }
 
-body.fc-premium-compact .fc-premium-post-wrapper[data-fc-premium-reply-indent] {
+body .fc-premium-post-wrapper[data-fc-premium-reply-indent] {
   margin-left: 18px;
 }
 
@@ -3163,51 +3163,51 @@ body.fc-premium-compact .fc-premium-post-wrapper[data-fc-premium-reply-indent] {
   }
 }
 
-body.fc-premium-compact #fc-premium-thread-summary {
+body #fc-premium-thread-summary {
   font-size: 11px;
   margin: 6px auto;
   padding: 6px 8px;
 }
 
-body.fc-premium-compact #fc-premium-top-tags,
-body.fc-premium-compact #fc-premium-forum-sidebar-toggle-bar {
+body #fc-premium-top-tags,
+body #fc-premium-forum-sidebar-toggle-bar {
   margin-bottom: 5px;
   margin-top: 5px;
   padding: 5px 8px;
 }
 
-body.fc-premium-compact #fc-premium-thread-controls,
-body.fc-premium-compact #fc-premium-thread-progress {
+body #fc-premium-thread-controls,
+body #fc-premium-thread-progress {
   gap: 4px;
 }
 
-body.fc-premium-compact #posts table[id^="post"] {
+body #posts table[id^="post"] {
   font-size: 12px !important;
 }
 
-body.fc-premium-compact #posts table[id^="post"] .alt1,
-body.fc-premium-compact #posts table[id^="post"] .alt2 {
+body #posts table[id^="post"] .alt1,
+body #posts table[id^="post"] .alt2 {
   padding-left: 6px !important;
   padding-right: 6px !important;
 }
 
-body.fc-premium-compact #threadslist td {
+body #threadslist td {
   padding-bottom: 2px !important;
   padding-top: 2px !important;
 }
 
-body.fc-premium-compact #threadslist,
-body.fc-premium-compact #threadslist .mfont,
-body.fc-premium-compact #threadslist .smallfont {
+body #threadslist,
+body #threadslist .mfont,
+body #threadslist .smallfont {
   font-size: 12px !important;
 }
 
-body.fc-premium-compact .fc-premium-header-author {
+body .fc-premium-header-author {
   display: inline-block;
 }
 
-body.fc-premium-compact table.tborder:has(td.navbar),
-body.fc-premium-compact table.tborder:has(.navbar) {
+body table.tborder:has(td.navbar),
+body table.tborder:has(.navbar) {
   display: none !important;
 }
 `;
@@ -5311,7 +5311,13 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     let loadedThreadPosts = [];
     let threadPages = [];
     let loadedThreadPageNumbers = new Set;
-    let threadLoadState = { loadedPages: 0, targetPages: 0, totalPages: 0, loadedPosts: 0, isLoading: false };
+    let threadLoadState = {
+      loadedPages: 0,
+      targetPages: 0,
+      totalPages: 0,
+      loadedPosts: 0,
+      isLoading: false
+    };
     let threadGraph = createEmptyThreadGraph();
     let activeGraphView = null;
     let pendingGraphView = initialThreadQueryState.graphView;
@@ -6298,29 +6304,29 @@ tr[data-fc-premium-selected] > td {
   background: #eef5ff !important;
 }
 
-body.fc-premium-compact #posts table[id^="post"] {
+body #posts table[id^="post"] {
   table-layout: auto !important;
 }
 
-body.fc-premium-compact #posts .fc-premium-author-cell {
+body #posts .fc-premium-author-cell {
   display: none !important;
 }
 
-body.fc-premium-compact #posts table[id^="post"] td {
+body #posts table[id^="post"] td {
   padding-bottom: 4px !important;
   padding-top: 4px !important;
 }
 
-body.fc-premium-compact .fc-premium-post-wrapper div[id^="edit"] > br,
-body.fc-premium-compact .fc-premium-post-wrapper div[id^="edit"] > table.cajasprin {
+body .fc-premium-post-wrapper div[id^="edit"] > br,
+body .fc-premium-post-wrapper div[id^="edit"] > table.cajasprin {
   display: none !important;
 }
 
-body.fc-premium-compact .fc-premium-post-wrapper {
+body .fc-premium-post-wrapper {
   margin-bottom: 6px;
 }
 
-body.fc-premium-compact .fc-premium-post-wrapper[data-fc-premium-reply-indent] {
+body .fc-premium-post-wrapper[data-fc-premium-reply-indent] {
   margin-left: 18px;
 }
 
@@ -6338,51 +6344,51 @@ body.fc-premium-compact .fc-premium-post-wrapper[data-fc-premium-reply-indent] {
   }
 }
 
-body.fc-premium-compact #fc-premium-thread-summary {
+body #fc-premium-thread-summary {
   font-size: 11px;
   margin: 6px auto;
   padding: 6px 8px;
 }
 
-body.fc-premium-compact #fc-premium-top-tags,
-body.fc-premium-compact #fc-premium-forum-sidebar-toggle-bar {
+body #fc-premium-top-tags,
+body #fc-premium-forum-sidebar-toggle-bar {
   margin-bottom: 5px;
   margin-top: 5px;
   padding: 5px 8px;
 }
 
-body.fc-premium-compact #fc-premium-thread-controls,
-body.fc-premium-compact #fc-premium-thread-progress {
+body #fc-premium-thread-controls,
+body #fc-premium-thread-progress {
   gap: 4px;
 }
 
-body.fc-premium-compact #posts table[id^="post"] {
+body #posts table[id^="post"] {
   font-size: 12px !important;
 }
 
-body.fc-premium-compact #posts table[id^="post"] .alt1,
-body.fc-premium-compact #posts table[id^="post"] .alt2 {
+body #posts table[id^="post"] .alt1,
+body #posts table[id^="post"] .alt2 {
   padding-left: 6px !important;
   padding-right: 6px !important;
 }
 
-body.fc-premium-compact #threadslist td {
+body #threadslist td {
   padding-bottom: 2px !important;
   padding-top: 2px !important;
 }
 
-body.fc-premium-compact #threadslist,
-body.fc-premium-compact #threadslist .mfont,
-body.fc-premium-compact #threadslist .smallfont {
+body #threadslist,
+body #threadslist .mfont,
+body #threadslist .smallfont {
   font-size: 12px !important;
 }
 
-body.fc-premium-compact .fc-premium-header-author {
+body .fc-premium-header-author {
   display: inline-block;
 }
 
-body.fc-premium-compact table.tborder:has(td.navbar),
-body.fc-premium-compact table.tborder:has(.navbar) {
+body table.tborder:has(td.navbar),
+body table.tborder:has(.navbar) {
   display: none !important;
 }
 `;

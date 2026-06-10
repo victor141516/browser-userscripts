@@ -16,9 +16,7 @@ import {
   getPostIdFromNavigationElement,
   getPostNavigationItems,
 } from "../../ui/navigationDom";
-import {
-  renderShortcutHelpButton as renderShortcutHelpButtonInDom,
-} from "../../ui/shortcutHelpDom";
+import { renderShortcutHelpButton as renderShortcutHelpButtonInDom } from "../../ui/shortcutHelpDom";
 import {
   relocatePostFooterControls,
   removeTrailingPostLayoutArtifacts,
@@ -40,60 +38,15 @@ import {
   getShortcutHelpItems,
 } from "../../ui/shortcutHelpItems";
 import {
-  ForumLoadingStatus,
-  ForumSidebarToggleButton,
-} from "../../ui/components/ForumControls";
-import {
-  closeHiddenThreadsModal as closeHiddenThreadsModalInDom,
-  ensureHiddenThreadsModal as ensureHiddenThreadsModalInDom,
-  isHiddenThreadsModalOpen as isHiddenThreadsModalOpenInDom,
-  openHiddenThreadsModal as openHiddenThreadsModalInDom,
-  renderHiddenThreadsModalBody as renderHiddenThreadsModalBodyInDom,
-  renderHiddenThreadsToolbarButton as renderHiddenThreadsToolbarButtonInDom,
-} from "../../ui/hiddenThreadsModalDom";
-import { ForumPager } from "../../ui/components/ForumPager";
-import {
-  TagChip,
-  TopTagBar,
-  type TopTagSummary,
-} from "../../ui/components/Tags";
-import {
   STYLE_ID,
-  INSTANCE_KEY,
-  SCRIPT_INSTANCE_VERSION,
-  TOP_TAGS_ID,
-  FORUM_SIDEBAR_TOGGLE_BAR_ID,
-  FORUM_SIDEBAR_TOGGLE_ID,
-  FORUM_CONTROLS_ROW_ID,
-  FORUM_SEARCH_SLOT_ID,
-  FORUM_LOADING_STATUS_ID,
   NAVIGATION_STATUS_ID,
   THREAD_SUMMARY_ID,
   THREAD_SEARCH_PANEL_ID,
   THREAD_SEARCH_AUTHOR_INPUT_ID,
-  FORUM_SIDEBAR_HIDDEN_CLASS,
-  COMPACT_MODE_CLASS,
-  FORUM_SIDEBAR_STORAGE_KEY,
-  THREAD_CACHE_MAX_AGE_MS,
-  THREAD_CACHE_MAX_BYTES,
-  THREAD_CACHE_DB_NAME,
-  THREAD_CACHE_DB_VERSION,
-  THREAD_CACHE_STORE_NAME,
-  FORUM_THREAD_CACHE_STORE_NAME,
-  THREAD_CACHE_RECORD_VERSION,
-  FORUM_THREAD_CACHE_RECORD_VERSION,
-  FORUM_THREAD_CACHE_RECENT_PAGES,
-  FORUM_THREAD_CACHE_MAX_RECORDS,
-  FORUM_THREAD_FALLBACK_PAGE_SIZE,
-  FORUM_LIVE_SEARCH_DEBOUNCE_MS,
   THREAD_STATE_QUERY_PARAMS,
-  FORUM_STATE_QUERY_PARAMS,
   FORUM_LAYOUT_HIDDEN_ATTRIBUTE,
   POSTS_SELECTOR,
-  POST_TABLE_SELECTOR,
-  THREAD_TITLE_SELECTOR,
   PAGE_LOAD_DELAY_MS,
-  GRAPH_VIEW_TYPES
 } from "../../config/constants";
 import {
   normalizeText,
@@ -106,14 +59,9 @@ import {
   getPageNumber,
   getLocationPostHashId,
   isThreadPage,
-  isForumDisplayPage,
-  getForumId
 } from "../../shared/dom";
-import { findTagsInText, splitTextByTags } from "../../domain/tags";
 import type {
   ActiveGraphView,
-  ForumQueryState,
-  ForumThreadLoadState,
   ForumThreadRecord,
   GraphViewType,
   NavigationItem,
@@ -129,31 +77,17 @@ import {
   applyReplyCounts,
   buildThreadGraph,
   createEmptyThreadGraph,
-  getGraphViewLabel,
   getPostsForGraphView,
   getReplyIndentDepth as getReplyIndentDepthForView,
   getReplyRankByPostId,
   getThreadViewPosts as getPostsForThreadView,
   getValidGraphView,
-  sortPostsChronologically,
 } from "../../domain/threadPosts";
-import {
-  filterForumThreadRecords,
-  getHiddenForumThreadRecords,
-  getVisibleForumThreadRecords,
-  sortForumThreadRecords,
-} from "../../domain/forumThreads";
 import {
   getThreadAuthorOptions as buildThreadAuthorOptions,
   resolveThreadAuthorInputValue as resolveThreadAuthorInputValueFromOptions,
 } from "../../domain/threadAuthors";
 import { getVisiblePageNumbers } from "../../domain/pagination";
-import {
-  clampForumThreadListPage,
-  getForumThreadListPage,
-  getForumThreadListTotalPages,
-  getForumThreadRowsSignature,
-} from "../../domain/forumThreadList";
 import {
   collectPosts,
   fetchThreadDocument,
@@ -163,38 +97,13 @@ import {
   parseHtml,
 } from "../../adapters/forocoches/threadParser";
 import {
-  collectForumThreadRecords,
-  getTitleTags,
-} from "../../adapters/forocoches/forumThreadParser";
-import {
-  getForumMainCell,
-  getForumSidebarCell,
-  getForumSidebarSpacerCell,
-  getForumThreadListHeaderTable,
-  getForumThreadsTable,
-  getRelatedForumsPanel,
-  hideElementAndAdjacentSpacers,
-  isForumTopShortcutBar,
-  removeForumTitleTables,
-  setForumLayoutElementHidden,
-  setForumMainCellExpanded,
-  shouldIgnoreTopNavigationTable,
-} from "../../adapters/forocoches/forumLayout";
-import {
   getNavbarSearchLink,
   getThreadBreadcrumbContentTable,
   getThreadBreadcrumbOuterTable,
   getThreadTitleTable,
   hideForumHeaderSearchForm,
   hideNativeThreadSearchMenu,
-  moveForumHeaderSearchForm,
 } from "../../adapters/forocoches/threadHeader";
-import {
-  applyHiddenForumThreadRows as applyHiddenForumThreadRowsInDom,
-  renderForumThreadRowsFromHtml,
-  renderVisibleForumThreadTitleTags as renderVisibleForumThreadTitleTagsInDom,
-  restoreForumThreadRowsFromHtml,
-} from "../../adapters/forocoches/forumThreadListDom";
 import {
   clickPostQuoteAction,
   openThreadReplyWithoutQuote as openThreadReplyWithoutQuoteAction,
@@ -205,26 +114,15 @@ import {
   updateOriginalThreadPageMenus as updateOriginalThreadPageMenusInDom,
 } from "../../adapters/forocoches/threadPageNavigation";
 import {
-  clearForumStateQueryParams,
   clearThreadStateQueryParams,
-  isThreadUrl,
-  readForumQueryState,
   readThreadQueryState,
 } from "../../services/queryState";
 import {
-  canUseThreadCache,
   cleanupThreadCache,
-  cleanupForumThreadCache,
   clearCurrentThreadCache,
-  estimateThreadCacheByteSize,
   isCompleteThreadCache,
-  normalizeCachedPostRecord,
   readCurrentThreadCache,
-  readForumThreadCacheRecords,
-  waitForIdbRequest,
-  waitForIdbTransaction,
   writeCurrentThreadCache,
-  writeForumThreadCacheRecords,
 } from "../../services/threadCache";
 import { createNavigationController } from "./navigationController";
 import { createThreadPageKeyboardController } from "./threadPageKeyboardController";
@@ -234,7 +132,11 @@ declare const __FC_PREMIUM_CSS__: string;
 export interface ThreadPageController {
   init(): Promise<void>;
   handleNavigationKeyDown(event: KeyboardEvent): boolean;
-  refreshNavigation(options?: { reset?: boolean, scroll?: boolean, updateUrl?: boolean }): void;
+  refreshNavigation(options?: {
+    reset?: boolean;
+    scroll?: boolean;
+    updateUrl?: boolean;
+  }): void;
   updateSummaryMenu(): void;
 }
 
@@ -243,13 +145,22 @@ export function createThreadPageController(): ThreadPageController {
   let loadedThreadPosts: PostRecord[] = [];
   let threadPages: ThreadPage[] = [];
   let loadedThreadPageNumbers: Set<number> = new Set();
-  let threadLoadState: ThreadLoadState = { loadedPages: 0, targetPages: 0, totalPages: 0, loadedPosts: 0, isLoading: false };
+  let threadLoadState: ThreadLoadState = {
+    loadedPages: 0,
+    targetPages: 0,
+    totalPages: 0,
+    loadedPosts: 0,
+    isLoading: false,
+  };
   let threadGraph: ThreadGraph = createEmptyThreadGraph();
   let activeGraphView: ActiveGraphView | null = null;
-  let pendingGraphView: ActiveGraphView | null = initialThreadQueryState.graphView;
+  let pendingGraphView: ActiveGraphView | null =
+    initialThreadQueryState.graphView;
   const compactModeEnabled = true;
   let activePageFilter: number | null = initialThreadQueryState.pageFilter;
-  let activeAuthorFilters: Set<string> = new Set(initialThreadQueryState.authorFilters);
+  let activeAuthorFilters: Set<string> = new Set(
+    initialThreadQueryState.authorFilters,
+  );
   let activeThreadSearchQuery = initialThreadQueryState.searchQuery;
   let pendingInitialHashPostId: string | null = getLocationPostHashId();
   let threadPostSearchTextById: Map<string, string> = new Map();
@@ -260,11 +171,22 @@ export function createThreadPageController(): ThreadPageController {
     const graphView = activeGraphView || pendingGraphView;
     if (graphView) {
       url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphType, graphView.type);
-      url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphRoot, graphView.rootPostId);
-      if (graphView.relatedPostId) { url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphRelated, graphView.relatedPostId); }
+      url.searchParams.set(
+        THREAD_STATE_QUERY_PARAMS.graphRoot,
+        graphView.rootPostId,
+      );
+      if (graphView.relatedPostId) {
+        url.searchParams.set(
+          THREAD_STATE_QUERY_PARAMS.graphRelated,
+          graphView.relatedPostId,
+        );
+      }
     }
     if (activeThreadSearchQuery) {
-      url.searchParams.set(THREAD_STATE_QUERY_PARAMS.searchQuery, activeThreadSearchQuery);
+      url.searchParams.set(
+        THREAD_STATE_QUERY_PARAMS.searchQuery,
+        activeThreadSearchQuery,
+      );
     }
     for (const author of activeAuthorFilters) {
       url.searchParams.append(THREAD_STATE_QUERY_PARAMS.authorFilter, author);
@@ -280,7 +202,9 @@ export function createThreadPageController(): ThreadPageController {
   }
 
   function syncThreadStateUrl(options: { history?: "push" | "replace" } = {}) {
-    if (!isThreadPage()) { return; }
+    if (!isThreadPage()) {
+      return;
+    }
     const url = new URL(location.href);
     writeCurrentThreadStateQueryParams(url);
     updateBrowserHistory(url, options.history || "replace");
@@ -293,9 +217,10 @@ export function createThreadPageController(): ThreadPageController {
 
   function ensureStyle() {
     const existing = document.getElementById(STYLE_ID);
-    const style = existing instanceof HTMLStyleElement
-      ? existing
-      : document.createElement("style");
+    const style =
+      existing instanceof HTMLStyleElement
+        ? existing
+        : document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = __FC_PREMIUM_CSS__;
 
@@ -358,7 +283,8 @@ export function createThreadPageController(): ThreadPageController {
   const moveNavigation = navigationController.moveNavigation;
   const selectNavigationIndex = navigationController.selectNavigationIndex;
   const selectNavigationElement = navigationController.selectNavigationElement;
-  const getSelectedNavigationItem = navigationController.getSelectedNavigationItem;
+  const getSelectedNavigationItem =
+    navigationController.getSelectedNavigationItem;
   const getSelectedPostWrapper = navigationController.getSelectedPostWrapper;
   const getNavigationLength = navigationController.getNavigationLength;
 
@@ -395,13 +321,18 @@ export function createThreadPageController(): ThreadPageController {
     hasActiveThreadPostFilters,
     openThreadReplyWithoutQuote,
     quoteSelectedPost: (wrapper) => quoteSelectedPost(wrapper),
-    toggleSelectedPostMultiquote: (wrapper) => toggleSelectedPostMultiquote(wrapper),
+    toggleSelectedPostMultiquote: (wrapper) =>
+      toggleSelectedPostMultiquote(wrapper),
     getSelectedPostWrapper,
     clearThreadFilters,
   });
 
   function installKeyboardNavigation() {
-    window.addEventListener("keydown", threadPageKeyboard.handleNavigationKeyDown, true);
+    window.addEventListener(
+      "keydown",
+      threadPageKeyboard.handleNavigationKeyDown,
+      true,
+    );
   }
 
   function getThreadPagesForTotal(totalPages: number): ThreadPage[] {
@@ -423,7 +354,10 @@ export function createThreadPageController(): ThreadPageController {
     );
   }
 
-  function getThreadPageUrl(pageNumber: number, options: { includeState?: boolean, preserveHash?: boolean } = {}): URL {
+  function getThreadPageUrl(
+    pageNumber: number,
+    options: { includeState?: boolean; preserveHash?: boolean } = {},
+  ): URL {
     const currentUrl = new URL(location.href);
     const threadId = resolveCurrentThreadId() || "";
     const url = new URL(currentUrl.origin + currentUrl.pathname);
@@ -447,7 +381,10 @@ export function createThreadPageController(): ThreadPageController {
     return url;
   }
 
-  function updateThreadPageUrl(pageNumber: number, options: { history?: "push" | "replace", preserveHash?: boolean } = {}) {
+  function updateThreadPageUrl(
+    pageNumber: number,
+    options: { history?: "push" | "replace"; preserveHash?: boolean } = {},
+  ) {
     const url = getThreadPageUrl(pageNumber, {
       includeState: true,
       preserveHash: options.preserveHash,
@@ -816,7 +753,7 @@ export function createThreadPageController(): ThreadPageController {
     setPageFilter(getPageNumber(new URL(location.href)));
   }
 
-  function applyPageFilter(): { total: number, visible: number } {
+  function applyPageFilter(): { total: number; visible: number } {
     return applyPageFilterToRenderedPosts(getPostsElement(), activePageFilter);
   }
 
@@ -912,7 +849,7 @@ export function createThreadPageController(): ThreadPageController {
     updateThreadPostFilters({ render: true });
   }
 
-  function applyThreadPostFilters(): { total: number, visible: number } {
+  function applyThreadPostFilters(): { total: number; visible: number } {
     const query = normalizeLayoutText(activeThreadSearchQuery);
     const postById = new Map(loadedThreadPosts.map((post) => [post.id, post]));
 
@@ -929,7 +866,16 @@ export function createThreadPageController(): ThreadPageController {
     enhanceAuthorFilterButtonInDom(wrapper, author, toggleAuthorFilter);
   }
 
-  function setActiveGraphView(type: GraphViewType, rootPostId: string, relatedPostId: string | null = null, options: { history?: "push" | "replace", scrollToFirstPost?: boolean, scrollToFirstReply?: boolean } = {}) {
+  function setActiveGraphView(
+    type: GraphViewType,
+    rootPostId: string,
+    relatedPostId: string | null = null,
+    options: {
+      history?: "push" | "replace";
+      scrollToFirstPost?: boolean;
+      scrollToFirstReply?: boolean;
+    } = {},
+  ) {
     if (!threadGraph.postById.has(rootPostId)) {
       return;
     }
@@ -999,7 +945,9 @@ export function createThreadPageController(): ThreadPageController {
     renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
   }
 
-  function getValidGraphViewFromQueryState(queryState: ThreadQueryState): ActiveGraphView | null {
+  function getValidGraphViewFromQueryState(
+    queryState: ThreadQueryState,
+  ): ActiveGraphView | null {
     return getValidGraphView(queryState.graphView, threadGraph);
   }
 
@@ -1058,7 +1006,10 @@ export function createThreadPageController(): ThreadPageController {
     });
   }
 
-  function selectPostById(postId: string, options: { scroll?: boolean, updateUrl?: boolean } = {}) {
+  function selectPostById(
+    postId: string,
+    options: { scroll?: boolean; updateUrl?: boolean } = {},
+  ) {
     const table = document.getElementById(`post${postId}`);
     const wrapper = table?.closest(".fc-premium-post-wrapper");
 
@@ -1087,7 +1038,12 @@ export function createThreadPageController(): ThreadPageController {
     updateRenderedCompactPostLayoutsInDom(compactModeEnabled);
   }
 
-  function renderPost(post: PostRecord, rank: number, postById: Map<string, PostRecord>, replyIndentDepth: number): HTMLElement {
+  function renderPost(
+    post: PostRecord,
+    rank: number,
+    postById: Map<string, PostRecord>,
+    replyIndentDepth: number,
+  ): HTMLElement {
     const template = document.createElement("template");
     template.innerHTML = post.html;
 
@@ -1140,7 +1096,9 @@ export function createThreadPageController(): ThreadPageController {
 
     const selectedPostId =
       pendingInitialHashPostId ||
-      getPostIdFromNavigationElement(getSelectedNavigationItem()?.element || undefined);
+      getPostIdFromNavigationElement(
+        getSelectedNavigationItem()?.element || undefined,
+      );
     postsElement.textContent = "";
     postsElement.dataset.fcPremiumGraphView = activeGraphView?.type || "";
 
@@ -1339,13 +1297,10 @@ export function createThreadPageController(): ThreadPageController {
 
   return {
     init: initialize,
-    handleNavigationKeyDown:
-      threadPageKeyboard.handleNavigationKeyDown,
+    handleNavigationKeyDown: threadPageKeyboard.handleNavigationKeyDown,
     refreshNavigation,
     updateSummaryMenu: () => {
       renderThreadSummaryMenu(document.getElementById(THREAD_SUMMARY_ID));
     },
   };
 }
-
-  

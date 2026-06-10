@@ -1,41 +1,9 @@
-import { ThreadSearchPanel } from "../../ui/components/ThreadSearchPanel";
-import {
-  refreshSelectedThreadAuthors as refreshSelectedThreadAuthorsInDom,
-  refreshThreadAuthorDatalist as refreshThreadAuthorDatalistInDom,
-  renderThreadSearchEmptyState as renderThreadSearchEmptyStateInDom,
-  renderThreadSearchStatus as renderThreadSearchStatusInDom,
-  syncThreadSearchTextInput,
-  type ThreadSearchCounts,
-} from "../../ui/threadSearchPanelDom";
-import {
-  applyPageFilterToRenderedPosts,
-  applyThreadPostFiltersToRenderedPosts,
-  enhanceAuthorFilterButton as enhanceAuthorFilterButtonInDom,
-} from "../../ui/threadPostFiltersDom";
 import {
   getPostIdFromNavigationElement,
   getPostNavigationItems,
   getThreadTitleNavigationItems,
 } from "../../ui/navigationDom";
-import {
-  renderShortcutHelpButton as renderShortcutHelpButtonInDom,
-} from "../../ui/shortcutHelpDom";
-import {
-  relocatePostFooterControls,
-  removeTrailingPostLayoutArtifacts,
-} from "../../ui/postNativeDom";
-import { enhanceNativePostHeader } from "../../ui/postHeaderDom";
-import {
-  updatePostCompactLayout,
-  updateRenderedCompactPostLayouts as updateRenderedCompactPostLayoutsInDom,
-} from "../../ui/postCompactLayoutDom";
-import { enhanceQuoteLinks as enhanceQuoteLinksInDom } from "../../ui/postQuoteDom";
-import { appendReplyBadge } from "../../ui/postReplyBadgeDom";
-import {
-  ensureThreadSummary as ensureThreadSummaryInDom,
-  renderThreadSummaryMenu as renderThreadSummaryMenuInDom,
-  setThreadSummaryMessage,
-} from "../../ui/threadSummaryDom";
+import { renderShortcutHelpButton as renderShortcutHelpButtonInDom } from "../../ui/shortcutHelpDom";
 import {
   formatShortcutHelpKey,
   getShortcutHelpItems,
@@ -60,8 +28,6 @@ import {
 } from "../../ui/components/Tags";
 import {
   STYLE_ID,
-  INSTANCE_KEY,
-  SCRIPT_INSTANCE_VERSION,
   KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB,
   TOP_TAGS_ID,
   FORUM_SIDEBAR_TOGGLE_BAR_ID,
@@ -70,85 +36,39 @@ import {
   FORUM_SEARCH_SLOT_ID,
   FORUM_LOADING_STATUS_ID,
   NAVIGATION_STATUS_ID,
-  THREAD_SUMMARY_ID,
-  THREAD_SEARCH_PANEL_ID,
-  THREAD_SEARCH_AUTHOR_INPUT_ID,
   FORUM_SIDEBAR_HIDDEN_CLASS,
-  COMPACT_MODE_CLASS,
   FORUM_SIDEBAR_STORAGE_KEY,
-  THREAD_CACHE_MAX_AGE_MS,
-  THREAD_CACHE_MAX_BYTES,
-  THREAD_CACHE_DB_NAME,
-  THREAD_CACHE_DB_VERSION,
-  THREAD_CACHE_STORE_NAME,
-  FORUM_THREAD_CACHE_STORE_NAME,
-  THREAD_CACHE_RECORD_VERSION,
-  FORUM_THREAD_CACHE_RECORD_VERSION,
   FORUM_THREAD_CACHE_RECENT_PAGES,
-  FORUM_THREAD_CACHE_MAX_RECORDS,
   FORUM_THREAD_FALLBACK_PAGE_SIZE,
   FORUM_LIVE_SEARCH_DEBOUNCE_MS,
-  THREAD_STATE_QUERY_PARAMS,
   FORUM_STATE_QUERY_PARAMS,
   FORUM_LAYOUT_HIDDEN_ATTRIBUTE,
   POSTS_SELECTOR,
-  POST_TABLE_SELECTOR,
   THREAD_TITLE_SELECTOR,
   PAGE_LOAD_DELAY_MS,
-  GRAPH_VIEW_TYPES
 } from "../../config/constants";
 import {
   normalizeText,
-  normalizeLayoutText,
-  normalizeAuthorName,
   sleep,
-  isVisible,
   toUrl,
   getThreadId,
   getPageNumber,
-  getLocationPostHashId,
   isThreadPage,
   isForumDisplayPage,
-  getForumId
+  getForumId,
 } from "../../shared/dom";
 import { findTagsInText, splitTextByTags } from "../../domain/tags";
 import type {
-  ActiveGraphView,
-  ForumQueryState,
   ForumThreadLoadState,
   ForumThreadRecord,
-  GraphViewType,
   NavigationItem,
-  PostRecord,
-  ThreadAuthorOption,
-  ThreadGraph,
-  ThreadLoadState,
-  ThreadPage,
-  ThreadQueryState,
 } from "../../domain/types";
-import {
-  applyOriginalPosterFlags,
-  applyReplyCounts,
-  buildThreadGraph,
-  createEmptyThreadGraph,
-  getGraphViewLabel,
-  getPostsForGraphView,
-  getReplyIndentDepth as getReplyIndentDepthForView,
-  getReplyRankByPostId,
-  getThreadViewPosts as getPostsForThreadView,
-  getValidGraphView,
-  sortPostsChronologically,
-} from "../../domain/threadPosts";
 import {
   filterForumThreadRecords,
   getHiddenForumThreadRecords,
   getVisibleForumThreadRecords,
   sortForumThreadRecords,
 } from "../../domain/forumThreads";
-import {
-  getThreadAuthorOptions as buildThreadAuthorOptions,
-  resolveThreadAuthorInputValue as resolveThreadAuthorInputValueFromOptions,
-} from "../../domain/threadAuthors";
 import { getVisiblePageNumbers } from "../../domain/pagination";
 import {
   clampForumThreadListPage,
@@ -157,11 +77,7 @@ import {
   getForumThreadRowsSignature,
 } from "../../domain/forumThreadList";
 import {
-  collectPosts,
   fetchThreadDocument,
-  getMaxThreadPage,
-  getQuotedPostId,
-  getThreadIdFromDocument,
   parseHtml,
 } from "../../adapters/forocoches/threadParser";
 import {
@@ -183,12 +99,7 @@ import {
   shouldIgnoreTopNavigationTable,
 } from "../../adapters/forocoches/forumLayout";
 import {
-  getNavbarSearchLink,
-  getThreadBreadcrumbContentTable,
-  getThreadBreadcrumbOuterTable,
   getThreadTitleTable,
-  hideForumHeaderSearchForm,
-  hideNativeThreadSearchMenu,
   moveForumHeaderSearchForm,
 } from "../../adapters/forocoches/threadHeader";
 import {
@@ -198,33 +109,12 @@ import {
   restoreForumThreadRowsFromHtml,
 } from "../../adapters/forocoches/forumThreadListDom";
 import {
-  clickPostQuoteAction,
-  openThreadReplyWithoutQuote as openThreadReplyWithoutQuoteAction,
-  togglePostMultiquote,
-} from "../../adapters/forocoches/postReplyActions";
-import {
-  getOriginalThreadPageLinkNumber,
-  updateOriginalThreadPageMenus as updateOriginalThreadPageMenusInDom,
-} from "../../adapters/forocoches/threadPageNavigation";
-import {
   clearForumStateQueryParams,
-  isThreadUrl,
   readForumQueryState,
-  readThreadQueryState,
 } from "../../services/queryState";
 import {
-  canUseThreadCache,
-  cleanupThreadCache,
   cleanupForumThreadCache,
-  clearCurrentThreadCache,
-  estimateThreadCacheByteSize,
-  isCompleteThreadCache,
-  normalizeCachedPostRecord,
-  readCurrentThreadCache,
   readForumThreadCacheRecords,
-  waitForIdbRequest,
-  waitForIdbTransaction,
-  writeCurrentThreadCache,
   writeForumThreadCacheRecords,
 } from "../../services/threadCache";
 import { isOpenInNewTabKeyboardShortcut } from "../../services/keyboard";
@@ -233,12 +123,14 @@ import { createForumPageKeyboardController } from "./forumPageKeyboardController
 
 declare const __FC_PREMIUM_CSS__: string;
 
-
-
 export interface ForumPageController {
   init(): Promise<void>;
   handleNavigationKeyDown(event: KeyboardEvent): boolean;
-  refreshNavigation(options?: { reset?: boolean, scroll?: boolean, updateUrl?: boolean }): void;
+  refreshNavigation(options?: {
+    reset?: boolean;
+    scroll?: boolean;
+    updateUrl?: boolean;
+  }): void;
   renderTopTagBar(): void;
   renderForumControlsRow(): HTMLTableElement | null;
 }
@@ -334,7 +226,8 @@ export function createForumPageController(): ForumPageController {
   const moveNavigation = navigationController.moveNavigation;
   const selectNavigationIndex = navigationController.selectNavigationIndex;
   const selectNavigationElement = navigationController.selectNavigationElement;
-  const getSelectedNavigationItem = navigationController.getSelectedNavigationItem;
+  const getSelectedNavigationItem =
+    navigationController.getSelectedNavigationItem;
   const getNavigationLength = navigationController.getNavigationLength;
   const getNavigationItems = navigationController.getNavigationItems;
 
@@ -382,7 +275,11 @@ export function createForumPageController(): ForumPageController {
   }
 
   function installForumKeyboardNavigation(): void {
-    window.addEventListener("keydown", forumPageKeyboard.handleNavigationKeyDown, true);
+    window.addEventListener(
+      "keydown",
+      forumPageKeyboard.handleNavigationKeyDown,
+      true,
+    );
   }
 
   function ensureStyle() {
@@ -478,10 +375,7 @@ export function createForumPageController(): ForumPageController {
         continue;
       }
 
-      if (
-        isBeforeMainContent(table) &&
-        isForumTopShortcutBar(table)
-      ) {
+      if (isBeforeMainContent(table) && isForumTopShortcutBar(table)) {
         hideElementAndAdjacentSpacers(table);
       }
     }
@@ -669,7 +563,9 @@ export function createForumPageController(): ForumPageController {
     });
   }
 
-  function detachMovedForumSearchForm(controlsTable: HTMLTableElement): HTMLFormElement | null {
+  function detachMovedForumSearchForm(
+    controlsTable: HTMLTableElement,
+  ): HTMLFormElement | null {
     const form = document.querySelector(
       "form[name='busca'][action*='forocoches_search']",
     );
@@ -890,7 +786,9 @@ export function createForumPageController(): ForumPageController {
     );
   }
 
-  function renderVisibleForumThreadTitleTags(root: HTMLElement | Document = document) {
+  function renderVisibleForumThreadTitleTags(
+    root: HTMLElement | Document = document,
+  ) {
     renderVisibleForumThreadTitleTagsInDom(root, renderTaggedTitle);
   }
 
@@ -908,7 +806,9 @@ export function createForumPageController(): ForumPageController {
     return getHiddenForumThreadRecords(getCachedForumThreadsForCurrentForum());
   }
 
-  function getForumThreadRecordsForTag(tag: string | null): ForumThreadRecord[] {
+  function getForumThreadRecordsForTag(
+    tag: string | null,
+  ): ForumThreadRecord[] {
     return filterForumThreadRecords(getCachedForumThreadsForCurrentForum(), {
       tag,
       searchQuery: activeForumSearchQuery,
@@ -976,10 +876,7 @@ export function createForumPageController(): ForumPageController {
         ForumPager({
           currentPage: activeForumTagPage,
           totalPages,
-          visiblePages: getVisiblePageNumbers(
-            totalPages,
-            activeForumTagPage,
-          ),
+          visiblePages: getVisiblePageNumbers(totalPages, activeForumTagPage),
           hrefForPage: (pageNumber) => getForumDynamicPageUrl(pageNumber).href,
           onPageClick: setForumTagPage,
         }),
@@ -996,7 +893,10 @@ export function createForumPageController(): ForumPageController {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
-  function renderForumThreadRows(rowHtmlList: string[], signature: string): boolean {
+  function renderForumThreadRows(
+    rowHtmlList: string[],
+    signature: string,
+  ): boolean {
     const changed = renderForumThreadRowsFromHtml({
       headerRowHtml: nativeForumThreadHeaderRowHtml,
       rowHtmlList,
@@ -1102,7 +1002,9 @@ export function createForumPageController(): ForumPageController {
     );
   }
 
-  function getCurrentForumThreadRecord(threadId: string): ForumThreadRecord | null {
+  function getCurrentForumThreadRecord(
+    threadId: string,
+  ): ForumThreadRecord | null {
     return (
       collectCurrentForumThreadRecords().find(
         (record) => record.id === threadId,
@@ -1129,7 +1031,10 @@ export function createForumPageController(): ForumPageController {
     );
   }
 
-  async function setForumThreadHiddenState(threadId: string, hidden: boolean): Promise<boolean> {
+  async function setForumThreadHiddenState(
+    threadId: string,
+    hidden: boolean,
+  ): Promise<boolean> {
     if (!isForumDisplayPage() || !threadId) {
       return false;
     }
@@ -1142,8 +1047,7 @@ export function createForumPageController(): ForumPageController {
     if (hidden && getCachedForumThreadsForCurrentForum().length === 0) {
       await cacheCurrentForumThreadRows();
       existing =
-        cachedForumThreads.find((record) => record.id === threadId) ||
-        existing;
+        cachedForumThreads.find((record) => record.id === threadId) || existing;
     }
 
     if (!existing) {
@@ -1192,9 +1096,7 @@ export function createForumPageController(): ForumPageController {
     const hidden = await setForumThreadHiddenState(threadId, true);
 
     if (hidden && getNavigationLength() > 0) {
-      selectNavigationIndex(
-        Math.min(previousIndex, getNavigationLength() - 1),
-      );
+      selectNavigationIndex(Math.min(previousIndex, getNavigationLength() - 1));
     }
 
     return hidden;
@@ -1287,7 +1189,10 @@ export function createForumPageController(): ForumPageController {
       renderedForumThreadListSignature = null;
       renderForumThreadRows(
         nativeForumThreadRowHtml,
-        getForumThreadRowsSignature(nativeForumThreadRowHtml, `native-page-${pageNumber}`),
+        getForumThreadRowsSignature(
+          nativeForumThreadRowHtml,
+          `native-page-${pageNumber}`,
+        ),
       );
       applyHiddenForumThreadRows();
       updateBrowserHistory(url, "push");
@@ -1328,9 +1233,10 @@ export function createForumPageController(): ForumPageController {
       return;
     }
 
-    const link = (event.target instanceof Element
-      ? event.target.closest(".pagenav a[href*='forumdisplay.php']")
-      : null);
+    const link =
+      event.target instanceof Element
+        ? event.target.closest(".pagenav a[href*='forumdisplay.php']")
+        : null;
 
     if (!(link instanceof HTMLAnchorElement)) {
       return;
@@ -1338,7 +1244,11 @@ export function createForumPageController(): ForumPageController {
 
     const url = toUrl(link.getAttribute("href") || link.href);
 
-    if (!url || url.pathname !== location.pathname || getForumId(url) !== getForumId()) {
+    if (
+      !url ||
+      url.pathname !== location.pathname ||
+      getForumId(url) !== getForumId()
+    ) {
       return;
     }
 
@@ -1373,7 +1283,10 @@ export function createForumPageController(): ForumPageController {
     refreshNavigation({ reset: threadListChanged });
   }
 
-  async function scrapeForumThreadPage(pageNumber: number, scrapeStartedAt: number): Promise<ForumThreadRecord[]> {
+  async function scrapeForumThreadPage(
+    pageNumber: number,
+    scrapeStartedAt: number,
+  ): Promise<ForumThreadRecord[]> {
     const forumId = getForumId();
 
     if (!forumId) {
@@ -1396,7 +1309,9 @@ export function createForumPageController(): ForumPageController {
     );
   }
 
-  async function saveScrapedForumThreadRecords(records: ForumThreadRecord[]): Promise<void> {
+  async function saveScrapedForumThreadRecords(
+    records: ForumThreadRecord[],
+  ): Promise<void> {
     mergeCachedForumThreadRecords(records);
     await writeForumThreadCacheRecords(
       records
@@ -1411,7 +1326,10 @@ export function createForumPageController(): ForumPageController {
     refreshForumTagUi();
   }
 
-  async function scrapeRecentForumThreadPages(startPage: number, scrapeStartedAt: number): Promise<void> {
+  async function scrapeRecentForumThreadPages(
+    startPage: number,
+    scrapeStartedAt: number,
+  ): Promise<void> {
     if (forumThreadScrapeStarted || !isForumDisplayPage()) {
       return;
     }
@@ -1613,8 +1531,6 @@ export function createForumPageController(): ForumPageController {
     );
   }
 
-
-
   function initForumPage(): void {
     if (!isForumDisplayPage()) {
       return;
@@ -1646,7 +1562,9 @@ export function createForumPageController(): ForumPageController {
   });
 
   return {
-    init: async () => { initForumPage(); },
+    init: async () => {
+      initForumPage();
+    },
     handleNavigationKeyDown: forumPageKeyboard.handleNavigationKeyDown,
     refreshNavigation,
     renderTopTagBar,
