@@ -13,19 +13,12 @@ import {
   enhanceAuthorFilterButton as enhanceAuthorFilterButtonInDom,
 } from "../../ui/threadPostFiltersDom";
 import {
-  clearNavigationSelection,
   getPostIdFromNavigationElement,
   getPostNavigationItems,
-  getSelectedPostWrapper as getSelectedPostWrapperFromDom,
   getThreadTitleNavigationItems,
-  markNavigationItemSelected,
-  scrollNavigationElementIntoView as scrollNavigationElementIntoViewInDom,
 } from "../../ui/navigationDom";
 import {
-  closeShortcutHelpPopover,
-  isShortcutHelpPopoverOpen,
   renderShortcutHelpButton as renderShortcutHelpButtonInDom,
-  setShortcutHelpPopoverOpen,
 } from "../../ui/shortcutHelpDom";
 import {
   relocatePostFooterControls,
@@ -69,17 +62,7 @@ import {
   STYLE_ID,
   INSTANCE_KEY,
   SCRIPT_INSTANCE_VERSION,
-  KEY_NAV_PREVIOUS_POST,
-  KEY_NAV_NEXT_POST,
-  KEY_NAV_FIRST_POST,
-  KEY_NAV_LAST_POST,
-  KEY_CLEAR_ACTIVE_VIEW,
-  KEY_OPEN_SHORTCUT_HELP,
-  KEY_QUOTE_SELECTED_POST,
   KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB,
-  KEY_HIDE_SELECTED_THREAD,
-  KEY_NEW_THREAD_REPLY,
-  KEY_MULTIQUOTE_SELECTED_POST,
   TOP_TAGS_ID,
   FORUM_SIDEBAR_TOGGLE_BAR_ID,
   FORUM_SIDEBAR_TOGGLE_ID,
@@ -244,13 +227,9 @@ import {
   writeCurrentThreadCache,
   writeForumThreadCacheRecords,
 } from "../../services/threadCache";
-import {
-  hasKeyboardModifier,
-  isEditableTarget,
-  isMacKeyboardPlatform,
-  isOpenInNewTabKeyboardShortcut,
-  keyboardShortcutMatches,
-} from "../../services/keyboard";
+import { isOpenInNewTabKeyboardShortcut } from "../../services/keyboard";
+import { createNavigationController } from "./navigationController";
+import { createForumPageKeyboardController } from "./forumPageKeyboardController";
 
 declare const __FC_PREMIUM_CSS__: string;
 
@@ -295,9 +274,6 @@ export function createForumPageController(): ForumPageController {
     applyForumSidebarVisibility();
   }
 
-  let navigationItems: NavigationItem[] = [];
-  let selectedNavigationIndex = -1;
-
   function getPostsElement(): HTMLElement | null {
     const posts = document.querySelector(POSTS_SELECTOR);
     return posts instanceof HTMLElement ? posts : null;
@@ -324,33 +300,15 @@ export function createForumPageController(): ForumPageController {
     return [];
   }
 
+  const navigationController = createNavigationController({
+    collectNavigationItems,
+    onRenderNavigationStatus: renderNavigationStatus,
+    onUpdateSelectedThreadUrl: updateSelectedPostUrl,
+    getPostsElement,
+  });
+
   function renderNavigationStatus() {
     document.getElementById(NAVIGATION_STATUS_ID)?.remove();
-  }
-
-  function renderNavigationSelection(options: { scroll?: boolean, updateUrl?: boolean } = {}) {
-    clearNavigationSelection();
-
-    const selected = navigationItems[selectedNavigationIndex];
-
-    if (!selected) {
-      renderNavigationStatus();
-      return;
-    }
-
-    markNavigationItemSelected(selected);
-    renderNavigationStatus();
-
-    if (options.updateUrl && isThreadPage()) {
-      updateSelectedPostUrl(selected);
-    }
-
-    if (options.scroll) {
-      scrollNavigationElementIntoViewInDom(
-        selected.element,
-        isThreadPage() ? "start" : "nearest",
-      );
-    }
   }
 
   function updateSelectedPostUrl(selected: NavigationItem) {
@@ -372,87 +330,13 @@ export function createForumPageController(): ForumPageController {
     window.history.replaceState(window.history.state, "", url.href);
   }
 
-  function refreshNavigation(options: { reset?: boolean, scroll?: boolean, updateUrl?: boolean } = {}) {
-    const previousElement = navigationItems[selectedNavigationIndex]?.element;
-    navigationItems = collectNavigationItems();
-
-    if (navigationItems.length === 0) {
-      selectedNavigationIndex = -1;
-      renderNavigationSelection(options);
-      return;
-    }
-
-    if (options.reset || selectedNavigationIndex < 0) {
-      selectedNavigationIndex = 0;
-    } else {
-      const preservedIndex = navigationItems.findIndex(
-        (item) => item.element === previousElement,
-      );
-      selectedNavigationIndex = preservedIndex >= 0 ? preservedIndex : 0;
-    }
-
-    renderNavigationSelection(options);
-  }
-
-  function moveNavigation(direction: number) {
-    if (navigationItems.length === 0) {
-      refreshNavigation({ reset: true });
-    }
-
-    if (navigationItems.length === 0) {
-      return;
-    }
-
-    selectedNavigationIndex = Math.min(
-      Math.max(selectedNavigationIndex + direction, 0),
-      navigationItems.length - 1,
-    );
-    renderNavigationSelection({ scroll: true, updateUrl: true });
-  }
-
-  function selectNavigationIndex(index: number) {
-    if (navigationItems.length === 0) {
-      refreshNavigation({ reset: true });
-    }
-
-    if (navigationItems.length === 0) {
-      return;
-    }
-
-    selectedNavigationIndex = Math.min(
-      Math.max(index, 0),
-      navigationItems.length - 1,
-    );
-    renderNavigationSelection({ scroll: true, updateUrl: true });
-  }
-
-  function selectNavigationElement(element: HTMLElement, options: { scroll?: boolean, updateUrl?: boolean } = {}) {
-    const index = navigationItems.findIndex((item) => item.element === element);
-
-    if (index < 0) {
-      if (options.scroll !== false) {
-        scrollNavigationElementIntoViewInDom(
-          element,
-          isThreadPage() ? "start" : "nearest",
-        );
-      }
-      return;
-    }
-
-    selectedNavigationIndex = index;
-    renderNavigationSelection({
-      scroll: options.scroll !== false,
-      updateUrl: options.updateUrl !== false,
-    });
-  }
-
-  function getSelectedNavigationItem(): NavigationItem | null {
-    if (navigationItems.length === 0) {
-      refreshNavigation({ reset: true });
-    }
-
-    return navigationItems[selectedNavigationIndex] || null;
-  }
+  const refreshNavigation = navigationController.refreshNavigation;
+  const moveNavigation = navigationController.moveNavigation;
+  const selectNavigationIndex = navigationController.selectNavigationIndex;
+  const selectNavigationElement = navigationController.selectNavigationElement;
+  const getSelectedNavigationItem = navigationController.getSelectedNavigationItem;
+  const getNavigationLength = navigationController.getNavigationLength;
+  const getNavigationItems = navigationController.getNavigationItems;
 
   function isOpenSelectedThreadInNewTabShortcut(event: KeyboardEvent): boolean {
     if (!isForumDisplayPage()) {
@@ -498,7 +382,7 @@ export function createForumPageController(): ForumPageController {
   }
 
   function installForumKeyboardNavigation(): void {
-    window.addEventListener("keydown", handleNavigationKeyDown, true);
+    window.addEventListener("keydown", forumPageKeyboard.handleNavigationKeyDown, true);
   }
 
   function ensureStyle() {
@@ -1301,12 +1185,15 @@ export function createForumPageController(): ForumPageController {
       return false;
     }
 
-    const previousIndex = Math.max(selectedNavigationIndex, 0);
+    const previousIndex = Math.max(
+      getNavigationItems().findIndex((item) => item === selected),
+      0,
+    );
     const hidden = await setForumThreadHiddenState(threadId, true);
 
-    if (hidden && navigationItems.length > 0) {
+    if (hidden && getNavigationLength() > 0) {
       selectNavigationIndex(
-        Math.min(previousIndex, navigationItems.length - 1),
+        Math.min(previousIndex, getNavigationLength() - 1),
       );
     }
 
@@ -1742,51 +1629,25 @@ export function createForumPageController(): ForumPageController {
     renderShortcutHelpButton();
   }
 
-  function handleNavigationKeyDown(event: KeyboardEvent): boolean {
-    if (isEditableTarget(event.target)) {
-      return false;
-    }
-
-    if (
-      (event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) &&
-      (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
-    ) {
-      return false;
-    }
-
-    if (keyboardShortcutMatches(event, KEY_OPEN_SHORTCUT_HELP)) {
-      event.preventDefault();
-      setShortcutHelpPopoverOpen(true);
-      return true;
-    }
-
-    if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
-      event.preventDefault();
-      closeShortcutHelpPopover();
-      return true;
-    }
-
-    if (event.key === KEY_NAV_NEXT_POST && !hasKeyboardModifier(event)) {
-      event.preventDefault(); moveNavigation(1); return true; }
-    if (event.key === KEY_NAV_PREVIOUS_POST && !hasKeyboardModifier(event)) {
-      event.preventDefault(); moveNavigation(-1); return true; }
-    if (event.key === KEY_NAV_FIRST_POST) { event.preventDefault(); selectNavigationIndex(0); return true; }
-    if (event.key === KEY_NAV_LAST_POST) { event.preventDefault(); if (navigationItems.length===0) { refreshNavigation({ reset: true }); } selectNavigationIndex(navigationItems.length -1); return true; }
-    if (event.key === KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB && isOpenSelectedThreadInNewTabShortcut(event)) {
-      event.preventDefault(); void openSelectedForumThreadInNewTab(); return true; }
-    if (event.key === KEY_CLEAR_ACTIVE_VIEW) {
-      if (isHiddenThreadsModalOpen()) { event.preventDefault(); closeHiddenThreadsModal(); return true; }
-      if (activeTagFilter) { event.preventDefault(); clearTagFilter(); return true; }
-    }
-    if (event.key === KEY_HIDE_SELECTED_THREAD) {
-      event.preventDefault(); void hideSelectedForumThread(); return true; }
-    if (event.key === KEY_QUOTE_SELECTED_POST && !isThreadPage()) { event.preventDefault(); openSelectedNavigationItem(); return true; }
-    if (event.key === KEY_QUOTE_SELECTED_POST && !hasKeyboardModifier(event) && isThreadPage()) { return false; }
-    return false; }
+  const forumPageKeyboard = createForumPageKeyboardController({
+    moveNavigation,
+    selectNavigationIndex,
+    getNavigationLength,
+    refreshNavigation,
+    isOpenSelectedThreadInNewTabShortcut,
+    openSelectedForumThreadInNewTab,
+    isHiddenThreadsModalOpen,
+    closeHiddenThreadsModal,
+    activeTagFilterExists: () => Boolean(activeTagFilter),
+    clearTagFilter,
+    hideSelectedForumThread,
+    openSelectedNavigationItem,
+    isThreadPage,
+  });
 
   return {
     init: async () => { initForumPage(); },
-    handleNavigationKeyDown,
+    handleNavigationKeyDown: forumPageKeyboard.handleNavigationKeyDown,
     refreshNavigation,
     renderTopTagBar,
     renderForumControlsRow,

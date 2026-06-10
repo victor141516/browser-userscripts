@@ -1,0 +1,340 @@
+#fc-premium-thread-summary {
+  align-items: center;
+  background: #f7faff;
+  border: 1px solid #b7d1ff;
+  border-radius: 4px;
+  box-sizing: border-box;
+  color: #17324d;
+  display: flex;
+  flex-wrap: nowrap;
+  font: 11px/1.3 Verdana, Arial, sans-serif;
+  gap: 8px;
+  margin: 6px auto;
+  max-width: 100%;
+  min-height: 27px;
+  overflow: hidden;
+  padding: 4px 6px;
+}
+
+#fc-premium-thread-summary[hidden] {
+  display: none !important;
+}
+
+#fc-premium-thread-summary.fc-premium-summary-stuck {
+  box-shadow: 0 4px 12px rgba(23, 50, 77, 0.16);
+}
+
+#fc-premium-thread-summary strong {
+  color: #0b57d0;
+}
+
+#fc-premium-thread-progress {
+  align-items: center;
+  color: #3c4043;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.fc-premium-spinner {
+  animation: fc-premium-spin 720ms linear infinite;
+  border: 2px solid #c7d8ff;
+  border-radius: 999px;
+  border-top-color: #0b57d0;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}
+
+@keyframes fc-premium-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#fc-premium-shortcut-help-container {
+  box-sizing: border-box;
+  display: flex;
+  justify-content: flex-end;
+  margin: 4px 8px 0;
+  min-height: 23px;
+  position: relative;
+  z-index: 50;
+}
+
+#fc-premium-shortcut-help-button {
+  align-items: center;
+  background: rgba(247, 250, 255, 0.78);
+  border: 1px solid rgba(95, 143, 199, 0.45);
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(23, 50, 77, 0.12);
+  box-sizing: border-box;
+  color: rgba(23, 50, 77, 0.72);
+  cursor: pointer;
+  display: inline-flex;
+  font: 700 12px/1 Verdana, Arial, sans-serif;
+  height: 21px;
+  justify-content: center;
+  opacity: 0.45;
+  padding: 0;
+  width: 21px;
+}
+
+#fc-premium-shortcut-help-button:hover,
+#fc-premium-shortcut-help-button:focus-visible,
+#fc-premium-shortcut-help-button[aria-expanded="true"] {
+  background: #f7faff;
+  border-color: #5f8fc7;
+  color: #17324d;
+  opacity: 0.95;
+  outline: none;
+}
+
+#fc-premium-shortcut-help-popover {
+  background: #f7faff;
+  border: 1px solid #5f8fc7;
+  box-shadow: 2px 2px 0 rgba(23, 50, 77, 0.18);
+  box-sizing: border-box;
+  color: #17324d;
+  font: 11px/1.35 Verdana, Arial, sans-serif;
+  max-width: calc(100vw - 16px);
+  padding: 8px;
+  position: absolute;
+  right: 0;
+  top: 25px;
+  width: 310px;
+  z-index: 51;
+}
+
+#fc-premium-shortcut-help-popover[hidden] {
+  display: none !important;
+}
+
+.fc-premium-shortcut-help-title {
+  border-bottom: 1px solid #b7d1ff;
+  font-weight: 700;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+}
+
+.fc-premium-shortcut-help-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+
+.fc-premium-shortcut-help-keys {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+}
+
+.fc-premium-shortcut-help-key {
+  background: #fff;
+  border: 1px solid #9db7e5;
+  border-radius: 2px;
+  box-shadow: inset 0 -1px 0 #d8e4fb;
+  color: #17324d;
+  font: 700 10px/1 Verdana, Arial, sans-serif;
+  min-width: 16px;
+  padding: 3px 5px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.fc-premium-shortcut-help-description {
+  min-width: 0;
+  text-align: right;
+}
+
+#fc-premium-thread-controls {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  margin-left: auto;
+}
+
+#fc-premium-thread-controls button {
+  background: #fff;
+  border: 1px solid #b7d1ff;
+  border-radius: 4px;
+  color: #17324d;
+  cursor: pointer;
+  font: 700 10px/1 Verdana, Arial, sans-serif;
+  padding: 4px 6px;
+}
+
+#fc-premium-thread-controls button:disabled {
+  color: #80868b;
+  cursor: default;
+  opacity: 0.72;
+}
+
+#fc-premium-thread-controls.fc-premium-thread-toolbar-controls {
+  display: table-cell;
+  margin-left: 0;
+  white-space: nowrap;
+}
+
+#fc-premium-thread-controls.fc-premium-thread-toolbar-controls button {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0 3px;
+}
+
+#fc-premium-thread-controls.fc-premium-thread-toolbar-controls button:hover {
+  text-decoration: underline;
+}
+
+#fc-premium-thread-controls.fc-premium-thread-toolbar-controls button:disabled {
+  cursor: default;
+  opacity: 0.45;
+  text-decoration: none;
+}
+
+#fc-premium-thread-controls.fc-premium-thread-toolbar-controls #fc-premium-thread-progress {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.fc-premium-thread-header-cell {
+  text-align: left;
+}
+
+.fc-premium-thread-header-layout {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-height: 20px;
+  width: 100%;
+}
+
+.fc-premium-thread-header-breadcrumbs {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fc-premium-thread-header-breadcrumbs table {
+  width: auto !important;
+}
+
+.fc-premium-thread-header-breadcrumbs .navbar {
+  font-size: 11px !important;
+}
+
+.fc-premium-thread-header-breadcrumbs strong {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fc-premium-thread-header-search {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.fc-premium-thread-header-search-form {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+  margin: 0;
+}
+
+.fc-premium-thread-header-search-form .cfield {
+  box-sizing: border-box;
+  font: 11px Verdana, Arial, sans-serif;
+  height: 19px;
+  max-width: 24vw;
+  width: 190px;
+}
+
+.fc-premium-thread-header-search-form .cbutton {
+  font: 700 11px Verdana, Arial, sans-serif;
+  height: 20px;
+  padding: 0 6px;
+}
+
+#fc-premium-thread-search-panel {
+  margin: 0 0 8px;
+  width: 100%;
+}
+
+#fc-premium-thread-search-panel .fc-premium-thread-search-cell {
+  padding: 5px 6px;
+}
+
+.fc-premium-thread-search-layout {
+  align-items: end;
+  display: grid;
+  gap: 5px 8px;
+  grid-template-columns: minmax(180px, 1fr) minmax(170px, 250px) auto auto minmax(115px, auto);
+}
+
+.fc-premium-thread-search-field {
+  color: #17324d;
+  display: grid;
+  font: 700 10px/1.25 Verdana, Arial, sans-serif;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fc-premium-thread-search-field input {
+  border: 1px solid #7f9db9;
+  box-sizing: border-box;
+  font: 11px Verdana, Arial, sans-serif;
+  height: 20px;
+  min-width: 0;
+  padding: 2px 4px;
+  width: 100%;
+}
+
+.fc-premium-thread-search-button {
+  background: #e6e9ed;
+  border: 1px solid #7f8c99;
+  border-left-color: #f8f8f8;
+  border-radius: 2px;
+  border-top-color: #f8f8f8;
+  box-shadow: inset -1px -1px 0 #bcc3ca;
+  color: #1f3550;
+  cursor: pointer;
+  font: 700 10px/1 Verdana, Arial, sans-serif;
+  height: 20px;
+  padding: 2px 7px 3px;
+  white-space: nowrap;
+}
+
+.fc-premium-thread-search-button:hover {
+  background: #f2f5f8;
+  color: #0b57d0;
+}
+
+.fc-premium-thread-search-button:disabled {
+  color: #80868b;
+  cursor: default;
+  opacity: 0.65;
+}
+
+#fc-premium-thread-search-selected-authors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.fc-premium-thread-author-chip {
+  align-items: center;
+  background: #f7faff;
+  border: 1px solid #9db7e5;
+  border-radius: 2px;
+  color: #17324d;

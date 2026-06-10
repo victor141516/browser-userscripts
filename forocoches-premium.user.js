@@ -1869,12 +1869,6 @@
   function hasKeyboardModifier(event) {
     return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
   }
-  function keyboardShortcutMatches(event, key) {
-    if (key.length === 1) {
-      return event.key.toLowerCase() === key.toLowerCase();
-    }
-    return event.key === key;
-  }
   function isMacKeyboardPlatform() {
     return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || "");
   }
@@ -1883,6 +1877,199 @@
       return false;
     }
     return isMacKeyboardPlatform() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  }
+
+  // src/app/core/navigationController.ts
+  function createNavigationController(options, state = {
+    navigationItems: [],
+    selectedNavigationIndex: -1
+  }) {
+    function collectNavigationItems() {
+      return options.collectNavigationItems();
+    }
+    function renderNavigationStatus(selected) {
+      options.onRenderNavigationStatus?.(selected);
+    }
+    function updateSelectedPostUrl(selected) {
+      options.onUpdateSelectedThreadUrl?.(selected);
+    }
+    function getPostsElement() {
+      return options.getPostsElement();
+    }
+    function renderNavigationSelection(renderOptions = {}) {
+      clearNavigationSelection();
+      const selected = state.navigationItems[state.selectedNavigationIndex];
+      if (!selected) {
+        renderNavigationStatus(null);
+        return;
+      }
+      markNavigationItemSelected(selected);
+      renderNavigationStatus(selected);
+      if (renderOptions.updateUrl && isThreadPage()) {
+        updateSelectedPostUrl(selected);
+      }
+      if (renderOptions.scroll) {
+        const mode = isThreadPage() ? "start" : "nearest";
+        scrollNavigationElementIntoView(selected.element, mode);
+      }
+    }
+    function refreshNavigation(options2 = {}) {
+      const previousElement = state.navigationItems[state.selectedNavigationIndex]?.element;
+      state.navigationItems = collectNavigationItems();
+      if (state.navigationItems.length === 0) {
+        state.selectedNavigationIndex = -1;
+        renderNavigationSelection(options2);
+        return;
+      }
+      if (options2.reset || state.selectedNavigationIndex < 0) {
+        state.selectedNavigationIndex = 0;
+      } else {
+        const preservedIndex = state.navigationItems.findIndex((item) => item.element === previousElement);
+        state.selectedNavigationIndex = preservedIndex >= 0 ? preservedIndex : 0;
+      }
+      renderNavigationSelection(options2);
+    }
+    function moveNavigation(direction) {
+      if (state.navigationItems.length === 0) {
+        refreshNavigation({ reset: true });
+      }
+      if (state.navigationItems.length === 0) {
+        return;
+      }
+      state.selectedNavigationIndex = Math.min(Math.max(state.selectedNavigationIndex + direction, 0), state.navigationItems.length - 1);
+      renderNavigationSelection({ scroll: true, updateUrl: true });
+    }
+    function selectNavigationIndex(index) {
+      if (state.navigationItems.length === 0) {
+        refreshNavigation({ reset: true });
+      }
+      if (state.navigationItems.length === 0) {
+        return;
+      }
+      state.selectedNavigationIndex = Math.min(Math.max(index, 0), state.navigationItems.length - 1);
+      renderNavigationSelection({ scroll: true, updateUrl: true });
+    }
+    function selectNavigationElement(element, options2 = {}) {
+      const index = state.navigationItems.findIndex((item) => item.element === element);
+      if (index < 0) {
+        if (options2.scroll !== false) {
+          const mode = isThreadPage() ? "start" : "nearest";
+          scrollNavigationElementIntoView(element, mode);
+        }
+        return;
+      }
+      state.selectedNavigationIndex = index;
+      renderNavigationSelection({
+        scroll: options2.scroll !== false,
+        updateUrl: options2.updateUrl !== false
+      });
+    }
+    function getSelectedPostWrapper2() {
+      if (state.navigationItems.length === 0) {
+        refreshNavigation({ reset: true });
+      }
+      const selected = state.navigationItems[state.selectedNavigationIndex]?.element;
+      if (selected instanceof HTMLElement && selected.matches(".fc-premium-post-wrapper")) {
+        return selected;
+      }
+      return getSelectedPostWrapper();
+    }
+    function getSelectedNavigationItem() {
+      if (state.navigationItems.length === 0) {
+        refreshNavigation({ reset: true });
+      }
+      return state.navigationItems[state.selectedNavigationIndex] || null;
+    }
+    return {
+      refreshNavigation,
+      getNavigationItems: () => state.navigationItems,
+      getSelectedNavigationItem,
+      getNavigationLength: () => state.navigationItems.length,
+      getSelectedPostWrapper: getSelectedPostWrapper2,
+      moveNavigation,
+      selectNavigationIndex,
+      selectNavigationElement
+    };
+  }
+
+  // src/app/core/forumPageKeyboardController.ts
+  function createForumPageKeyboardController(handlers) {
+    function handleNavigationKeyDown(event) {
+      if (isEditableTarget(event.target)) {
+        return false;
+      }
+      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && hasKeyboardModifier(event)) {
+        return false;
+      }
+      if (event.key === KEY_OPEN_SHORTCUT_HELP) {
+        event.preventDefault();
+        setShortcutHelpPopoverOpen(true);
+        return true;
+      }
+      if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
+        event.preventDefault();
+        closeShortcutHelpPopover();
+        return true;
+      }
+      if (event.key === KEY_NAV_NEXT_POST) {
+        if (!hasKeyboardModifier(event)) {
+          event.preventDefault();
+          handlers.moveNavigation(1);
+          return true;
+        }
+        return false;
+      }
+      if (event.key === KEY_NAV_PREVIOUS_POST) {
+        if (!hasKeyboardModifier(event)) {
+          event.preventDefault();
+          handlers.moveNavigation(-1);
+          return true;
+        }
+        return false;
+      }
+      if (event.key === KEY_NAV_FIRST_POST) {
+        event.preventDefault();
+        handlers.selectNavigationIndex(0);
+        return true;
+      }
+      if (event.key === KEY_NAV_LAST_POST) {
+        event.preventDefault();
+        if (handlers.getNavigationLength() === 0) {
+          handlers.refreshNavigation({ reset: true });
+        }
+        handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
+        return true;
+      }
+      if (event.key === KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB && handlers.isOpenSelectedThreadInNewTabShortcut(event)) {
+        event.preventDefault();
+        handlers.openSelectedForumThreadInNewTab();
+        return true;
+      }
+      if (event.key === KEY_CLEAR_ACTIVE_VIEW) {
+        if (handlers.isHiddenThreadsModalOpen()) {
+          event.preventDefault();
+          handlers.closeHiddenThreadsModal();
+          return true;
+        }
+        if (handlers.activeTagFilterExists()) {
+          event.preventDefault();
+          handlers.clearTagFilter();
+          return true;
+        }
+      }
+      if (event.key === KEY_HIDE_SELECTED_THREAD) {
+        event.preventDefault();
+        handlers.hideSelectedForumThread();
+        return true;
+      }
+      if (event.key === KEY_QUOTE_SELECTED_POST && !handlers.isThreadPage()) {
+        event.preventDefault();
+        handlers.openSelectedNavigationItem();
+        return true;
+      }
+      return false;
+    }
+    return { handleNavigationKeyDown };
   }
 
   // src/app/core/forumPageController.ts
@@ -1913,8 +2100,6 @@
       localStorage.setItem(FORUM_SIDEBAR_STORAGE_KEY, String(hidden));
       applyForumSidebarVisibility();
     }
-    let navigationItems = [];
-    let selectedNavigationIndex = -1;
     function getPostsElement() {
       const posts = document.querySelector(POSTS_SELECTOR);
       return posts instanceof HTMLElement ? posts : null;
@@ -1935,24 +2120,14 @@
       }
       return [];
     }
+    const navigationController = createNavigationController({
+      collectNavigationItems,
+      onRenderNavigationStatus: renderNavigationStatus,
+      onUpdateSelectedThreadUrl: updateSelectedPostUrl,
+      getPostsElement
+    });
     function renderNavigationStatus() {
       document.getElementById(NAVIGATION_STATUS_ID)?.remove();
-    }
-    function renderNavigationSelection(options = {}) {
-      clearNavigationSelection();
-      const selected = navigationItems[selectedNavigationIndex];
-      if (!selected) {
-        renderNavigationStatus();
-        return;
-      }
-      markNavigationItemSelected(selected);
-      renderNavigationStatus();
-      if (options.updateUrl && isThreadPage()) {
-        updateSelectedPostUrl(selected);
-      }
-      if (options.scroll) {
-        scrollNavigationElementIntoView(selected.element, isThreadPage() ? "start" : "nearest");
-      }
     }
     function updateSelectedPostUrl(selected) {
       const postId = getPostIdFromNavigationElement(selected.element);
@@ -1968,62 +2143,13 @@
       url.hash = `post${postId}`;
       window.history.replaceState(window.history.state, "", url.href);
     }
-    function refreshNavigation(options = {}) {
-      const previousElement = navigationItems[selectedNavigationIndex]?.element;
-      navigationItems = collectNavigationItems();
-      if (navigationItems.length === 0) {
-        selectedNavigationIndex = -1;
-        renderNavigationSelection(options);
-        return;
-      }
-      if (options.reset || selectedNavigationIndex < 0) {
-        selectedNavigationIndex = 0;
-      } else {
-        const preservedIndex = navigationItems.findIndex((item) => item.element === previousElement);
-        selectedNavigationIndex = preservedIndex >= 0 ? preservedIndex : 0;
-      }
-      renderNavigationSelection(options);
-    }
-    function moveNavigation(direction) {
-      if (navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      if (navigationItems.length === 0) {
-        return;
-      }
-      selectedNavigationIndex = Math.min(Math.max(selectedNavigationIndex + direction, 0), navigationItems.length - 1);
-      renderNavigationSelection({ scroll: true, updateUrl: true });
-    }
-    function selectNavigationIndex(index) {
-      if (navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      if (navigationItems.length === 0) {
-        return;
-      }
-      selectedNavigationIndex = Math.min(Math.max(index, 0), navigationItems.length - 1);
-      renderNavigationSelection({ scroll: true, updateUrl: true });
-    }
-    function selectNavigationElement(element, options = {}) {
-      const index = navigationItems.findIndex((item) => item.element === element);
-      if (index < 0) {
-        if (options.scroll !== false) {
-          scrollNavigationElementIntoView(element, isThreadPage() ? "start" : "nearest");
-        }
-        return;
-      }
-      selectedNavigationIndex = index;
-      renderNavigationSelection({
-        scroll: options.scroll !== false,
-        updateUrl: options.updateUrl !== false
-      });
-    }
-    function getSelectedNavigationItem() {
-      if (navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      return navigationItems[selectedNavigationIndex] || null;
-    }
+    const refreshNavigation = navigationController.refreshNavigation;
+    const moveNavigation = navigationController.moveNavigation;
+    const selectNavigationIndex = navigationController.selectNavigationIndex;
+    const selectNavigationElement = navigationController.selectNavigationElement;
+    const getSelectedNavigationItem = navigationController.getSelectedNavigationItem;
+    const getNavigationLength = navigationController.getNavigationLength;
+    const getNavigationItems = navigationController.getNavigationItems;
     function isOpenSelectedThreadInNewTabShortcut(event) {
       if (!isForumDisplayPage()) {
         return false;
@@ -2055,7 +2181,7 @@
       });
     }
     function installForumKeyboardNavigation() {
-      window.addEventListener("keydown", handleNavigationKeyDown, true);
+      window.addEventListener("keydown", forumPageKeyboard.handleNavigationKeyDown, true);
     }
     function ensureStyle() {
       const existing = document.getElementById(STYLE_ID);
@@ -3630,10 +3756,10 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       if (!threadId) {
         return false;
       }
-      const previousIndex = Math.max(selectedNavigationIndex, 0);
+      const previousIndex = Math.max(getNavigationItems().findIndex((item) => item === selected), 0);
       const hidden = await setForumThreadHiddenState(threadId, true);
-      if (hidden && navigationItems.length > 0) {
-        selectNavigationIndex(Math.min(previousIndex, navigationItems.length - 1));
+      if (hidden && getNavigationLength() > 0) {
+        selectNavigationIndex(Math.min(previousIndex, getNavigationLength() - 1));
       }
       return hidden;
     }
@@ -3921,83 +4047,26 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       refreshNavigation({ reset: true });
       renderShortcutHelpButton2();
     }
-    function handleNavigationKeyDown(event) {
-      if (isEditableTarget(event.target)) {
-        return false;
-      }
-      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)) {
-        return false;
-      }
-      if (keyboardShortcutMatches(event, KEY_OPEN_SHORTCUT_HELP)) {
-        event.preventDefault();
-        setShortcutHelpPopoverOpen(true);
-        return true;
-      }
-      if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
-        event.preventDefault();
-        closeShortcutHelpPopover();
-        return true;
-      }
-      if (event.key === KEY_NAV_NEXT_POST && !hasKeyboardModifier(event)) {
-        event.preventDefault();
-        moveNavigation(1);
-        return true;
-      }
-      if (event.key === KEY_NAV_PREVIOUS_POST && !hasKeyboardModifier(event)) {
-        event.preventDefault();
-        moveNavigation(-1);
-        return true;
-      }
-      if (event.key === KEY_NAV_FIRST_POST) {
-        event.preventDefault();
-        selectNavigationIndex(0);
-        return true;
-      }
-      if (event.key === KEY_NAV_LAST_POST) {
-        event.preventDefault();
-        if (navigationItems.length === 0) {
-          refreshNavigation({ reset: true });
-        }
-        selectNavigationIndex(navigationItems.length - 1);
-        return true;
-      }
-      if (event.key === KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB && isOpenSelectedThreadInNewTabShortcut(event)) {
-        event.preventDefault();
-        openSelectedForumThreadInNewTab();
-        return true;
-      }
-      if (event.key === KEY_CLEAR_ACTIVE_VIEW) {
-        if (isHiddenThreadsModalOpen2()) {
-          event.preventDefault();
-          closeHiddenThreadsModal2();
-          return true;
-        }
-        if (activeTagFilter) {
-          event.preventDefault();
-          clearTagFilter();
-          return true;
-        }
-      }
-      if (event.key === KEY_HIDE_SELECTED_THREAD) {
-        event.preventDefault();
-        hideSelectedForumThread();
-        return true;
-      }
-      if (event.key === KEY_QUOTE_SELECTED_POST && !isThreadPage()) {
-        event.preventDefault();
-        openSelectedNavigationItem();
-        return true;
-      }
-      if (event.key === KEY_QUOTE_SELECTED_POST && !hasKeyboardModifier(event) && isThreadPage()) {
-        return false;
-      }
-      return false;
-    }
+    const forumPageKeyboard = createForumPageKeyboardController({
+      moveNavigation,
+      selectNavigationIndex,
+      getNavigationLength,
+      refreshNavigation,
+      isOpenSelectedThreadInNewTabShortcut,
+      openSelectedForumThreadInNewTab,
+      isHiddenThreadsModalOpen: isHiddenThreadsModalOpen2,
+      closeHiddenThreadsModal: closeHiddenThreadsModal2,
+      activeTagFilterExists: () => Boolean(activeTagFilter),
+      clearTagFilter,
+      hideSelectedForumThread,
+      openSelectedNavigationItem,
+      isThreadPage
+    });
     return {
       init: async () => {
         initForumPage();
       },
-      handleNavigationKeyDown,
+      handleNavigationKeyDown: forumPageKeyboard.handleNavigationKeyDown,
       refreshNavigation,
       renderTopTagBar,
       renderForumControlsRow
@@ -5142,11 +5211,103 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     return cell;
   }
 
+  // src/app/core/threadPageKeyboardController.ts
+  function createThreadPageKeyboardController(handlers) {
+    function hasActiveGraphView() {
+      return Boolean(handlers.getActiveGraphView());
+    }
+    function hasActiveFiltersOrView() {
+      return handlers.hasActiveThreadPostFilters() || hasActiveGraphView();
+    }
+    function handleSelectedPostActionShortcut(event) {
+      if (!handlers.getSelectedPostWrapper) {
+        return false;
+      }
+      if (hasKeyboardModifier(event)) {
+        return false;
+      }
+      if (event.key === KEY_NEW_THREAD_REPLY) {
+        event.preventDefault();
+        return handlers.openThreadReplyWithoutQuote();
+      }
+      const selected = handlers.getSelectedPostWrapper();
+      if (!selected) {
+        return false;
+      }
+      if (event.key === KEY_QUOTE_SELECTED_POST) {
+        event.preventDefault();
+        return handlers.quoteSelectedPost(selected);
+      }
+      if (event.key === KEY_MULTIQUOTE_SELECTED_POST) {
+        event.preventDefault();
+        return handlers.toggleSelectedPostMultiquote(selected);
+      }
+      return false;
+    }
+    function handleNavigationKeyDown(event) {
+      if (isEditableTarget(event.target)) {
+        return false;
+      }
+      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && hasKeyboardModifier(event)) {
+        return false;
+      }
+      if (event.key === KEY_OPEN_SHORTCUT_HELP) {
+        event.preventDefault();
+        setShortcutHelpPopoverOpen(true);
+        return true;
+      }
+      if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
+        event.preventDefault();
+        closeShortcutHelpPopover();
+        return true;
+      }
+      if (event.key === KEY_NAV_NEXT_POST) {
+        event.preventDefault();
+        handlers.moveNavigation(1);
+        return true;
+      }
+      if (event.key === KEY_NAV_PREVIOUS_POST) {
+        event.preventDefault();
+        handlers.moveNavigation(-1);
+        return true;
+      }
+      if (event.key === KEY_NAV_FIRST_POST) {
+        event.preventDefault();
+        handlers.selectNavigationIndex(0);
+        return true;
+      }
+      if (event.key === KEY_NAV_LAST_POST) {
+        event.preventDefault();
+        if (handlers.getNavigationLength() === 0) {
+          handlers.refreshNavigation({ reset: true });
+        }
+        handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
+        return true;
+      }
+      if (handleSelectedPostActionShortcut(event)) {
+        return true;
+      }
+      if (event.key === KEY_CLEAR_ACTIVE_VIEW && hasActiveFiltersOrView()) {
+        event.preventDefault();
+        handlers.clearThreadFilters();
+        return true;
+      }
+      if (event.key === KEY_QUOTE_SELECTED_POST && !hasKeyboardModifier(event)) {
+        event.preventDefault();
+        const selected = handlers.getSelectedPostWrapper();
+        if (!selected) {
+          return false;
+        }
+        return handlers.quoteSelectedPost(selected);
+      }
+      return false;
+    }
+    return { handleNavigationKeyDown };
+  }
+
   // src/app/core/threadPageController.ts
   function createThreadPageController() {
     const initialThreadQueryState = readThreadQueryState();
-    let navigationItems = [];
-    let selectedNavigationIndex = -1;
     let loadedThreadPosts = [];
     let threadPages = [];
     let loadedThreadPageNumbers = new Set;
@@ -6235,38 +6396,12 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     function collectNavigationItems() {
       return isThreadPage() ? getPostNavigationItems(getPostsElement()) : [];
     }
-    function refreshNavigation(options = {}) {
-      const previousElement = navigationItems[selectedNavigationIndex]?.element;
-      navigationItems = collectNavigationItems();
-      if (navigationItems.length === 0) {
-        selectedNavigationIndex = -1;
-        renderNavigationSelection(options);
-        return;
-      }
-      if (options.reset || selectedNavigationIndex < 0) {
-        selectedNavigationIndex = 0;
-      } else {
-        const preservedIndex = navigationItems.findIndex((item) => item.element === previousElement);
-        selectedNavigationIndex = preservedIndex >= 0 ? preservedIndex : 0;
-      }
-      renderNavigationSelection(options);
-    }
-    function renderNavigationSelection(options = {}) {
-      clearNavigationSelection();
-      const selected = navigationItems[selectedNavigationIndex];
-      if (!selected) {
-        renderNavigationStatus(null);
-        return;
-      }
-      markNavigationItemSelected(selected);
-      renderNavigationStatus(selected);
-      if (options.updateUrl && isThreadPage()) {
-        updateSelectedPostUrl(selected);
-      }
-      if (options.scroll) {
-        scrollNavigationElementIntoView2(selected.element);
-      }
-    }
+    const navigationController = createNavigationController({
+      collectNavigationItems,
+      onRenderNavigationStatus: renderNavigationStatus,
+      onUpdateSelectedThreadUrl: updateSelectedPostUrl,
+      getPostsElement
+    });
     function updateSelectedPostUrl(selected) {
       const postId = getPostIdFromNavigationElement(selected.element);
       if (!postId) {
@@ -6290,53 +6425,13 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     function renderNavigationStatus(selected) {
       document.getElementById(NAVIGATION_STATUS_ID)?.remove();
     }
-    function scrollNavigationElementIntoView2(element) {
-      scrollNavigationElementIntoView(element, isThreadPage() ? "start" : "nearest");
-    }
-    function moveNavigation(direction) {
-      if (navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      if (navigationItems.length === 0) {
-        return;
-      }
-      selectedNavigationIndex = Math.min(Math.max(selectedNavigationIndex + direction, 0), navigationItems.length - 1);
-      renderNavigationSelection({ scroll: true, updateUrl: true });
-    }
-    function selectNavigationIndex(index) {
-      if (navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      if (navigationItems.length === 0) {
-        return;
-      }
-      selectedNavigationIndex = Math.min(Math.max(index, 0), navigationItems.length - 1);
-      renderNavigationSelection({ scroll: true, updateUrl: true });
-    }
-    function selectNavigationElement(element, options = {}) {
-      const index = navigationItems.findIndex((item) => item.element === element);
-      if (index < 0) {
-        if (options.scroll !== false) {
-          scrollNavigationElementIntoView2(element);
-        }
-        return;
-      }
-      selectedNavigationIndex = index;
-      renderNavigationSelection({
-        scroll: options.scroll !== false,
-        updateUrl: options.updateUrl !== false
-      });
-    }
-    function getSelectedPostWrapper2() {
-      if (navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      const selected = navigationItems[selectedNavigationIndex]?.element;
-      if (selected instanceof HTMLElement && selected.matches(".fc-premium-post-wrapper")) {
-        return selected;
-      }
-      return getSelectedPostWrapper();
-    }
+    const refreshNavigation = navigationController.refreshNavigation;
+    const moveNavigation = navigationController.moveNavigation;
+    const selectNavigationIndex = navigationController.selectNavigationIndex;
+    const selectNavigationElement = navigationController.selectNavigationElement;
+    const getSelectedNavigationItem = navigationController.getSelectedNavigationItem;
+    const getSelectedPostWrapper2 = navigationController.getSelectedPostWrapper;
+    const getNavigationLength = navigationController.getNavigationLength;
     function quoteSelectedPost(wrapper) {
       return clickPostQuoteAction(wrapper);
     }
@@ -6352,97 +6447,21 @@ body.fc-premium-compact table.tborder:has(.navbar) {
         formatKey: formatShortcutHelpKey
       });
     }
-    function quoteNavigationItem() {
-      const selected = getSelectedPostWrapper2();
-      if (selected) {
-        return quoteSelectedPost(selected);
-      }
-      return false;
-    }
-    function getSelectedNavigationItem() {
-      if (navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      return navigationItems[selectedNavigationIndex] || null;
-    }
-    function handleSelectedPostActionShortcut(event) {
-      if (!isThreadPage() || hasKeyboardModifier(event)) {
-        return false;
-      }
-      if (keyboardShortcutMatches(event, KEY_NEW_THREAD_REPLY)) {
-        event.preventDefault();
-        openThreadReplyWithoutQuote2();
-        return true;
-      }
-      const selected = getSelectedPostWrapper2();
-      if (selected && keyboardShortcutMatches(event, KEY_QUOTE_SELECTED_POST)) {
-        event.preventDefault();
-        quoteSelectedPost(selected);
-        return true;
-      }
-      if (selected && keyboardShortcutMatches(event, KEY_MULTIQUOTE_SELECTED_POST)) {
-        event.preventDefault();
-        toggleSelectedPostMultiquote(selected);
-        return true;
-      }
-      return false;
-    }
-    function onNavigationKeyDown(event) {
-      if (isEditableTarget(event.target)) {
-        return false;
-      }
-      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)) {
-        return false;
-      }
-      if (keyboardShortcutMatches(event, KEY_OPEN_SHORTCUT_HELP)) {
-        event.preventDefault();
-        setShortcutHelpPopoverOpen(true);
-        return true;
-      }
-      if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
-        event.preventDefault();
-        closeShortcutHelpPopover();
-        return true;
-      }
-      if (event.key === KEY_NAV_NEXT_POST) {
-        event.preventDefault();
-        moveNavigation(1);
-        return true;
-      }
-      if (event.key === KEY_NAV_PREVIOUS_POST) {
-        event.preventDefault();
-        moveNavigation(-1);
-        return true;
-      }
-      if (event.key === KEY_NAV_FIRST_POST) {
-        event.preventDefault();
-        selectNavigationIndex(0);
-        return true;
-      }
-      if (event.key === KEY_NAV_LAST_POST) {
-        event.preventDefault();
-        if (navigationItems.length === 0) {
-          refreshNavigation({ reset: true });
-        }
-        selectNavigationIndex(navigationItems.length - 1);
-        return true;
-      }
-      if (handleSelectedPostActionShortcut(event)) {
-        return true;
-      }
-      if (event.key === KEY_CLEAR_ACTIVE_VIEW && (hasActiveThreadPostFilters() || activeGraphView)) {
-        event.preventDefault();
-        clearThreadFilters();
-        return true;
-      } else if (event.key === KEY_QUOTE_SELECTED_POST && !hasKeyboardModifier(event)) {
-        event.preventDefault();
-        quoteNavigationItem();
-        return true;
-      }
-      return false;
-    }
+    const threadPageKeyboard = createThreadPageKeyboardController({
+      moveNavigation,
+      selectNavigationIndex,
+      getNavigationLength,
+      refreshNavigation,
+      getActiveGraphView: () => activeGraphView,
+      hasActiveThreadPostFilters,
+      openThreadReplyWithoutQuote: openThreadReplyWithoutQuote2,
+      quoteSelectedPost: (wrapper) => quoteSelectedPost(wrapper),
+      toggleSelectedPostMultiquote: (wrapper) => toggleSelectedPostMultiquote(wrapper),
+      getSelectedPostWrapper: getSelectedPostWrapper2,
+      clearThreadFilters
+    });
     function installKeyboardNavigation() {
-      window.addEventListener("keydown", onNavigationKeyDown, true);
+      window.addEventListener("keydown", threadPageKeyboard.handleNavigationKeyDown, true);
     }
     function getThreadPagesForTotal(totalPages) {
       const pages = [];
@@ -6976,7 +6995,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
       if (!postsElement) {
         return;
       }
-      const selectedPostId = pendingInitialHashPostId || getPostIdFromNavigationElement(navigationItems[selectedNavigationIndex]?.element);
+      const selectedPostId = pendingInitialHashPostId || getPostIdFromNavigationElement(getSelectedNavigationItem()?.element || undefined);
       postsElement.textContent = "";
       postsElement.dataset.fcPremiumGraphView = activeGraphView?.type || "";
       const fragment = document.createDocumentFragment();
@@ -7124,7 +7143,7 @@ body.fc-premium-compact table.tborder:has(.navbar) {
     }
     return {
       init: initialize,
-      handleNavigationKeyDown: onNavigationKeyDown,
+      handleNavigationKeyDown: threadPageKeyboard.handleNavigationKeyDown,
       refreshNavigation,
       updateSummaryMenu: () => {
         renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));

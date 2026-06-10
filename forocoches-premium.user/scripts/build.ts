@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { readdir } from "node:fs/promises";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const repoRoot = resolve(projectRoot, "..");
@@ -11,7 +12,19 @@ const generatedPath = resolve(distDir, "forocoches-premium.user.js");
 async function build() {
   const [header, css] = await Promise.all([
     readFile(resolve(projectRoot, "src/userscript-header.txt"), "utf8"),
-    readFile(resolve(projectRoot, "src/styles/styles.css"), "utf8"),
+    (async () => {
+      const styleDirectory = resolve(projectRoot, "src/styles/parts");
+      const styleFiles = (await readdir(styleDirectory))
+        .filter((file) => file.endsWith(".css"))
+        .sort()
+        .map((file) => resolve(styleDirectory, file));
+
+      const styleContents = await Promise.all(
+        styleFiles.map((path) => readFile(path, "utf8")),
+      );
+
+      return styleContents.join("\n");
+    })(),
   ]);
   const previousUserscript = await readFile(originalUserscriptPath, "utf8");
 
