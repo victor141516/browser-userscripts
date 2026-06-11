@@ -1,9 +1,9 @@
-import { createElement } from "./jsx";
 import {
   SHORTCUT_HELP_BUTTON_ID,
   SHORTCUT_HELP_CONTAINER_ID,
   SHORTCUT_HELP_POPOVER_ID,
 } from "../config/constants";
+import { renderElement, renderNode } from "./render";
 
 type ShortcutHelpItem = {
   keys: string[];
@@ -15,7 +15,7 @@ export function ShortcutHelpContainer(props: {
   formatKey: (key: string) => string;
   onToggle: () => void;
 }): HTMLElement {
-  return (
+  return renderElement<HTMLElement>(
     <div id={SHORTCUT_HELP_CONTAINER_ID}>
       <button
         id={SHORTCUT_HELP_BUTTON_ID}
@@ -44,21 +44,21 @@ export function ShortcutHelpContainer(props: {
           <ShortcutHelpRow item={item} formatKey={props.formatKey} />
         ))}
       </div>
-    </div>
-  ) as HTMLElement;
+    </div>,
+  );
 }
 
 export function createShortcutHelpRow(
   item: ShortcutHelpItem,
   formatKey: (key: string) => string,
 ): Node {
-  return <ShortcutHelpRow item={item} formatKey={formatKey} />;
+  return renderNode(<ShortcutHelpRow item={item} formatKey={formatKey} />);
 }
 
 function ShortcutHelpRow(props: {
   item: ShortcutHelpItem;
   formatKey: (key: string) => string;
-}): Node {
+}) {
   return (
     <div className="fc-premium-shortcut-help-row">
       <span className="fc-premium-shortcut-help-keys">

@@ -1,6 +1,7 @@
-import { createElement } from "../jsx";
+import type { JSX } from "preact";
 import { hashString } from "../../shared/hash";
 import { normalizeTag } from "../../domain/tags";
+import { renderElement } from "../render";
 
 export interface TopTagSummary {
   tag: string;
@@ -17,6 +18,10 @@ interface TagChipProps {
 }
 
 export function TagChip(props: TagChipProps): HTMLElement {
+  return renderElement<HTMLElement>(<TagChipView {...props} />);
+}
+
+function TagChipView(props: TagChipProps) {
   const canonicalTag = normalizeTag(props.tag);
 
   return (
@@ -25,9 +30,7 @@ export function TagChip(props: TagChipProps): HTMLElement {
       role="button"
       tabIndex={0}
       title={props.title || `Filtrar por +${props.tag}`}
-      aria-pressed={
-        typeof props.pressed === "boolean" ? String(props.pressed) : undefined
-      }
+      aria-pressed={props.pressed}
       onClick={(event: MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
@@ -45,7 +48,7 @@ export function TagChip(props: TagChipProps): HTMLElement {
     >
       {props.label || `+${props.tag}`}
     </TagBase>
-  ) as HTMLElement;
+  );
 }
 
 export function TagLabel(props: {
@@ -53,11 +56,19 @@ export function TagLabel(props: {
   label?: string;
   title?: string;
 }): HTMLElement {
+  return renderElement<HTMLElement>(<TagLabelView {...props} />);
+}
+
+export function TagLabelView(props: {
+  tag: string;
+  label?: string;
+  title?: string;
+}) {
   return (
     <TagBase tag={props.tag} title={props.title}>
       {props.label || `+${props.tag}`}
     </TagBase>
-  ) as HTMLElement;
+  );
 }
 
 export function TopTagBar(props: {
@@ -65,11 +76,11 @@ export function TopTagBar(props: {
   activeTag: string | null;
   onToggle: (tag: string) => void;
 }): HTMLElement {
-  return (
+  return renderElement<HTMLElement>(
     <div id="fc-premium-top-tags">
       <span>Top tags:</span>
       {props.tags.map((summary) => (
-        <TagChip
+        <TagChipView
           tag={summary.tag}
           label={`+${summary.tag} (${summary.count})`}
           title={`Filtrar ${summary.count} hilos con +${summary.tag}`}
@@ -77,8 +88,8 @@ export function TopTagBar(props: {
           onToggle={props.onToggle}
         />
       ))}
-    </div>
-  ) as HTMLElement;
+    </div>,
+  );
 }
 
 function getTagColors(tag: string): {
@@ -98,27 +109,27 @@ function getTagColors(tag: string): {
 function TagBase(
   props: {
     tag: string;
-    children?: unknown[];
-  } & Record<string, unknown>,
-): HTMLElement {
-  const canonicalTag = normalizeTag(props.tag);
+    children?: JSX.Element | JSX.Element[] | string | number | null;
+  } & JSX.HTMLAttributes<HTMLSpanElement>,
+) {
+  const { tag, children, ...elementProps } = props;
+  const canonicalTag = normalizeTag(tag);
   const colors = getTagColors(canonicalTag);
-  const elementProps: Record<string, unknown> = { ...props };
-  delete elementProps.tag;
-  delete elementProps.children;
 
   return (
     <span
       {...elementProps}
       className="fc-premium-tag-chip"
       data-fc-premium-tag={canonicalTag}
-      style={{
-        "--fc-premium-tag-bg": colors.background,
-        "--fc-premium-tag-border": colors.border,
-        "--fc-premium-tag-color": colors.color,
-      }}
+      style={
+        {
+          "--fc-premium-tag-bg": colors.background,
+          "--fc-premium-tag-border": colors.border,
+          "--fc-premium-tag-color": colors.color,
+        } as JSX.CSSProperties
+      }
     >
-      {props.children}
+      {children}
     </span>
-  ) as HTMLElement;
+  );
 }

@@ -209,108 +209,400 @@
     return link;
   }
 
-  // src/ui/jsx.ts
-  function createElement(tag, props, ...children) {
-    if (typeof tag === "function") {
-      return tag({ ...props || {}, children });
+  // node_modules/preact/dist/preact.module.js
+  var n;
+  var l;
+  var u;
+  var t;
+  var i;
+  var r;
+  var o;
+  var e;
+  var f;
+  var c;
+  var a;
+  var s;
+  var h;
+  var p;
+  var v;
+  var y;
+  var d = {};
+  var w = [];
+  var _ = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i;
+  var g = Array.isArray;
+  function m(n2, l2) {
+    for (var u2 in l2)
+      n2[u2] = l2[u2];
+    return n2;
+  }
+  function b(n2) {
+    n2 && n2.parentNode && n2.parentNode.removeChild(n2);
+  }
+  function k(l2, u2, t2) {
+    var i2, r2, o2, e2 = {};
+    for (o2 in u2)
+      o2 == "key" ? i2 = u2[o2] : o2 == "ref" ? r2 = u2[o2] : e2[o2] = u2[o2];
+    if (arguments.length > 2 && (e2.children = arguments.length > 3 ? n.call(arguments, 2) : t2), typeof l2 == "function" && l2.defaultProps != null)
+      for (o2 in l2.defaultProps)
+        e2[o2] === undefined && (e2[o2] = l2.defaultProps[o2]);
+    return x(l2, e2, i2, r2, null);
+  }
+  function x(n2, t2, i2, r2, o2) {
+    var e2 = { type: n2, props: t2, key: i2, ref: r2, __k: null, __: null, __b: 0, __e: null, __c: null, constructor: undefined, __v: o2 == null ? ++u : o2, __i: -1, __u: 0 };
+    return o2 == null && l.vnode != null && l.vnode(e2), e2;
+  }
+  function S(n2) {
+    return n2.children;
+  }
+  function C(n2, l2) {
+    this.props = n2, this.context = l2;
+  }
+  function $(n2, l2) {
+    if (l2 == null)
+      return n2.__ ? $(n2.__, n2.__i + 1) : null;
+    for (var u2;l2 < n2.__k.length; l2++)
+      if ((u2 = n2.__k[l2]) != null && u2.__e != null)
+        return u2.__e;
+    return typeof n2.type == "function" ? $(n2) : null;
+  }
+  function I(n2) {
+    if (n2.__P && n2.__d) {
+      var u2 = n2.__v, t2 = u2.__e, i2 = [], r2 = [], o2 = m({}, u2);
+      o2.__v = u2.__v + 1, l.vnode && l.vnode(o2), q(n2.__P, o2, u2, n2.__n, n2.__P.namespaceURI, 32 & u2.__u ? [t2] : null, i2, t2 == null ? $(u2) : t2, !!(32 & u2.__u), r2), o2.__v = u2.__v, o2.__.__k[o2.__i] = o2, D(i2, o2, r2), u2.__e = u2.__ = null, o2.__e != t2 && P(o2);
     }
-    const element = document.createElement(tag);
-    for (const [name, value] of Object.entries(props || {})) {
-      applyProp(element, name, value);
+  }
+  function P(n2) {
+    if ((n2 = n2.__) != null && n2.__c != null)
+      return n2.__e = n2.__c.base = null, n2.__k.some(function(l2) {
+        if (l2 != null && l2.__e != null)
+          return n2.__e = n2.__c.base = l2.__e;
+      }), P(n2);
+  }
+  function A(n2) {
+    (!n2.__d && (n2.__d = true) && i.push(n2) && !H.__r++ || r != l.debounceRendering) && ((r = l.debounceRendering) || o)(H);
+  }
+  function H() {
+    try {
+      for (var n2, l2 = 1;i.length; )
+        i.length > l2 && i.sort(e), n2 = i.shift(), l2 = i.length, I(n2);
+    } finally {
+      i.length = H.__r = 0;
     }
-    appendChildren(element, children);
+  }
+  function L(n2, l2, u2, t2, i2, r2, o2, e2, f2, c2, a2) {
+    var s2, h2, p2, v2, y2, _2, g2, m2 = t2 && t2.__k || w, b2 = l2.length;
+    for (f2 = T(u2, l2, m2, f2, b2), s2 = 0;s2 < b2; s2++)
+      (p2 = u2.__k[s2]) != null && (h2 = p2.__i != -1 && m2[p2.__i] || d, p2.__i = s2, _2 = q(n2, p2, h2, i2, r2, o2, e2, f2, c2, a2), v2 = p2.__e, p2.ref && h2.ref != p2.ref && (h2.ref && J(h2.ref, null, p2), a2.push(p2.ref, p2.__c || v2, p2)), y2 == null && v2 != null && (y2 = v2), (g2 = !!(4 & p2.__u)) || h2.__k === p2.__k ? (f2 = j(p2, f2, n2, g2), g2 && h2.__e && (h2.__e = null)) : typeof p2.type == "function" && _2 !== undefined ? f2 = _2 : v2 && (f2 = v2.nextSibling), p2.__u &= -7);
+    return u2.__e = y2, f2;
+  }
+  function T(n2, l2, u2, t2, i2) {
+    var r2, o2, e2, f2, c2, a2 = u2.length, s2 = a2, h2 = 0;
+    for (n2.__k = new Array(i2), r2 = 0;r2 < i2; r2++)
+      (o2 = l2[r2]) != null && typeof o2 != "boolean" && typeof o2 != "function" ? (typeof o2 == "string" || typeof o2 == "number" || typeof o2 == "bigint" || o2.constructor == String ? o2 = n2.__k[r2] = x(null, o2, null, null, null) : g(o2) ? o2 = n2.__k[r2] = x(S, { children: o2 }, null, null, null) : o2.constructor === undefined && o2.__b > 0 ? o2 = n2.__k[r2] = x(o2.type, o2.props, o2.key, o2.ref ? o2.ref : null, o2.__v) : n2.__k[r2] = o2, f2 = r2 + h2, o2.__ = n2, o2.__b = n2.__b + 1, e2 = null, (c2 = o2.__i = O(o2, u2, f2, s2)) != -1 && (s2--, (e2 = u2[c2]) && (e2.__u |= 2)), e2 == null || e2.__v == null ? (c2 == -1 && (i2 > a2 ? h2-- : i2 < a2 && h2++), typeof o2.type != "function" && (o2.__u |= 4)) : c2 != f2 && (c2 == f2 - 1 ? h2-- : c2 == f2 + 1 ? h2++ : (c2 > f2 ? h2-- : h2++, o2.__u |= 4))) : n2.__k[r2] = null;
+    if (s2)
+      for (r2 = 0;r2 < a2; r2++)
+        (e2 = u2[r2]) != null && (2 & e2.__u) == 0 && (e2.__e == t2 && (t2 = $(e2)), K(e2, e2));
+    return t2;
+  }
+  function j(n2, l2, u2, t2) {
+    var i2, r2;
+    if (typeof n2.type == "function") {
+      for (i2 = n2.__k, r2 = 0;i2 && r2 < i2.length; r2++)
+        i2[r2] && (i2[r2].__ = n2, l2 = j(i2[r2], l2, u2, t2));
+      return l2;
+    }
+    n2.__e != l2 && (t2 && (l2 && n2.type && !l2.parentNode && (l2 = $(n2)), u2.insertBefore(n2.__e, l2 || null)), l2 = n2.__e);
+    do {
+      l2 = l2 && l2.nextSibling;
+    } while (l2 != null && l2.nodeType == 8);
+    return l2;
+  }
+  function O(n2, l2, u2, t2) {
+    var i2, r2, o2, e2 = n2.key, f2 = n2.type, c2 = l2[u2], a2 = c2 != null && (2 & c2.__u) == 0;
+    if (c2 === null && e2 == null || a2 && e2 == c2.key && f2 == c2.type)
+      return u2;
+    if (t2 > (a2 ? 1 : 0)) {
+      for (i2 = u2 - 1, r2 = u2 + 1;i2 >= 0 || r2 < l2.length; )
+        if ((c2 = l2[o2 = i2 >= 0 ? i2-- : r2++]) != null && (2 & c2.__u) == 0 && e2 == c2.key && f2 == c2.type)
+          return o2;
+    }
+    return -1;
+  }
+  function z(n2, l2, u2) {
+    l2[0] == "-" ? n2.setProperty(l2, u2 == null ? "" : u2) : n2[l2] = u2 == null ? "" : typeof u2 != "number" || _.test(l2) ? u2 : u2 + "px";
+  }
+  function N(n2, l2, u2, t2, i2) {
+    var r2, o2;
+    n:
+      if (l2 == "style")
+        if (typeof u2 == "string")
+          n2.style.cssText = u2;
+        else {
+          if (typeof t2 == "string" && (n2.style.cssText = t2 = ""), t2)
+            for (l2 in t2)
+              u2 && l2 in u2 || z(n2.style, l2, "");
+          if (u2)
+            for (l2 in u2)
+              t2 && u2[l2] == t2[l2] || z(n2.style, l2, u2[l2]);
+        }
+      else if (l2[0] == "o" && l2[1] == "n")
+        r2 = l2 != (l2 = l2.replace(s, "$1")), o2 = l2.toLowerCase(), l2 = o2 in n2 || l2 == "onFocusOut" || l2 == "onFocusIn" ? o2.slice(2) : l2.slice(2), n2.l || (n2.l = {}), n2.l[l2 + r2] = u2, u2 ? t2 ? u2[a] = t2[a] : (u2[a] = h, n2.addEventListener(l2, r2 ? v : p, r2)) : n2.removeEventListener(l2, r2 ? v : p, r2);
+      else {
+        if (i2 == "http://www.w3.org/2000/svg")
+          l2 = l2.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
+        else if (l2 != "width" && l2 != "height" && l2 != "href" && l2 != "list" && l2 != "form" && l2 != "tabIndex" && l2 != "download" && l2 != "rowSpan" && l2 != "colSpan" && l2 != "role" && l2 != "popover" && l2 in n2)
+          try {
+            n2[l2] = u2 == null ? "" : u2;
+            break n;
+          } catch (n3) {}
+        typeof u2 == "function" || (u2 == null || u2 === false && l2[4] != "-" ? n2.removeAttribute(l2) : n2.setAttribute(l2, l2 == "popover" && u2 == 1 ? "" : u2));
+      }
+  }
+  function V(n2) {
+    return function(u2) {
+      if (this.l) {
+        var t2 = this.l[u2.type + n2];
+        if (u2[c] == null)
+          u2[c] = h++;
+        else if (u2[c] < t2[a])
+          return;
+        return t2(l.event ? l.event(u2) : u2);
+      }
+    };
+  }
+  function q(n2, u2, t2, i2, r2, o2, e2, f2, c2, a2) {
+    var s2, h2, p2, v2, y2, d2, _2, k2, x2, M, $2, I2, P2, A2, H2, T2 = u2.type;
+    if (u2.constructor !== undefined)
+      return null;
+    128 & t2.__u && (c2 = !!(32 & t2.__u), o2 = [f2 = u2.__e = t2.__e]), (s2 = l.__b) && s2(u2);
+    n:
+      if (typeof T2 == "function")
+        try {
+          if (k2 = u2.props, x2 = T2.prototype && T2.prototype.render, M = (s2 = T2.contextType) && i2[s2.__c], $2 = s2 ? M ? M.props.value : s2.__ : i2, t2.__c ? _2 = (h2 = u2.__c = t2.__c).__ = h2.__E : (x2 ? u2.__c = h2 = new T2(k2, $2) : (u2.__c = h2 = new C(k2, $2), h2.constructor = T2, h2.render = Q), M && M.sub(h2), h2.state || (h2.state = {}), h2.__n = i2, p2 = h2.__d = true, h2.__h = [], h2._sb = []), x2 && h2.__s == null && (h2.__s = h2.state), x2 && T2.getDerivedStateFromProps != null && (h2.__s == h2.state && (h2.__s = m({}, h2.__s)), m(h2.__s, T2.getDerivedStateFromProps(k2, h2.__s))), v2 = h2.props, y2 = h2.state, h2.__v = u2, p2)
+            x2 && T2.getDerivedStateFromProps == null && h2.componentWillMount != null && h2.componentWillMount(), x2 && h2.componentDidMount != null && h2.__h.push(h2.componentDidMount);
+          else {
+            if (x2 && T2.getDerivedStateFromProps == null && k2 !== v2 && h2.componentWillReceiveProps != null && h2.componentWillReceiveProps(k2, $2), u2.__v == t2.__v || !h2.__e && h2.shouldComponentUpdate != null && h2.shouldComponentUpdate(k2, h2.__s, $2) === false) {
+              u2.__v != t2.__v && (h2.props = k2, h2.state = h2.__s, h2.__d = false), u2.__e = t2.__e, u2.__k = t2.__k, u2.__k.some(function(n3) {
+                n3 && (n3.__ = u2);
+              }), w.push.apply(h2.__h, h2._sb), h2._sb = [], h2.__h.length && e2.push(h2);
+              break n;
+            }
+            h2.componentWillUpdate != null && h2.componentWillUpdate(k2, h2.__s, $2), x2 && h2.componentDidUpdate != null && h2.__h.push(function() {
+              h2.componentDidUpdate(v2, y2, d2);
+            });
+          }
+          if (h2.context = $2, h2.props = k2, h2.__P = n2, h2.__e = false, I2 = l.__r, P2 = 0, x2)
+            h2.state = h2.__s, h2.__d = false, I2 && I2(u2), s2 = h2.render(h2.props, h2.state, h2.context), w.push.apply(h2.__h, h2._sb), h2._sb = [];
+          else
+            do {
+              h2.__d = false, I2 && I2(u2), s2 = h2.render(h2.props, h2.state, h2.context), h2.state = h2.__s;
+            } while (h2.__d && ++P2 < 25);
+          h2.state = h2.__s, h2.getChildContext != null && (i2 = m(m({}, i2), h2.getChildContext())), x2 && !p2 && h2.getSnapshotBeforeUpdate != null && (d2 = h2.getSnapshotBeforeUpdate(v2, y2)), A2 = s2 != null && s2.type === S && s2.key == null ? E(s2.props.children) : s2, f2 = L(n2, g(A2) ? A2 : [A2], u2, t2, i2, r2, o2, e2, f2, c2, a2), h2.base = u2.__e, u2.__u &= -161, h2.__h.length && e2.push(h2), _2 && (h2.__E = h2.__ = null);
+        } catch (n3) {
+          if (u2.__v = null, c2 || o2 != null)
+            if (n3.then) {
+              for (u2.__u |= c2 ? 160 : 128;f2 && f2.nodeType == 8 && f2.nextSibling; )
+                f2 = f2.nextSibling;
+              o2[o2.indexOf(f2)] = null, u2.__e = f2;
+            } else {
+              for (H2 = o2.length;H2--; )
+                b(o2[H2]);
+              B(u2);
+            }
+          else
+            u2.__e = t2.__e, u2.__k = t2.__k, n3.then || B(u2);
+          l.__e(n3, u2, t2);
+        }
+      else
+        o2 == null && u2.__v == t2.__v ? (u2.__k = t2.__k, u2.__e = t2.__e) : f2 = u2.__e = G(t2.__e, u2, t2, i2, r2, o2, e2, c2, a2);
+    return (s2 = l.diffed) && s2(u2), 128 & u2.__u ? undefined : f2;
+  }
+  function B(n2) {
+    n2 && (n2.__c && (n2.__c.__e = true), n2.__k && n2.__k.some(B));
+  }
+  function D(n2, u2, t2) {
+    for (var i2 = 0;i2 < t2.length; i2++)
+      J(t2[i2], t2[++i2], t2[++i2]);
+    l.__c && l.__c(u2, n2), n2.some(function(u3) {
+      try {
+        n2 = u3.__h, u3.__h = [], n2.some(function(n3) {
+          n3.call(u3);
+        });
+      } catch (n3) {
+        l.__e(n3, u3.__v);
+      }
+    });
+  }
+  function E(n2) {
+    return typeof n2 != "object" || n2 == null || n2.__b > 0 ? n2 : g(n2) ? n2.map(E) : n2.constructor !== undefined ? null : m({}, n2);
+  }
+  function G(u2, t2, i2, r2, o2, e2, f2, c2, a2) {
+    var s2, h2, p2, v2, y2, w2, _2, m2 = i2.props || d, k2 = t2.props, x2 = t2.type;
+    if (x2 == "svg" ? o2 = "http://www.w3.org/2000/svg" : x2 == "math" ? o2 = "http://www.w3.org/1998/Math/MathML" : o2 || (o2 = "http://www.w3.org/1999/xhtml"), e2 != null) {
+      for (s2 = 0;s2 < e2.length; s2++)
+        if ((y2 = e2[s2]) && "setAttribute" in y2 == !!x2 && (x2 ? y2.localName == x2 : y2.nodeType == 3)) {
+          u2 = y2, e2[s2] = null;
+          break;
+        }
+    }
+    if (u2 == null) {
+      if (x2 == null)
+        return document.createTextNode(k2);
+      u2 = document.createElementNS(o2, x2, k2.is && k2), c2 && (l.__m && l.__m(t2, e2), c2 = false), e2 = null;
+    }
+    if (x2 == null)
+      m2 === k2 || c2 && u2.data == k2 || (u2.data = k2);
+    else {
+      if (e2 = x2 == "textarea" && k2.defaultValue != null ? null : e2 && n.call(u2.childNodes), !c2 && e2 != null)
+        for (m2 = {}, s2 = 0;s2 < u2.attributes.length; s2++)
+          m2[(y2 = u2.attributes[s2]).name] = y2.value;
+      for (s2 in m2)
+        y2 = m2[s2], s2 == "dangerouslySetInnerHTML" ? p2 = y2 : s2 == "children" || (s2 in k2) || s2 == "value" && ("defaultValue" in k2) || s2 == "checked" && ("defaultChecked" in k2) || N(u2, s2, null, y2, o2);
+      for (s2 in k2)
+        y2 = k2[s2], s2 == "children" ? v2 = y2 : s2 == "dangerouslySetInnerHTML" ? h2 = y2 : s2 == "value" ? w2 = y2 : s2 == "checked" ? _2 = y2 : c2 && typeof y2 != "function" || m2[s2] === y2 || N(u2, s2, y2, m2[s2], o2);
+      if (h2)
+        c2 || p2 && (h2.__html == p2.__html || h2.__html == u2.innerHTML) || (u2.innerHTML = h2.__html), t2.__k = [];
+      else if (p2 && (u2.innerHTML = ""), L(t2.type == "template" ? u2.content : u2, g(v2) ? v2 : [v2], t2, i2, r2, x2 == "foreignObject" ? "http://www.w3.org/1999/xhtml" : o2, e2, f2, e2 ? e2[0] : i2.__k && $(i2, 0), c2, a2), e2 != null)
+        for (s2 = e2.length;s2--; )
+          b(e2[s2]);
+      c2 && x2 != "textarea" || (s2 = "value", x2 == "progress" && w2 == null ? u2.removeAttribute("value") : w2 != null && (w2 !== u2[s2] || x2 == "progress" && !w2 || x2 == "option" && w2 != m2[s2]) && N(u2, s2, w2, m2[s2], o2), s2 = "checked", _2 != null && _2 != u2[s2] && N(u2, s2, _2, m2[s2], o2));
+    }
+    return u2;
+  }
+  function J(n2, u2, t2) {
+    try {
+      if (typeof n2 == "function") {
+        var i2 = typeof n2.__u == "function";
+        i2 && n2.__u(), i2 && u2 == null || (n2.__u = n2(u2));
+      } else
+        n2.current = u2;
+    } catch (n3) {
+      l.__e(n3, t2);
+    }
+  }
+  function K(n2, u2, t2) {
+    var i2, r2;
+    if (l.unmount && l.unmount(n2), (i2 = n2.ref) && (i2.current && i2.current != n2.__e || J(i2, null, u2)), (i2 = n2.__c) != null) {
+      if (i2.componentWillUnmount)
+        try {
+          i2.componentWillUnmount();
+        } catch (n3) {
+          l.__e(n3, u2);
+        }
+      i2.base = i2.__P = null;
+    }
+    if (i2 = n2.__k)
+      for (r2 = 0;r2 < i2.length; r2++)
+        i2[r2] && K(i2[r2], u2, t2 || typeof n2.type != "function");
+    t2 || b(n2.__e), n2.__c = n2.__ = n2.__e = undefined;
+  }
+  function Q(n2, l2, u2) {
+    return this.constructor(n2, u2);
+  }
+  function R(u2, t2, i2) {
+    var r2, o2, e2, f2;
+    t2 == document && (t2 = document.documentElement), l.__ && l.__(u2, t2), o2 = (r2 = typeof i2 == "function") ? null : i2 && i2.__k || t2.__k, e2 = [], f2 = [], q(t2, u2 = (!r2 && i2 || t2).__k = k(S, null, [u2]), o2 || d, d, t2.namespaceURI, !r2 && i2 ? [i2] : o2 ? null : t2.firstChild ? n.call(t2.childNodes) : null, e2, !r2 && i2 ? i2 : o2 ? o2.__e : t2.firstChild, r2, f2), D(e2, u2, f2);
+  }
+  n = w.slice, l = { __e: function(n2, l2, u2, t2) {
+    for (var i2, r2, o2;l2 = l2.__; )
+      if ((i2 = l2.__c) && !i2.__)
+        try {
+          if ((r2 = i2.constructor) && r2.getDerivedStateFromError != null && (i2.setState(r2.getDerivedStateFromError(n2)), o2 = i2.__d), i2.componentDidCatch != null && (i2.componentDidCatch(n2, t2 || {}), o2 = i2.__d), o2)
+            return i2.__E = i2;
+        } catch (l3) {
+          n2 = l3;
+        }
+    throw n2;
+  } }, u = 0, t = function(n2) {
+    return n2 != null && n2.constructor === undefined;
+  }, C.prototype.setState = function(n2, l2) {
+    var u2;
+    u2 = this.__s != null && this.__s != this.state ? this.__s : this.__s = m({}, this.state), typeof n2 == "function" && (n2 = n2(m({}, u2), this.props)), n2 && m(u2, n2), n2 != null && this.__v && (l2 && this._sb.push(l2), A(this));
+  }, C.prototype.forceUpdate = function(n2) {
+    this.__v && (this.__e = true, n2 && this.__h.push(n2), A(this));
+  }, C.prototype.render = S, i = [], o = typeof Promise == "function" ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, e = function(n2, l2) {
+    return n2.__v.__b - l2.__v.__b;
+  }, H.__r = 0, f = Math.random().toString(8), c = "__d" + f, a = "__a" + f, s = /(PointerCapture)$|Capture$/i, h = 0, p = V(false), v = V(true), y = 0;
+
+  // src/ui/render.ts
+  function renderElement(node) {
+    const host = document.createElement("div");
+    R(node, host);
+    const element = host.firstElementChild;
+    if (!(element instanceof HTMLElement)) {
+      throw new Error("Preact component did not render an HTMLElement");
+    }
     return element;
   }
-  function appendChildren(parent, children) {
-    for (const child of children.flat()) {
-      if (child === null || child === undefined || child === false) {
-        continue;
-      }
-      parent.append(child instanceof Node ? child : document.createTextNode(String(child)));
-    }
-  }
-  function applyProp(element, name, value) {
-    if (value === false || value === null || value === undefined) {
-      return;
-    }
-    if (name === "className") {
-      element.className = String(value);
-      return;
-    }
-    if (name === "htmlFor" && element instanceof HTMLLabelElement) {
-      element.htmlFor = String(value);
-      return;
-    }
-    if (name === "style") {
-      if (typeof value === "string") {
-        element.style.cssText = value;
-        return;
-      }
-      if (value && typeof value === "object") {
-        for (const [propertyName, propertyValue] of Object.entries(value)) {
-          if (propertyValue === null || propertyValue === undefined) {
-            continue;
-          }
-          if (propertyName.startsWith("--")) {
-            element.style.setProperty(propertyName, String(propertyValue));
-          } else {
-            element.style[propertyName] = String(propertyValue);
-          }
-        }
-        return;
-      }
-    }
-    if (/^on[A-Z]/.test(name) && typeof value === "function") {
-      const eventName = name.slice(2).toLowerCase();
-      element.addEventListener(eventName, value);
-      return;
-    }
-    if (name in element) {
-      try {
-        element[name] = value;
-        return;
-      } catch (_error) {}
-    }
-    element.setAttribute(name, value === true ? "" : String(value));
+  // node_modules/preact/jsx-runtime/dist/jsxRuntime.module.js
+  var f2 = 0;
+  function u2(e2, t2, n2, o2, i2, u3) {
+    t2 || (t2 = {});
+    var a2, c2, p2 = t2;
+    if ("ref" in p2)
+      for (c2 in p2 = {}, t2)
+        c2 == "ref" ? a2 = t2[c2] : p2[c2] = t2[c2];
+    var l2 = { type: e2, props: p2, key: n2, ref: a2, __k: null, __: null, __b: 0, __e: null, __c: null, constructor: undefined, __v: --f2, __i: -1, __u: 0, __source: i2, __self: u3 };
+    if (typeof e2 == "function" && (a2 = e2.defaultProps))
+      for (c2 in a2)
+        p2[c2] === undefined && (p2[c2] = a2[c2]);
+    return l.vnode && l.vnode(l2), l2;
   }
 
   // src/ui/shortcutHelp.tsx
   function ShortcutHelpContainer(props) {
-    return /* @__PURE__ */ createElement("div", {
-      id: SHORTCUT_HELP_CONTAINER_ID
-    }, /* @__PURE__ */ createElement("button", {
-      id: SHORTCUT_HELP_BUTTON_ID,
-      type: "button",
-      "aria-label": "Mostrar atajos de teclado",
-      "aria-haspopup": "dialog",
-      "aria-expanded": "false",
-      onClick: (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        props.onToggle();
-      }
-    }, "?"), /* @__PURE__ */ createElement("div", {
-      id: SHORTCUT_HELP_POPOVER_ID,
-      hidden: true,
-      role: "dialog",
-      "aria-label": "Atajos de teclado"
-    }, /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-shortcut-help-title"
-    }, "Atajos de teclado"), props.items.map((item) => /* @__PURE__ */ createElement(ShortcutHelpRow, {
-      item,
-      formatKey: props.formatKey
-    }))));
+    return renderElement(/* @__PURE__ */ u2("div", {
+      id: SHORTCUT_HELP_CONTAINER_ID,
+      children: [
+        /* @__PURE__ */ u2("button", {
+          id: SHORTCUT_HELP_BUTTON_ID,
+          type: "button",
+          "aria-label": "Mostrar atajos de teclado",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
+          onClick: (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            props.onToggle();
+          },
+          children: "?"
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ u2("div", {
+          id: SHORTCUT_HELP_POPOVER_ID,
+          hidden: true,
+          role: "dialog",
+          "aria-label": "Atajos de teclado",
+          children: [
+            /* @__PURE__ */ u2("div", {
+              className: "fc-premium-shortcut-help-title",
+              children: "Atajos de teclado"
+            }, undefined, false, undefined, this),
+            props.items.map((item) => /* @__PURE__ */ u2(ShortcutHelpRow, {
+              item,
+              formatKey: props.formatKey
+            }, undefined, false, undefined, this))
+          ]
+        }, undefined, true, undefined, this)
+      ]
+    }, undefined, true, undefined, this));
   }
   function ShortcutHelpRow(props) {
-    return /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-shortcut-help-row"
-    }, /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-shortcut-help-keys"
-    }, props.item.keys.map((key) => /* @__PURE__ */ createElement("kbd", {
-      className: "fc-premium-shortcut-help-key"
-    }, props.formatKey(key)))), /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-shortcut-help-description"
-    }, props.item.description));
+    return /* @__PURE__ */ u2("div", {
+      className: "fc-premium-shortcut-help-row",
+      children: [
+        /* @__PURE__ */ u2("span", {
+          className: "fc-premium-shortcut-help-keys",
+          children: props.item.keys.map((key) => /* @__PURE__ */ u2("kbd", {
+            className: "fc-premium-shortcut-help-key",
+            children: props.formatKey(key)
+          }, undefined, false, undefined, this))
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ u2("span", {
+          className: "fc-premium-shortcut-help-description",
+          children: props.item.description
+        }, undefined, false, undefined, this)
+      ]
+    }, undefined, true, undefined, this);
   }
 
   // src/ui/shortcutHelpDom.ts
@@ -626,37 +918,44 @@
 
   // src/ui/components/ForumControls.tsx
   function ForumSidebarToggleButton(props) {
-    return /* @__PURE__ */ createElement("button", {
+    return renderElement(/* @__PURE__ */ u2("button", {
       id: FORUM_SIDEBAR_TOGGLE_ID,
       type: "button",
       title: props.hidden ? "Mostrar la columna izquierda" : "Ocultar la columna izquierda",
-      "aria-expanded": String(!props.hidden),
-      onClick: props.onToggle
-    }, props.hidden ? "Mostrar panel izquierdo" : "Ocultar panel izquierdo");
+      "aria-expanded": !props.hidden,
+      onClick: props.onToggle,
+      children: props.hidden ? "Mostrar panel izquierdo" : "Ocultar panel izquierdo"
+    }, undefined, false, undefined, this));
   }
   function HiddenThreadsToolbarCell(props) {
-    return /* @__PURE__ */ createElement("td", {
+    return renderElement(/* @__PURE__ */ u2("td", {
       id: HIDDEN_THREADS_BUTTON_ID,
       className: "vbmenu_control",
-      noWrap: true,
-      style: "cursor: pointer"
-    }, /* @__PURE__ */ createElement("a", {
-      href: "#",
-      onClick: (event) => {
-        event.preventDefault();
-        props.onOpen();
-      }
-    }, "Hilos escondidos"));
+      ...{ noWrap: true },
+      style: "cursor: pointer",
+      children: /* @__PURE__ */ u2("a", {
+        href: "#",
+        onClick: (event) => {
+          event.preventDefault();
+          props.onOpen();
+        },
+        children: "Hilos escondidos"
+      }, undefined, false, undefined, this)
+    }, undefined, false, undefined, this));
   }
   function ForumLoadingStatus() {
-    return /* @__PURE__ */ createElement("span", {
-      id: FORUM_LOADING_STATUS_ID
-    }, /* @__PURE__ */ createElement("span", {
-      className: "fc-premium-spinner",
-      "aria-hidden": "true"
-    }), /* @__PURE__ */ createElement("span", {
-      "data-fc-premium-loading-text": "true"
-    }));
+    return renderElement(/* @__PURE__ */ u2("span", {
+      id: FORUM_LOADING_STATUS_ID,
+      children: [
+        /* @__PURE__ */ u2("span", {
+          className: "fc-premium-spinner",
+          "aria-hidden": "true"
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ u2("span", {
+          "data-fc-premium-loading-text": "true"
+        }, undefined, false, undefined, this)
+      ]
+    }, undefined, true, undefined, this));
   }
 
   // src/shared/hash.ts
@@ -755,13 +1054,18 @@
 
   // src/ui/components/Tags.tsx
   function TagChip(props) {
+    return renderElement(/* @__PURE__ */ u2(TagChipView, {
+      ...props
+    }, undefined, false, undefined, this));
+  }
+  function TagChipView(props) {
     const canonicalTag = normalizeTag(props.tag);
-    return /* @__PURE__ */ createElement(TagBase, {
+    return /* @__PURE__ */ u2(TagBase, {
       tag: canonicalTag,
       role: "button",
       tabIndex: 0,
       title: props.title || `Filtrar por +${props.tag}`,
-      "aria-pressed": typeof props.pressed === "boolean" ? String(props.pressed) : undefined,
+      "aria-pressed": props.pressed,
       onClick: (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -774,25 +1078,33 @@
         event.preventDefault();
         event.stopPropagation();
         props.onToggle(canonicalTag);
-      }
-    }, props.label || `+${props.tag}`);
+      },
+      children: props.label || `+${props.tag}`
+    }, undefined, false, undefined, this);
   }
-  function TagLabel(props) {
-    return /* @__PURE__ */ createElement(TagBase, {
+  function TagLabelView(props) {
+    return /* @__PURE__ */ u2(TagBase, {
       tag: props.tag,
-      title: props.title
-    }, props.label || `+${props.tag}`);
+      title: props.title,
+      children: props.label || `+${props.tag}`
+    }, undefined, false, undefined, this);
   }
   function TopTagBar(props) {
-    return /* @__PURE__ */ createElement("div", {
-      id: "fc-premium-top-tags"
-    }, /* @__PURE__ */ createElement("span", null, "Top tags:"), props.tags.map((summary) => /* @__PURE__ */ createElement(TagChip, {
-      tag: summary.tag,
-      label: `+${summary.tag} (${summary.count})`,
-      title: `Filtrar ${summary.count} hilos con +${summary.tag}`,
-      pressed: props.activeTag === summary.tag,
-      onToggle: props.onToggle
-    })));
+    return renderElement(/* @__PURE__ */ u2("div", {
+      id: "fc-premium-top-tags",
+      children: [
+        /* @__PURE__ */ u2("span", {
+          children: "Top tags:"
+        }, undefined, false, undefined, this),
+        props.tags.map((summary) => /* @__PURE__ */ u2(TagChipView, {
+          tag: summary.tag,
+          label: `+${summary.tag} (${summary.count})`,
+          title: `Filtrar ${summary.count} hilos con +${summary.tag}`,
+          pressed: props.activeTag === summary.tag,
+          onToggle: props.onToggle
+        }, undefined, false, undefined, this))
+      ]
+    }, undefined, true, undefined, this));
   }
   function getTagColors(tag) {
     const hue = hashString(tag.toLowerCase()) % 360;
@@ -803,12 +1115,10 @@
     };
   }
   function TagBase(props) {
-    const canonicalTag = normalizeTag(props.tag);
+    const { tag, children, ...elementProps } = props;
+    const canonicalTag = normalizeTag(tag);
     const colors = getTagColors(canonicalTag);
-    const elementProps = { ...props };
-    delete elementProps.tag;
-    delete elementProps.children;
-    return /* @__PURE__ */ createElement("span", {
+    return /* @__PURE__ */ u2("span", {
       ...elementProps,
       className: "fc-premium-tag-chip",
       "data-fc-premium-tag": canonicalTag,
@@ -816,13 +1126,14 @@
         "--fc-premium-tag-bg": colors.background,
         "--fc-premium-tag-border": colors.border,
         "--fc-premium-tag-color": colors.color
-      }
-    }, props.children);
+      },
+      children
+    }, undefined, false, undefined, this);
   }
 
   // src/ui/components/HiddenThreadsModal.tsx
   function HiddenThreadsModal(props) {
-    return /* @__PURE__ */ createElement("div", {
+    return renderElement(/* @__PURE__ */ u2("div", {
       id: HIDDEN_THREADS_MODAL_ID,
       hidden: true,
       role: "dialog",
@@ -832,30 +1143,73 @@
         if (event.target === event.currentTarget) {
           props.onClose();
         }
-      }
-    }, /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-hidden-threads-dialog"
-    }, /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-hidden-threads-header"
-    }, /* @__PURE__ */ createElement("span", null, "Hilos escondidos"), /* @__PURE__ */ createElement("button", {
-      type: "button",
-      onClick: props.onClose
-    }, "Cerrar")), /* @__PURE__ */ createElement(HiddenThreadsModalBody, {
-      records: props.records,
-      onRestore: props.onRestore
-    })));
+      },
+      children: /* @__PURE__ */ u2("div", {
+        className: "fc-premium-hidden-threads-dialog",
+        children: [
+          /* @__PURE__ */ u2("div", {
+            className: "fc-premium-hidden-threads-header",
+            children: [
+              /* @__PURE__ */ u2("span", {
+                children: "Hilos escondidos"
+              }, undefined, false, undefined, this),
+              /* @__PURE__ */ u2("button", {
+                type: "button",
+                onClick: props.onClose,
+                children: "Cerrar"
+              }, undefined, false, undefined, this)
+            ]
+          }, undefined, true, undefined, this),
+          /* @__PURE__ */ u2(HiddenThreadsModalBodyView, {
+            records: props.records,
+            onRestore: props.onRestore
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this)
+    }, undefined, false, undefined, this));
   }
   function HiddenThreadsModalBody(props) {
-    return /* @__PURE__ */ createElement("div", {
-      id: HIDDEN_THREADS_MODAL_BODY_ID
-    }, props.records.length === 0 ? /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-hidden-threads-empty"
-    }, "No hay hilos escondidos en este foro.") : /* @__PURE__ */ createElement("table", {
-      className: "fc-premium-hidden-threads-table"
-    }, /* @__PURE__ */ createElement("thead", null, /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("th", null, "Hilo"), /* @__PURE__ */ createElement("th", null, "Info"), /* @__PURE__ */ createElement("th", null, "Oculto"), /* @__PURE__ */ createElement("th", null, "Accion"))), /* @__PURE__ */ createElement("tbody", null, props.records.map((record) => /* @__PURE__ */ createElement(HiddenThreadRow, {
-      record,
+    return renderElement(/* @__PURE__ */ u2(HiddenThreadsModalBodyView, {
+      records: props.records,
       onRestore: props.onRestore
-    })))));
+    }, undefined, false, undefined, this));
+  }
+  function HiddenThreadsModalBodyView(props) {
+    return /* @__PURE__ */ u2("div", {
+      id: HIDDEN_THREADS_MODAL_BODY_ID,
+      children: props.records.length === 0 ? /* @__PURE__ */ u2("div", {
+        className: "fc-premium-hidden-threads-empty",
+        children: "No hay hilos escondidos en este foro."
+      }, undefined, false, undefined, this) : /* @__PURE__ */ u2("table", {
+        className: "fc-premium-hidden-threads-table",
+        children: [
+          /* @__PURE__ */ u2("thead", {
+            children: /* @__PURE__ */ u2("tr", {
+              children: [
+                /* @__PURE__ */ u2("th", {
+                  children: "Hilo"
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ u2("th", {
+                  children: "Info"
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ u2("th", {
+                  children: "Oculto"
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ u2("th", {
+                  children: "Accion"
+                }, undefined, false, undefined, this)
+              ]
+            }, undefined, true, undefined, this)
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ u2("tbody", {
+            children: props.records.map((record) => /* @__PURE__ */ u2(HiddenThreadRow, {
+              record,
+              onRestore: props.onRestore
+            }, undefined, false, undefined, this))
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this)
+    }, undefined, false, undefined, this);
   }
   function HiddenThreadRow(props) {
     const record = props.record;
@@ -864,18 +1218,42 @@
       record.statsText,
       record.lastPostText
     ].filter(Boolean);
-    return /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", null, /* @__PURE__ */ createElement("a", {
-      className: "fc-premium-hidden-thread-title",
-      href: record.url
-    }, record.title || `Hilo ${record.id}`), record.tags.length > 0 ? /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-hidden-thread-meta"
-    }, record.tags.slice(0, 5).map((tag) => /* @__PURE__ */ createElement(TagLabel, {
-      tag
-    })), record.tags.length > 5 ? ` +${record.tags.length - 5}` : "") : null), /* @__PURE__ */ createElement("td", null, info.length > 0 ? info.join(" · ") : "-"), /* @__PURE__ */ createElement("td", null, formatHiddenThreadDate(record.hiddenAt)), /* @__PURE__ */ createElement("td", null, /* @__PURE__ */ createElement("button", {
-      type: "button",
-      className: "fc-premium-hidden-thread-restore",
-      onClick: () => props.onRestore(record.id)
-    }, "Restaurar")));
+    return /* @__PURE__ */ u2("tr", {
+      children: [
+        /* @__PURE__ */ u2("td", {
+          children: [
+            /* @__PURE__ */ u2("a", {
+              className: "fc-premium-hidden-thread-title",
+              href: record.url,
+              children: record.title || `Hilo ${record.id}`
+            }, undefined, false, undefined, this),
+            record.tags.length > 0 ? /* @__PURE__ */ u2("div", {
+              className: "fc-premium-hidden-thread-meta",
+              children: [
+                record.tags.slice(0, 5).map((tag) => /* @__PURE__ */ u2(TagLabelView, {
+                  tag
+                }, undefined, false, undefined, this)),
+                record.tags.length > 5 ? ` +${record.tags.length - 5}` : ""
+              ]
+            }, undefined, true, undefined, this) : null
+          ]
+        }, undefined, true, undefined, this),
+        /* @__PURE__ */ u2("td", {
+          children: info.length > 0 ? info.join(" · ") : "-"
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ u2("td", {
+          children: formatHiddenThreadDate(record.hiddenAt)
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ u2("td", {
+          children: /* @__PURE__ */ u2("button", {
+            type: "button",
+            className: "fc-premium-hidden-thread-restore",
+            onClick: () => props.onRestore(record.id),
+            children: "Restaurar"
+          }, undefined, false, undefined, this)
+        }, undefined, false, undefined, this)
+      ]
+    }, undefined, true, undefined, this);
   }
   function formatHiddenThreadDate(timestamp) {
     if (!timestamp) {
@@ -2711,47 +3089,69 @@
 
   // src/ui/components/ForumPager.tsx
   function ForumPager(props) {
-    return /* @__PURE__ */ createElement("table", {
+    return renderElement(/* @__PURE__ */ u2("table", {
       className: "tborder",
       cellPadding: "3",
       cellSpacing: "1",
-      border: "0"
-    }, /* @__PURE__ */ createElement("tbody", null, /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
-      className: "vbmenu_control",
-      style: "font-weight: normal"
-    }, "Pág ", props.currentPage, " de ", props.totalPages), props.visiblePages.map((pageNumber) => pageNumber === props.currentPage ? /* @__PURE__ */ createElement("td", {
-      className: "alt2"
-    }, /* @__PURE__ */ createElement("span", {
-      className: "mfont",
-      title: "Mostrando resultados filtrados"
-    }, /* @__PURE__ */ createElement("strong", null, pageNumber))) : /* @__PURE__ */ createElement(ForumPagerLinkCell, {
-      pageNumber,
-      label: String(pageNumber),
-      href: props.hrefForPage(pageNumber),
-      onPageClick: props.onPageClick
-    })), props.currentPage < props.totalPages ? /* @__PURE__ */ createElement(ForumPagerLinkCell, {
-      pageNumber: props.currentPage + 1,
-      label: ">",
-      href: props.hrefForPage(props.currentPage + 1),
-      onPageClick: props.onPageClick
-    }) : null, props.currentPage < props.totalPages ? /* @__PURE__ */ createElement(ForumPagerLinkCell, {
-      pageNumber: props.totalPages,
-      label: "Último »",
-      href: props.hrefForPage(props.totalPages),
-      onPageClick: props.onPageClick
-    }) : null)));
+      ...{ border: "0" },
+      children: /* @__PURE__ */ u2("tbody", {
+        children: /* @__PURE__ */ u2("tr", {
+          children: [
+            /* @__PURE__ */ u2("td", {
+              className: "vbmenu_control",
+              style: "font-weight: normal",
+              children: [
+                "Pág ",
+                props.currentPage,
+                " de ",
+                props.totalPages
+              ]
+            }, undefined, true, undefined, this),
+            props.visiblePages.map((pageNumber) => pageNumber === props.currentPage ? /* @__PURE__ */ u2("td", {
+              className: "alt2",
+              children: /* @__PURE__ */ u2("span", {
+                className: "mfont",
+                title: "Mostrando resultados filtrados",
+                children: /* @__PURE__ */ u2("strong", {
+                  children: pageNumber
+                }, undefined, false, undefined, this)
+              }, undefined, false, undefined, this)
+            }, undefined, false, undefined, this) : /* @__PURE__ */ u2(ForumPagerLinkCell, {
+              pageNumber,
+              label: String(pageNumber),
+              href: props.hrefForPage(pageNumber),
+              onPageClick: props.onPageClick
+            }, undefined, false, undefined, this)),
+            props.currentPage < props.totalPages ? /* @__PURE__ */ u2(ForumPagerLinkCell, {
+              pageNumber: props.currentPage + 1,
+              label: ">",
+              href: props.hrefForPage(props.currentPage + 1),
+              onPageClick: props.onPageClick
+            }, undefined, false, undefined, this) : null,
+            props.currentPage < props.totalPages ? /* @__PURE__ */ u2(ForumPagerLinkCell, {
+              pageNumber: props.totalPages,
+              label: "Último »",
+              href: props.hrefForPage(props.totalPages),
+              onPageClick: props.onPageClick
+            }, undefined, false, undefined, this) : null
+          ]
+        }, undefined, true, undefined, this)
+      }, undefined, false, undefined, this)
+    }, undefined, false, undefined, this));
   }
   function ForumPagerLinkCell(props) {
-    return /* @__PURE__ */ createElement("td", {
-      className: "alt1"
-    }, /* @__PURE__ */ createElement("a", {
-      className: "mfont",
-      href: props.href,
-      onClick: (event) => {
-        event.preventDefault();
-        props.onPageClick(props.pageNumber);
-      }
-    }, props.label));
+    return /* @__PURE__ */ u2("td", {
+      className: "alt1",
+      children: /* @__PURE__ */ u2("a", {
+        className: "mfont",
+        href: props.href,
+        onClick: (event) => {
+          event.preventDefault();
+          props.onPageClick(props.pageNumber);
+        },
+        children: props.label
+      }, undefined, false, undefined, this)
+    }, undefined, false, undefined, this);
   }
 
   // src/app/core/forumThreadListRenderer.ts
@@ -6205,65 +6605,99 @@ body table.tborder:has(.navbar) {
 
   // src/ui/components/ThreadSearchPanel.tsx
   function ThreadSearchPanel(props) {
-    return /* @__PURE__ */ createElement("table", {
+    return renderElement(/* @__PURE__ */ u2("table", {
       id: THREAD_SEARCH_PANEL_ID,
       className: "tborder",
       cellPadding: "4",
       cellSpacing: "1",
-      border: "0"
-    }, /* @__PURE__ */ createElement("tbody", null, /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
-      className: "thead"
-    }, "Buscar mensajes")), /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
-      className: "alt1 fc-premium-thread-search-cell"
-    }, /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-thread-search-layout"
-    }, /* @__PURE__ */ createElement("label", {
-      className: "fc-premium-thread-search-field"
-    }, "Texto", /* @__PURE__ */ createElement("input", {
-      id: THREAD_SEARCH_TEXT_INPUT_ID,
-      type: "search",
-      className: "bginput",
-      placeholder: "Buscar en mensajes",
-      value: props.searchQuery,
-      onInput: (event) => {
-        const input = event.currentTarget;
-        if (input instanceof HTMLInputElement) {
-          props.onSearchInput(input.value);
-        }
-      }
-    })), /* @__PURE__ */ createElement("label", {
-      className: "fc-premium-thread-search-field"
-    }, "Usuario", /* @__PURE__ */ createElement("input", {
-      id: THREAD_SEARCH_AUTHOR_INPUT_ID,
-      type: "text",
-      className: "bginput",
-      placeholder: "Escribe un usuario",
-      list: THREAD_SEARCH_AUTHOR_DATALIST_ID,
-      autocomplete: "off",
-      onKeyDown: (event) => {
-        if (event.key !== "Enter") {
-          return;
-        }
-        event.preventDefault();
-        props.onAddAuthor();
-      }
-    })), /* @__PURE__ */ createElement("button", {
-      type: "button",
-      className: "fc-premium-thread-search-button",
-      onClick: props.onAddAuthor
-    }, "Añadir"), /* @__PURE__ */ createElement("button", {
-      type: "button",
-      className: "fc-premium-thread-search-button",
-      onClick: props.onClearFilters
-    }, "Limpiar"), /* @__PURE__ */ createElement("span", {
-      id: THREAD_SEARCH_STATUS_ID
-    })), /* @__PURE__ */ createElement("datalist", {
-      id: THREAD_SEARCH_AUTHOR_DATALIST_ID
-    }), /* @__PURE__ */ createElement("div", {
-      id: THREAD_SEARCH_SELECTED_AUTHORS_ID
-    }), /* @__PURE__ */ createElement("div", {
-      id: THREAD_SEARCH_EMPTY_ID
-    })))));
+      ...{ border: "0" },
+      children: /* @__PURE__ */ u2("tbody", {
+        children: [
+          /* @__PURE__ */ u2("tr", {
+            children: /* @__PURE__ */ u2("td", {
+              className: "thead",
+              children: "Buscar mensajes"
+            }, undefined, false, undefined, this)
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ u2("tr", {
+            children: /* @__PURE__ */ u2("td", {
+              className: "alt1 fc-premium-thread-search-cell",
+              children: [
+                /* @__PURE__ */ u2("div", {
+                  className: "fc-premium-thread-search-layout",
+                  children: [
+                    /* @__PURE__ */ u2("label", {
+                      className: "fc-premium-thread-search-field",
+                      children: [
+                        "Texto",
+                        /* @__PURE__ */ u2("input", {
+                          id: THREAD_SEARCH_TEXT_INPUT_ID,
+                          type: "search",
+                          className: "bginput",
+                          placeholder: "Buscar en mensajes",
+                          value: props.searchQuery,
+                          onInput: (event) => {
+                            const input = event.currentTarget;
+                            if (input instanceof HTMLInputElement) {
+                              props.onSearchInput(input.value);
+                            }
+                          }
+                        }, undefined, false, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this),
+                    /* @__PURE__ */ u2("label", {
+                      className: "fc-premium-thread-search-field",
+                      children: [
+                        "Usuario",
+                        /* @__PURE__ */ u2("input", {
+                          id: THREAD_SEARCH_AUTHOR_INPUT_ID,
+                          type: "text",
+                          className: "bginput",
+                          placeholder: "Escribe un usuario",
+                          list: THREAD_SEARCH_AUTHOR_DATALIST_ID,
+                          autoComplete: "off",
+                          onKeyDown: (event) => {
+                            if (event.key !== "Enter") {
+                              return;
+                            }
+                            event.preventDefault();
+                            props.onAddAuthor();
+                          }
+                        }, undefined, false, undefined, this)
+                      ]
+                    }, undefined, true, undefined, this),
+                    /* @__PURE__ */ u2("button", {
+                      type: "button",
+                      className: "fc-premium-thread-search-button",
+                      onClick: props.onAddAuthor,
+                      children: "Añadir"
+                    }, undefined, false, undefined, this),
+                    /* @__PURE__ */ u2("button", {
+                      type: "button",
+                      className: "fc-premium-thread-search-button",
+                      onClick: props.onClearFilters,
+                      children: "Limpiar"
+                    }, undefined, false, undefined, this),
+                    /* @__PURE__ */ u2("span", {
+                      id: THREAD_SEARCH_STATUS_ID
+                    }, undefined, false, undefined, this)
+                  ]
+                }, undefined, true, undefined, this),
+                /* @__PURE__ */ u2("datalist", {
+                  id: THREAD_SEARCH_AUTHOR_DATALIST_ID
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ u2("div", {
+                  id: THREAD_SEARCH_SELECTED_AUTHORS_ID
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ u2("div", {
+                  id: THREAD_SEARCH_EMPTY_ID
+                }, undefined, false, undefined, this)
+              ]
+            }, undefined, true, undefined, this)
+          }, undefined, false, undefined, this)
+        ]
+      }, undefined, true, undefined, this)
+    }, undefined, false, undefined, this));
   }
 
   // src/domain/threadAuthors.ts

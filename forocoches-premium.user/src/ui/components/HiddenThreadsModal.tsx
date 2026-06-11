@@ -3,8 +3,8 @@ import {
   HIDDEN_THREADS_MODAL_ID,
 } from "../../config/constants";
 import type { ForumThreadRecord } from "../../domain/types";
-import { createElement } from "../jsx";
-import { TagLabel } from "./Tags";
+import { renderElement } from "../render";
+import { TagLabelView } from "./Tags";
 
 interface HiddenThreadsModalProps {
   records: ForumThreadRecord[];
@@ -15,7 +15,7 @@ interface HiddenThreadsModalProps {
 export function HiddenThreadsModal(
   props: HiddenThreadsModalProps,
 ): HTMLElement {
-  return (
+  return renderElement<HTMLElement>(
     <div
       id={HIDDEN_THREADS_MODAL_ID}
       hidden
@@ -35,19 +35,31 @@ export function HiddenThreadsModal(
             Cerrar
           </button>
         </div>
-        <HiddenThreadsModalBody
+        <HiddenThreadsModalBodyView
           records={props.records}
           onRestore={props.onRestore}
         />
       </div>
-    </div>
-  ) as HTMLElement;
+    </div>,
+  );
 }
 
 export function HiddenThreadsModalBody(props: {
   records: ForumThreadRecord[];
   onRestore: (threadId: string) => void;
 }): HTMLElement {
+  return renderElement<HTMLElement>(
+    <HiddenThreadsModalBodyView
+      records={props.records}
+      onRestore={props.onRestore}
+    />,
+  );
+}
+
+function HiddenThreadsModalBodyView(props: {
+  records: ForumThreadRecord[];
+  onRestore: (threadId: string) => void;
+}) {
   return (
     <div id={HIDDEN_THREADS_MODAL_BODY_ID}>
       {props.records.length === 0 ? (
@@ -75,13 +87,13 @@ export function HiddenThreadsModalBody(props: {
         </table>
       )}
     </div>
-  ) as HTMLElement;
+  );
 }
 
 function HiddenThreadRow(props: {
   record: ForumThreadRecord;
   onRestore: (threadId: string) => void;
-}): HTMLTableRowElement {
+}) {
   const record = props.record;
   const info = [
     record.author ? `Autor: ${record.author}` : "",
@@ -98,7 +110,7 @@ function HiddenThreadRow(props: {
         {record.tags.length > 0 ? (
           <div className="fc-premium-hidden-thread-meta">
             {record.tags.slice(0, 5).map((tag) => (
-              <TagLabel tag={tag} />
+              <TagLabelView tag={tag} />
             ))}
             {record.tags.length > 5 ? ` +${record.tags.length - 5}` : ""}
           </div>
@@ -116,7 +128,7 @@ function HiddenThreadRow(props: {
         </button>
       </td>
     </tr>
-  ) as HTMLTableRowElement;
+  );
 }
 
 function formatHiddenThreadDate(timestamp: number): string {

@@ -1,4 +1,4 @@
-import { createElement } from "../jsx";
+import { renderElement } from "../render";
 
 interface ForumPagerProps {
   currentPage: number;
@@ -9,8 +9,13 @@ interface ForumPagerProps {
 }
 
 export function ForumPager(props: ForumPagerProps): HTMLTableElement {
-  return (
-    <table className="tborder" cellPadding="3" cellSpacing="1" border="0">
+  return renderElement<HTMLTableElement>(
+    <table
+      className="tborder"
+      cellPadding="3"
+      cellSpacing="1"
+      {...({ border: "0" } as Record<string, unknown>)}
+    >
       <tbody>
         <tr>
           <td className="vbmenu_control" style="font-weight: normal">
@@ -50,8 +55,8 @@ export function ForumPager(props: ForumPagerProps): HTMLTableElement {
           ) : null}
         </tr>
       </tbody>
-    </table>
-  ) as HTMLTableElement;
+    </table>,
+  );
 }
 
 function ForumPagerLinkCell(props: {
@@ -59,7 +64,7 @@ function ForumPagerLinkCell(props: {
   label: string;
   href: string;
   onPageClick: (pageNumber: number) => void;
-}): HTMLTableCellElement {
+}) {
   return (
     <td className="alt1">
       <a
@@ -73,5 +78,5 @@ function ForumPagerLinkCell(props: {
         {props.label}
       </a>
     </td>
-  ) as HTMLTableCellElement;
+  );
 }

@@ -7,7 +7,7 @@ import {
   THREAD_SEARCH_STATUS_ID,
   THREAD_SEARCH_TEXT_INPUT_ID,
 } from "../../config/constants";
-import { createElement } from "../jsx";
+import { renderElement } from "../render";
 
 interface ThreadSearchPanelProps {
   searchQuery: string;
@@ -19,13 +19,13 @@ interface ThreadSearchPanelProps {
 export function ThreadSearchPanel(
   props: ThreadSearchPanelProps,
 ): HTMLTableElement {
-  return (
+  return renderElement<HTMLTableElement>(
     <table
       id={THREAD_SEARCH_PANEL_ID}
       className="tborder"
       cellPadding="4"
       cellSpacing="1"
-      border="0"
+      {...({ border: "0" } as Record<string, unknown>)}
     >
       <tbody>
         <tr>
@@ -58,7 +58,7 @@ export function ThreadSearchPanel(
                   className="bginput"
                   placeholder="Escribe un usuario"
                   list={THREAD_SEARCH_AUTHOR_DATALIST_ID}
-                  autocomplete="off"
+                  autoComplete="off"
                   onKeyDown={(event: KeyboardEvent) => {
                     if (event.key !== "Enter") {
                       return;
@@ -91,6 +91,6 @@ export function ThreadSearchPanel(
           </td>
         </tr>
       </tbody>
-    </table>
-  ) as HTMLTableElement;
+    </table>,
+  );
 }
