@@ -434,6 +434,196 @@
     return key;
   }
 
+  // src/services/queryState.ts
+  function readForumQueryState(url = new URL(location.href)) {
+    const tag = normalizeAuthorName(url.searchParams.get(FORUM_STATE_QUERY_PARAMS.tag));
+    const page = Number(url.searchParams.get("page") || "1");
+    return {
+      tag: tag || null,
+      page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
+    };
+  }
+  function clearForumStateQueryParams(url) {
+    for (const param of Object.values(FORUM_STATE_QUERY_PARAMS)) {
+      url.searchParams.delete(param);
+    }
+  }
+  function isGraphViewType(type) {
+    return GRAPH_VIEW_TYPES.includes(type || "");
+  }
+  function isThreadUrl(url) {
+    return url.pathname.endsWith("/showthread.php") && Boolean(getThreadId(url) || getPostQueryId(url));
+  }
+  function clearThreadStateQueryParams(url) {
+    for (const param of Object.values(THREAD_STATE_QUERY_PARAMS)) {
+      url.searchParams.delete(param);
+    }
+    for (const param of LEGACY_THREAD_STATE_QUERY_PARAMS) {
+      url.searchParams.delete(param);
+    }
+  }
+  function readThreadQueryState(url = new URL(location.href)) {
+    const emptyState = {
+      graphView: null,
+      pageFilter: null,
+      authorFilters: [],
+      searchQuery: ""
+    };
+    if (!isThreadUrl(url)) {
+      return emptyState;
+    }
+    const graphType = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.graphType);
+    const graphRoot = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.graphRoot);
+    const graphRelated = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.graphRelated);
+    const pageFilter = Number(url.searchParams.get(THREAD_STATE_QUERY_PARAMS.pageFilter) || "");
+    const authorFilters = Array.from(new Set(url.searchParams.getAll(THREAD_STATE_QUERY_PARAMS.authorFilter).map((author) => normalizeAuthorName(author)).filter(Boolean)));
+    const searchQuery = normalizeText(url.searchParams.get(THREAD_STATE_QUERY_PARAMS.searchQuery));
+    const graphView = isGraphViewType(graphType) && graphRoot ? {
+      type: graphType,
+      rootPostId: graphRoot,
+      relatedPostId: graphRelated || null
+    } : null;
+    return {
+      graphView,
+      pageFilter: !graphView && authorFilters.length === 0 && !searchQuery && Number.isFinite(pageFilter) && pageFilter > 0 ? pageFilter : null,
+      authorFilters,
+      searchQuery
+    };
+  }
+
+  // src/services/keyboard.ts
+  function isEditableTarget(target) {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+  }
+  function hasKeyboardModifier(event) {
+    return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+  }
+  function isMacKeyboardPlatform() {
+    return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || "");
+  }
+  function isOpenInNewTabKeyboardShortcut(event, key) {
+    if (event.key !== key || event.altKey || event.shiftKey) {
+      return false;
+    }
+    return isMacKeyboardPlatform() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  }
+
+  // src/app/core/navigationController.ts
+  function createNavigationController(options, state = {
+    navigationItems: [],
+    selectedNavigationIndex: -1
+  }) {
+    function collectNavigationItems() {
+      return options.collectNavigationItems();
+    }
+    function renderNavigationStatus(selected) {
+      options.onRenderNavigationStatus?.(selected);
+    }
+    function updateSelectedPostUrl(selected) {
+      options.onUpdateSelectedThreadUrl?.(selected);
+    }
+    function getPostsElement() {
+      return options.getPostsElement();
+    }
+    function renderNavigationSelection(renderOptions = {}) {
+      clearNavigationSelection();
+      const selected = state.navigationItems[state.selectedNavigationIndex];
+      if (!selected) {
+        renderNavigationStatus(null);
+        return;
+      }
+      markNavigationItemSelected(selected);
+      renderNavigationStatus(selected);
+      if (renderOptions.updateUrl && isThreadPage()) {
+        updateSelectedPostUrl(selected);
+      }
+      if (renderOptions.scroll) {
+        const mode = isThreadPage() ? "start" : "nearest";
+        scrollNavigationElementIntoView(selected.element, mode);
+      }
+    }
+    function refreshNavigation(options2 = {}) {
+      const previousElement = state.navigationItems[state.selectedNavigationIndex]?.element;
+      state.navigationItems = collectNavigationItems();
+      if (state.navigationItems.length === 0) {
+        state.selectedNavigationIndex = -1;
+        renderNavigationSelection(options2);
+        return;
+      }
+      if (options2.reset || state.selectedNavigationIndex < 0) {
+        state.selectedNavigationIndex = 0;
+      } else {
+        const preservedIndex = state.navigationItems.findIndex((item) => item.element === previousElement);
+        state.selectedNavigationIndex = preservedIndex >= 0 ? preservedIndex : 0;
+      }
+      renderNavigationSelection(options2);
+    }
+    function moveNavigation(direction) {
+      if (state.navigationItems.length === 0) {
+        refreshNavigation({ reset: true });
+      }
+      if (state.navigationItems.length === 0) {
+        return;
+      }
+      state.selectedNavigationIndex = Math.min(Math.max(state.selectedNavigationIndex + direction, 0), state.navigationItems.length - 1);
+      renderNavigationSelection({ scroll: true, updateUrl: true });
+    }
+    function selectNavigationIndex(index) {
+      if (state.navigationItems.length === 0) {
+        refreshNavigation({ reset: true });
+      }
+      if (state.navigationItems.length === 0) {
+        return;
+      }
+      state.selectedNavigationIndex = Math.min(Math.max(index, 0), state.navigationItems.length - 1);
+      renderNavigationSelection({ scroll: true, updateUrl: true });
+    }
+    function selectNavigationElement(element, options2 = {}) {
+      const index = state.navigationItems.findIndex((item) => item.element === element);
+      if (index < 0) {
+        if (options2.scroll !== false) {
+          const mode = isThreadPage() ? "start" : "nearest";
+          scrollNavigationElementIntoView(element, mode);
+        }
+        return;
+      }
+      state.selectedNavigationIndex = index;
+      renderNavigationSelection({
+        scroll: options2.scroll !== false,
+        updateUrl: options2.updateUrl !== false
+      });
+    }
+    function getSelectedPostWrapper2() {
+      if (state.navigationItems.length === 0) {
+        refreshNavigation({ reset: true });
+      }
+      const selected = state.navigationItems[state.selectedNavigationIndex]?.element;
+      if (selected instanceof HTMLElement && selected.matches(".fc-premium-post-wrapper")) {
+        return selected;
+      }
+      return getSelectedPostWrapper();
+    }
+    function getSelectedNavigationItem() {
+      if (state.navigationItems.length === 0) {
+        refreshNavigation({ reset: true });
+      }
+      return state.navigationItems[state.selectedNavigationIndex] || null;
+    }
+    return {
+      refreshNavigation,
+      getNavigationItems: () => state.navigationItems,
+      getSelectedNavigationItem,
+      getNavigationLength: () => state.navigationItems.length,
+      getSelectedPostWrapper: getSelectedPostWrapper2,
+      moveNavigation,
+      selectNavigationIndex,
+      selectNavigationElement
+    };
+  }
+
   // src/ui/components/ForumControls.tsx
   function ForumSidebarToggleButton(props) {
     return /* @__PURE__ */ createElement("button", {
@@ -761,324 +951,6 @@
     options.modal.querySelector("button")?.focus({ preventScroll: true });
   }
 
-  // src/ui/components/ForumPager.tsx
-  function ForumPager(props) {
-    return /* @__PURE__ */ createElement("table", {
-      className: "tborder",
-      cellPadding: "3",
-      cellSpacing: "1",
-      border: "0"
-    }, /* @__PURE__ */ createElement("tbody", null, /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
-      className: "vbmenu_control",
-      style: "font-weight: normal"
-    }, "Pág ", props.currentPage, " de ", props.totalPages), props.visiblePages.map((pageNumber) => pageNumber === props.currentPage ? /* @__PURE__ */ createElement("td", {
-      className: "alt2"
-    }, /* @__PURE__ */ createElement("span", {
-      className: "mfont",
-      title: "Mostrando resultados filtrados"
-    }, /* @__PURE__ */ createElement("strong", null, pageNumber))) : /* @__PURE__ */ createElement(ForumPagerLinkCell, {
-      pageNumber,
-      label: String(pageNumber),
-      href: props.hrefForPage(pageNumber),
-      onPageClick: props.onPageClick
-    })), props.currentPage < props.totalPages ? /* @__PURE__ */ createElement(ForumPagerLinkCell, {
-      pageNumber: props.currentPage + 1,
-      label: ">",
-      href: props.hrefForPage(props.currentPage + 1),
-      onPageClick: props.onPageClick
-    }) : null, props.currentPage < props.totalPages ? /* @__PURE__ */ createElement(ForumPagerLinkCell, {
-      pageNumber: props.totalPages,
-      label: "Último »",
-      href: props.hrefForPage(props.totalPages),
-      onPageClick: props.onPageClick
-    }) : null)));
-  }
-  function ForumPagerLinkCell(props) {
-    return /* @__PURE__ */ createElement("td", {
-      className: "alt1"
-    }, /* @__PURE__ */ createElement("a", {
-      className: "mfont",
-      href: props.href,
-      onClick: (event) => {
-        event.preventDefault();
-        props.onPageClick(props.pageNumber);
-      }
-    }, props.label));
-  }
-
-  // src/domain/forumThreads.ts
-  function getForumSearchTokens(query2) {
-    return normalizeLayoutText(query2).split(/\s+/).filter(Boolean);
-  }
-  function forumThreadMatchesSearchTokens(record, tokens) {
-    if (tokens.length === 0) {
-      return true;
-    }
-    const text = normalizeLayoutText(record.title);
-    return tokens.every((token) => text.includes(token));
-  }
-  function sortForumThreadRecords(records) {
-    return records.slice().sort((left, right) => {
-      if (left.lastSeen !== right.lastSeen) {
-        return right.lastSeen - left.lastSeen;
-      }
-      if (left.recentIndex !== right.recentIndex) {
-        return left.recentIndex - right.recentIndex;
-      }
-      return right.updatedAt - left.updatedAt;
-    });
-  }
-  function getVisibleForumThreadRecords(records) {
-    return records.filter((record) => !record.isHidden);
-  }
-  function getHiddenForumThreadRecords(records) {
-    return sortForumThreadRecords(records.filter((record) => record.isHidden)).sort((left, right) => right.hiddenAt - left.hiddenAt);
-  }
-  function filterForumThreadRecords(records, filters) {
-    const tokens = getForumSearchTokens(filters.searchQuery);
-    return sortForumThreadRecords(getVisibleForumThreadRecords(records).filter((record) => (!filters.tag || record.tags.includes(filters.tag)) && forumThreadMatchesSearchTokens(record, tokens)));
-  }
-
-  // src/domain/pagination.ts
-  function getVisiblePageNumbers(totalPages, currentPage) {
-    if (totalPages <= 11) {
-      return Array.from({ length: totalPages }, (_value, index) => index + 1);
-    }
-    const page = currentPage || 1;
-    const maxVisible = 11;
-    const halfWindow = Math.floor(maxVisible / 2);
-    const start = Math.max(1, Math.min(page - halfWindow, totalPages - maxVisible + 1));
-    return Array.from({ length: maxVisible }, (_value, index) => start + index);
-  }
-
-  // src/domain/forumThreadList.ts
-  function getForumThreadRowsSignature(rowHtmlList, scope) {
-    return `${scope}|${rowHtmlList.length}|${rowHtmlList.map((html) => hashString(html).toString(36)).join(":")}`;
-  }
-  function getForumThreadListPage(records, requestedPage, pageSize) {
-    const totalPages = getForumThreadListTotalPages(records.length, pageSize);
-    const currentPage = clampForumThreadListPage(requestedPage, totalPages);
-    const start = (currentPage - 1) * pageSize;
-    const pageRecords = records.slice(start, start + pageSize);
-    return {
-      currentPage,
-      totalPages,
-      pageSize,
-      records: pageRecords,
-      rowHtmlList: pageRecords.map((record) => record.html)
-    };
-  }
-  function getForumThreadListTotalPages(totalRecords, pageSize) {
-    return Math.max(1, Math.ceil(totalRecords / pageSize));
-  }
-  function clampForumThreadListPage(pageNumber, totalPages) {
-    return Math.min(Math.max(pageNumber, 1), totalPages);
-  }
-
-  // src/adapters/forocoches/threadParser.ts
-  function getMaxThreadPage(doc) {
-    const currentUrl = new URL(location.href);
-    const currentThreadId = getThreadId(currentUrl) || getThreadIdFromDocument(doc);
-    let maxPage = getPageNumber(currentUrl);
-    for (const link of doc.querySelectorAll("a[href*='showthread.php']")) {
-      if (!(link instanceof HTMLAnchorElement)) {
-        continue;
-      }
-      const url = toUrl(link.getAttribute("href") || link.href);
-      if (!url || getThreadId(url) !== currentThreadId) {
-        continue;
-      }
-      maxPage = Math.max(maxPage, getPageNumber(url));
-    }
-    return maxPage;
-  }
-  function getThreadIdFromDocument(doc = document) {
-    for (const link of doc.querySelectorAll("a[href*='showthread.php?t=']")) {
-      if (!(link instanceof HTMLAnchorElement)) {
-        continue;
-      }
-      const url = toUrl(link.getAttribute("href") || link.href);
-      const threadId = url ? getThreadId(url) : null;
-      if (threadId) {
-        return threadId;
-      }
-    }
-    return null;
-  }
-  function getPostWrapper(doc, postTable) {
-    const posts = doc.querySelector(POSTS_SELECTOR);
-    if (!posts) {
-      return postTable;
-    }
-    let wrapper = postTable;
-    while (wrapper.parentElement && wrapper.parentElement !== posts) {
-      wrapper = wrapper.parentElement;
-    }
-    return posts.contains(wrapper) ? wrapper : postTable;
-  }
-  function getQuotedPostId(href) {
-    const url = toUrl(href);
-    if (!url) {
-      return null;
-    }
-    const fromPostParam = url.searchParams.get("p");
-    if (fromPostParam && /^\d+$/.test(fromPostParam)) {
-      return fromPostParam;
-    }
-    const hashMatch = url.hash.match(/^#post(\d+)$/);
-    return hashMatch?.[1] || null;
-  }
-  function getQuotedPostIds(doc, postId) {
-    const message = doc.getElementById(`post_message_${postId}`);
-    if (!message) {
-      return [];
-    }
-    const quotedIds = new Set;
-    for (const link of message.querySelectorAll("a[href*='showthread.php?p='][href*='#post']")) {
-      if (!(link instanceof HTMLAnchorElement)) {
-        continue;
-      }
-      const quotedPostId = getQuotedPostId(link.getAttribute("href") || link.href);
-      if (quotedPostId && quotedPostId !== postId) {
-        quotedIds.add(quotedPostId);
-      }
-    }
-    return Array.from(quotedIds);
-  }
-  function collectPosts(doc, pageNumber, pageOffset) {
-    const posts = [];
-    const seenWrappers = new Set;
-    for (const table of doc.querySelectorAll(POST_TABLE_SELECTOR)) {
-      if (!(table instanceof HTMLTableElement) || !/^post\d+$/.test(table.id)) {
-        continue;
-      }
-      const id = table.id.replace(/^post/, "");
-      const wrapper = getPostWrapper(doc, table);
-      if (seenWrappers.has(wrapper)) {
-        continue;
-      }
-      seenWrappers.add(wrapper);
-      const author = normalizeText(doc.querySelector(`#postmenu_${id} .bigusername`)?.textContent || doc.querySelector(`#postmenu_${id}`)?.textContent);
-      const postNumber = normalizeText(doc.querySelector(`#postcount${id}`)?.textContent) || String(pageOffset + posts.length + 1);
-      const postNumberValue = Number(postNumber);
-      posts.push({
-        id,
-        html: wrapper.outerHTML,
-        author,
-        postNumber,
-        pageNumber,
-        pageIndex: posts.length,
-        originalIndex: Number.isFinite(postNumberValue) && postNumberValue > 0 ? postNumberValue - 1 : pageOffset + posts.length,
-        quotedPostIds: getQuotedPostIds(doc, id),
-        replyingPostIds: [],
-        isOriginalPoster: false,
-        replyCount: 0
-      });
-    }
-    return posts;
-  }
-  function parseHtml(html) {
-    return new DOMParser().parseFromString(html, "text/html");
-  }
-  async function fetchThreadDocument(url) {
-    const response = await fetch(url, {
-      cache: "no-cache",
-      credentials: "same-origin"
-    });
-    if (!response.ok) {
-      throw new Error(`Could not load ${url}: ${response.status}`);
-    }
-    return parseHtml(await response.text());
-  }
-
-  // src/adapters/forocoches/forumThreadParser.ts
-  function getTitleTags(title) {
-    const source = title.title || normalizeText(title.textContent);
-    return getTagsFromText(source);
-  }
-  function collectForumThreadRecords(doc, sourceUrl, forumId, pageNumber, pageSize, scrapeStartedAt) {
-    const table = getForumThreadsTableFromDocument(doc);
-    if (!table) {
-      return [];
-    }
-    const rows = Array.from(table.querySelectorAll("tr")).filter((row) => row instanceof HTMLTableRowElement && row.querySelector(THREAD_TITLE_SELECTOR));
-    return rows.map((row, index) => {
-      const title = row.querySelector(THREAD_TITLE_SELECTOR);
-      const url = title instanceof HTMLAnchorElement ? toUrl(title.getAttribute("href") || title.href) : null;
-      const threadId = url ? getThreadId(url) : null;
-      return threadId ? createForumThreadRecordFromRow(row, threadId, sourceUrl, forumId, pageNumber, pageSize, index, scrapeStartedAt) : null;
-    }).filter((record) => record !== null);
-  }
-  function getSerializableForumThreadRowHtml(row, sourceUrl) {
-    const clone = row.cloneNode(true);
-    if (!(clone instanceof HTMLElement)) {
-      return row.outerHTML;
-    }
-    clone.removeAttribute(SELECTED_ATTRIBUTE);
-    clone.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
-    clone.querySelectorAll(`[${SELECTED_ATTRIBUTE}]`).forEach((element) => {
-      element.removeAttribute(SELECTED_ATTRIBUTE);
-    });
-    clone.querySelectorAll(`[${HIDDEN_THREAD_ATTRIBUTE}]`).forEach((element) => {
-      element.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
-    });
-    for (const link of clone.querySelectorAll("a[href]")) {
-      if (link instanceof HTMLAnchorElement) {
-        link.href = new URL(link.getAttribute("href") || "", sourceUrl).href;
-      }
-    }
-    for (const image of clone.querySelectorAll("img[src]")) {
-      if (image instanceof HTMLImageElement) {
-        image.src = new URL(image.getAttribute("src") || "", sourceUrl).href;
-      }
-    }
-    return clone.outerHTML;
-  }
-  function getForumThreadsTableFromDocument(doc) {
-    const table = doc.getElementById("threadslist");
-    if (table instanceof HTMLTableElement) {
-      return table;
-    }
-    const title = doc.querySelector(THREAD_TITLE_SELECTOR);
-    const owner = title?.closest("table");
-    return owner instanceof HTMLTableElement ? owner : null;
-  }
-  function createForumThreadRecordFromRow(row, threadId, sourceUrl, forumId, pageNumber, pageSize, pageIndex, scrapeStartedAt) {
-    const title = row.querySelector(THREAD_TITLE_SELECTOR);
-    if (!(title instanceof HTMLAnchorElement)) {
-      return null;
-    }
-    const titleText = normalizeText(title.textContent);
-    const cells = Array.from(row.cells);
-    const titleCell = title.closest("td");
-    const titleCellIndex = titleCell instanceof HTMLTableCellElement ? cells.indexOf(titleCell) : -1;
-    const author = normalizeText(titleCell?.querySelector(".smallfont span")?.textContent);
-    const lastPostCell = titleCellIndex >= 0 ? cells[titleCellIndex + 1] : null;
-    const statsCell = titleCellIndex >= 0 ? cells[titleCellIndex + 2] : null;
-    const recentIndex = (pageNumber - 1) * pageSize + pageIndex;
-    return {
-      version: FORUM_THREAD_CACHE_RECORD_VERSION,
-      id: threadId,
-      forumId,
-      url: new URL(title.getAttribute("href") || "", sourceUrl).href,
-      title: titleText,
-      tags: getTagsFromText(titleText),
-      html: getSerializableForumThreadRowHtml(row, sourceUrl),
-      preview: normalizeText(titleCell?.getAttribute("title")),
-      author,
-      lastPostText: normalizeText(lastPostCell?.textContent),
-      statsText: normalizeText(statsCell?.getAttribute("title") || statsCell?.textContent),
-      rowText: normalizeText(row.textContent),
-      sourcePage: pageNumber,
-      sourceIndex: pageIndex,
-      recentIndex,
-      lastSeen: scrapeStartedAt,
-      updatedAt: Date.now(),
-      isHidden: false,
-      hiddenAt: 0
-    };
-  }
-
   // src/adapters/forocoches/forumLayout.ts
   function getForumThreadsTable() {
     const table = document.getElementById("threadslist");
@@ -1180,6 +1052,25 @@
   }
   function shouldIgnoreTopNavigationTable(table) {
     return table.id === FORUM_CONTROLS_ROW_ID || Boolean(table.closest(`#${FORUM_CONTROLS_ROW_ID}`));
+  }
+  function hideTopShortcutBarsBefore(anchor) {
+    for (const table of document.querySelectorAll("table")) {
+      if (!(table instanceof HTMLTableElement)) {
+        continue;
+      }
+      if (shouldIgnoreTopNavigationTable(table)) {
+        continue;
+      }
+      if (isBeforeMainContent(table, anchor) && isForumTopShortcutBar(table)) {
+        hideElementAndAdjacentSpacers(table);
+      }
+    }
+  }
+  function isBeforeMainContent(element, anchor) {
+    if (anchor && element.contains(anchor)) {
+      return false;
+    }
+    return !anchor || Boolean(element.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING);
   }
   function setForumMainCellExpanded(mainCell, expanded) {
     if (mainCell.dataset.fcPremiumOriginalWidth === undefined) {
@@ -1349,6 +1240,482 @@
     };
   }
 
+  // src/app/core/forumLayoutController.ts
+  function createForumLayoutController(options) {
+    let forumSidebarHidden = getSavedForumSidebarHidden();
+    function getSavedForumSidebarHidden() {
+      const saved = localStorage.getItem(FORUM_SIDEBAR_STORAGE_KEY);
+      return saved === null ? true : saved === "true";
+    }
+    function setSavedForumSidebarHidden(hidden) {
+      forumSidebarHidden = hidden;
+      localStorage.setItem(FORUM_SIDEBAR_STORAGE_KEY, String(hidden));
+      applyForumSidebarVisibility();
+    }
+    function getMainContentAnchor() {
+      return getForumThreadsTable() || options.getPostsElement() || getThreadTitleTable();
+    }
+    function hideUnusedTopNavigationBars() {
+      if (!isForumDisplayPage() && !isThreadPage()) {
+        return;
+      }
+      hideTopShortcutBarsBefore(getMainContentAnchor());
+    }
+    function getOrCreateForumSidebarToggleButton() {
+      const existing = document.getElementById(FORUM_SIDEBAR_TOGGLE_ID);
+      const button = ForumSidebarToggleButton({
+        hidden: forumSidebarHidden,
+        onToggle: () => {
+          setSavedForumSidebarHidden(!forumSidebarHidden);
+        }
+      });
+      if (existing instanceof HTMLButtonElement) {
+        existing.replaceWith(button);
+      }
+      return button;
+    }
+    function getForumToolbarRow() {
+      const toolsCell = document.getElementById("forumtools");
+      const row = toolsCell?.parentElement;
+      return row instanceof HTMLTableRowElement ? row : null;
+    }
+    function renderHiddenThreadsToolbarButton2() {
+      if (!isForumDisplayPage()) {
+        return;
+      }
+      renderHiddenThreadsToolbarButton({
+        toolbarRow: getForumToolbarRow(),
+        toolsCell: document.getElementById("forumtools"),
+        onOpen: openHiddenThreadsModal2
+      });
+    }
+    function ensureHiddenThreadsModal2() {
+      return ensureHiddenThreadsModal({
+        records: options.getHiddenForumThreadRecordsForCurrentForum(),
+        onClose: closeHiddenThreadsModal2,
+        onRestore: (threadId) => {
+          options.setForumThreadHiddenState(threadId, false);
+        }
+      });
+    }
+    function isHiddenThreadsModalOpen2() {
+      return isHiddenThreadsModalOpen();
+    }
+    function closeHiddenThreadsModal2() {
+      closeHiddenThreadsModal();
+    }
+    function renderHiddenThreadsModalBody2() {
+      renderHiddenThreadsModalBody({
+        modal: ensureHiddenThreadsModal2(),
+        records: options.getHiddenForumThreadRecordsForCurrentForum(),
+        onRestore: (threadId) => {
+          options.setForumThreadHiddenState(threadId, false);
+        }
+      });
+    }
+    function openHiddenThreadsModal2() {
+      openHiddenThreadsModal({
+        modal: ensureHiddenThreadsModal2(),
+        records: options.getHiddenForumThreadRecordsForCurrentForum(),
+        onRestore: (threadId) => {
+          options.setForumThreadHiddenState(threadId, false);
+        }
+      });
+    }
+    function isNativeForumControlsTable(table) {
+      return Boolean(table.querySelector("a[href*='newthread.php'][href*='do=newthread']") && table.querySelector(".pagenav"));
+    }
+    function getNativeForumControlsTable() {
+      const existing = document.getElementById(FORUM_CONTROLS_ROW_ID);
+      if (existing instanceof HTMLTableElement) {
+        return existing;
+      }
+      const threadsTable = getForumThreadsTable();
+      const candidates = Array.from(document.querySelectorAll("table")).filter((table) => {
+        if (!(table instanceof HTMLTableElement)) {
+          return false;
+        }
+        if (!isNativeForumControlsTable(table)) {
+          return false;
+        }
+        return !threadsTable || Boolean(table.compareDocumentPosition(threadsTable) & Node.DOCUMENT_POSITION_FOLLOWING);
+      });
+      return candidates[candidates.length - 1] || null;
+    }
+    function createForumLoadingStatus() {
+      return ForumLoadingStatus();
+    }
+    function renderForumLoadingStatus() {
+      const status = document.getElementById(FORUM_LOADING_STATUS_ID);
+      if (!(status instanceof HTMLElement)) {
+        return;
+      }
+      const loadState = options.getForumThreadLoadState();
+      const visible = loadState.isLoading;
+      const loadedPages = Math.min(loadState.loadedPages, loadState.targetPages);
+      const text = status.querySelector("[data-fc-premium-loading-text]");
+      status.dataset.fcPremiumLoading = String(visible);
+      status.setAttribute("aria-hidden", String(!visible));
+      status.title = visible ? "Cargando paginas del foro" : "";
+      if (text instanceof HTMLElement) {
+        text.textContent = `Cargando paginas ${loadedPages}/${loadState.targetPages}`;
+      }
+    }
+    function installForumLiveSearch(root) {
+      const input = root?.querySelector("input[name='query']");
+      if (!(input instanceof HTMLInputElement)) {
+        return;
+      }
+      if (input.dataset.fcPremiumLiveSearchInstalled === "true") {
+        return;
+      }
+      input.dataset.fcPremiumLiveSearchInstalled = "true";
+      input.addEventListener("input", () => {
+        options.scheduleForumLiveSearch(input.value);
+      });
+    }
+    function detachMovedForumSearchForm(controlsTable) {
+      const form = document.querySelector("form[name='busca'][action*='forocoches_search']");
+      if (form instanceof HTMLFormElement && controlsTable.contains(form)) {
+        form.remove();
+        return form;
+      }
+      return null;
+    }
+    function refreshExistingForumControlsRow(table) {
+      table.classList.add("fc-premium-forum-controls-table");
+      table.removeAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE);
+      const toggleCell = table.querySelector(".fc-premium-forum-sidebar-toggle-cell");
+      if (toggleCell instanceof HTMLTableCellElement) {
+        const button = getOrCreateForumSidebarToggleButton();
+        if (!toggleCell.contains(button)) {
+          toggleCell.textContent = "";
+          toggleCell.append(button);
+        }
+      }
+      installForumLiveSearch(table);
+      if (!document.getElementById(FORUM_LOADING_STATUS_ID)) {
+        const searchCell = table.querySelector(`#${FORUM_SEARCH_SLOT_ID}`);
+        if (searchCell instanceof HTMLElement) {
+          searchCell.append(createForumLoadingStatus());
+        }
+      }
+      renderForumLoadingStatus();
+    }
+    function renderForumControlsRow() {
+      const existing = document.getElementById(FORUM_CONTROLS_ROW_ID);
+      if (existing instanceof HTMLTableElement) {
+        refreshExistingForumControlsRow(existing);
+        return existing;
+      }
+      const table = getNativeForumControlsTable();
+      if (!(table instanceof HTMLTableElement)) {
+        renderForumLoadingStatus();
+        return null;
+      }
+      const newThreadLink = table.querySelector("a[href*='newthread.php'][href*='do=newthread']");
+      const pager = table.querySelector(".pagenav");
+      const searchForm = detachMovedForumSearchForm(table);
+      const button = getOrCreateForumSidebarToggleButton();
+      newThreadLink?.remove();
+      pager?.remove();
+      button.remove();
+      table.id = FORUM_CONTROLS_ROW_ID;
+      table.classList.add("fc-premium-forum-controls-table");
+      table.removeAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE);
+      const body = table.tBodies[0] || table.createTBody();
+      body.textContent = "";
+      const row = body.insertRow();
+      const toggleCell = row.insertCell();
+      toggleCell.className = "smallfont fc-premium-forum-sidebar-toggle-cell";
+      toggleCell.append(button);
+      const newThreadCell = row.insertCell();
+      newThreadCell.className = "smallfont fc-premium-forum-new-thread-cell";
+      if (newThreadLink) {
+        newThreadCell.append(newThreadLink);
+      }
+      const searchCell = row.insertCell();
+      searchCell.id = FORUM_SEARCH_SLOT_ID;
+      searchCell.className = "smallfont fc-premium-forum-search-cell";
+      if (searchForm) {
+        searchCell.append(searchForm);
+      } else {
+        moveForumHeaderSearchForm(searchCell);
+      }
+      installForumLiveSearch(searchCell);
+      searchCell.append(createForumLoadingStatus());
+      const pagerCell = row.insertCell();
+      pagerCell.className = "smallfont fc-premium-forum-pager-cell";
+      pagerCell.align = "right";
+      if (pager) {
+        pagerCell.append(pager);
+      }
+      renderForumLoadingStatus();
+      return table;
+    }
+    function renderForumSidebarToggle(mainCell) {
+      if (renderForumControlsRow()) {
+        document.getElementById(FORUM_SIDEBAR_TOGGLE_BAR_ID)?.remove();
+        return;
+      }
+      let bar = document.getElementById(FORUM_SIDEBAR_TOGGLE_BAR_ID);
+      if (!(bar instanceof HTMLElement)) {
+        bar = document.createElement("div");
+        bar.id = FORUM_SIDEBAR_TOGGLE_BAR_ID;
+      }
+      bar.textContent = "";
+      bar.append(getOrCreateForumSidebarToggleButton());
+      const anchor = getForumThreadListHeaderTable() || getForumThreadsTable();
+      if (anchor?.parentElement === mainCell) {
+        mainCell.insertBefore(bar, anchor);
+      } else if (bar.parentElement !== mainCell) {
+        mainCell.prepend(bar);
+      }
+    }
+    function applyForumSidebarVisibility() {
+      const panel = getRelatedForumsPanel();
+      if (!panel) {
+        return;
+      }
+      const sidebarCell = getForumSidebarCell(panel);
+      if (!sidebarCell) {
+        return;
+      }
+      const mainCell = getForumMainCell(sidebarCell);
+      if (!mainCell) {
+        return;
+      }
+      document.body.classList.toggle(FORUM_SIDEBAR_HIDDEN_CLASS, forumSidebarHidden);
+      setForumLayoutElementHidden(sidebarCell, forumSidebarHidden);
+      const spacerCell = getForumSidebarSpacerCell(sidebarCell);
+      if (spacerCell) {
+        setForumLayoutElementHidden(spacerCell, forumSidebarHidden);
+      }
+      setForumMainCellExpanded(mainCell, forumSidebarHidden);
+      renderForumSidebarToggle(mainCell);
+    }
+    function enhanceForumDisplayPage() {
+      options.ensureStyle();
+      hideUnusedTopNavigationBars();
+      removeForumTitleTables();
+      applyForumSidebarVisibility();
+      renderForumControlsRow();
+      renderHiddenThreadsToolbarButton2();
+      hideUnusedTopNavigationBars();
+    }
+    return {
+      renderForumControlsRow,
+      renderForumLoadingStatus,
+      enhanceForumDisplayPage,
+      renderHiddenThreadsToolbarButton: renderHiddenThreadsToolbarButton2,
+      isHiddenThreadsModalOpen: isHiddenThreadsModalOpen2,
+      closeHiddenThreadsModal: closeHiddenThreadsModal2,
+      renderHiddenThreadsModalBody: renderHiddenThreadsModalBody2,
+      openHiddenThreadsModal: openHiddenThreadsModal2
+    };
+  }
+
+  // src/app/core/forumPageKeyboardController.ts
+  function createForumPageKeyboardController(handlers) {
+    function handleNavigationKeyDown(event) {
+      if (isEditableTarget(event.target)) {
+        return false;
+      }
+      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && hasKeyboardModifier(event)) {
+        return false;
+      }
+      if (event.key === KEY_OPEN_SHORTCUT_HELP) {
+        event.preventDefault();
+        setShortcutHelpPopoverOpen(true);
+        return true;
+      }
+      if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
+        event.preventDefault();
+        closeShortcutHelpPopover();
+        return true;
+      }
+      if (event.key === KEY_NAV_NEXT_POST) {
+        if (!hasKeyboardModifier(event)) {
+          event.preventDefault();
+          handlers.moveNavigation(1);
+          return true;
+        }
+        return false;
+      }
+      if (event.key === KEY_NAV_PREVIOUS_POST) {
+        if (!hasKeyboardModifier(event)) {
+          event.preventDefault();
+          handlers.moveNavigation(-1);
+          return true;
+        }
+        return false;
+      }
+      if (event.key === KEY_NAV_FIRST_POST) {
+        event.preventDefault();
+        handlers.selectNavigationIndex(0);
+        return true;
+      }
+      if (event.key === KEY_NAV_LAST_POST) {
+        event.preventDefault();
+        if (handlers.getNavigationLength() === 0) {
+          handlers.refreshNavigation({ reset: true });
+        }
+        handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
+        return true;
+      }
+      if (event.key === KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB && handlers.isOpenSelectedThreadInNewTabShortcut(event)) {
+        event.preventDefault();
+        handlers.openSelectedForumThreadInNewTab();
+        return true;
+      }
+      if (event.key === KEY_CLEAR_ACTIVE_VIEW) {
+        if (handlers.isHiddenThreadsModalOpen()) {
+          event.preventDefault();
+          handlers.closeHiddenThreadsModal();
+          return true;
+        }
+        if (handlers.activeTagFilterExists()) {
+          event.preventDefault();
+          handlers.clearTagFilter();
+          return true;
+        }
+      }
+      if (event.key === KEY_HIDE_SELECTED_THREAD) {
+        event.preventDefault();
+        handlers.hideSelectedForumThread();
+        return true;
+      }
+      if (event.key === KEY_QUOTE_SELECTED_POST && !handlers.isThreadPage()) {
+        event.preventDefault();
+        handlers.openSelectedNavigationItem();
+        return true;
+      }
+      return false;
+    }
+    return { handleNavigationKeyDown };
+  }
+
+  // src/domain/forumThreads.ts
+  function getForumSearchTokens(query2) {
+    return normalizeLayoutText(query2).split(/\s+/).filter(Boolean);
+  }
+  function forumThreadMatchesSearchTokens(record, tokens) {
+    if (tokens.length === 0) {
+      return true;
+    }
+    const text = normalizeLayoutText(record.title);
+    return tokens.every((token) => text.includes(token));
+  }
+  function sortForumThreadRecords(records) {
+    return records.slice().sort((left, right) => {
+      if (left.lastSeen !== right.lastSeen) {
+        return right.lastSeen - left.lastSeen;
+      }
+      if (left.recentIndex !== right.recentIndex) {
+        return left.recentIndex - right.recentIndex;
+      }
+      return right.updatedAt - left.updatedAt;
+    });
+  }
+  function getVisibleForumThreadRecords(records) {
+    return records.filter((record) => !record.isHidden);
+  }
+  function getHiddenForumThreadRecords(records) {
+    return sortForumThreadRecords(records.filter((record) => record.isHidden)).sort((left, right) => right.hiddenAt - left.hiddenAt);
+  }
+  function filterForumThreadRecords(records, filters) {
+    const tokens = getForumSearchTokens(filters.searchQuery);
+    return sortForumThreadRecords(getVisibleForumThreadRecords(records).filter((record) => (!filters.tag || record.tags.includes(filters.tag)) && forumThreadMatchesSearchTokens(record, tokens)));
+  }
+
+  // src/adapters/forocoches/forumThreadParser.ts
+  function getTitleTags(title) {
+    const source = title.title || normalizeText(title.textContent);
+    return getTagsFromText(source);
+  }
+  function collectForumThreadRecords(doc, sourceUrl, forumId, pageNumber, pageSize, scrapeStartedAt) {
+    const table = getForumThreadsTableFromDocument(doc);
+    if (!table) {
+      return [];
+    }
+    const rows = Array.from(table.querySelectorAll("tr")).filter((row) => row instanceof HTMLTableRowElement && row.querySelector(THREAD_TITLE_SELECTOR));
+    return rows.map((row, index) => {
+      const title = row.querySelector(THREAD_TITLE_SELECTOR);
+      const url = title instanceof HTMLAnchorElement ? toUrl(title.getAttribute("href") || title.href) : null;
+      const threadId = url ? getThreadId(url) : null;
+      return threadId ? createForumThreadRecordFromRow(row, threadId, sourceUrl, forumId, pageNumber, pageSize, index, scrapeStartedAt) : null;
+    }).filter((record) => record !== null);
+  }
+  function getSerializableForumThreadRowHtml(row, sourceUrl) {
+    const clone = row.cloneNode(true);
+    if (!(clone instanceof HTMLElement)) {
+      return row.outerHTML;
+    }
+    clone.removeAttribute(SELECTED_ATTRIBUTE);
+    clone.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
+    clone.querySelectorAll(`[${SELECTED_ATTRIBUTE}]`).forEach((element) => {
+      element.removeAttribute(SELECTED_ATTRIBUTE);
+    });
+    clone.querySelectorAll(`[${HIDDEN_THREAD_ATTRIBUTE}]`).forEach((element) => {
+      element.removeAttribute(HIDDEN_THREAD_ATTRIBUTE);
+    });
+    for (const link of clone.querySelectorAll("a[href]")) {
+      if (link instanceof HTMLAnchorElement) {
+        link.href = new URL(link.getAttribute("href") || "", sourceUrl).href;
+      }
+    }
+    for (const image of clone.querySelectorAll("img[src]")) {
+      if (image instanceof HTMLImageElement) {
+        image.src = new URL(image.getAttribute("src") || "", sourceUrl).href;
+      }
+    }
+    return clone.outerHTML;
+  }
+  function getForumThreadsTableFromDocument(doc) {
+    const table = doc.getElementById("threadslist");
+    if (table instanceof HTMLTableElement) {
+      return table;
+    }
+    const title = doc.querySelector(THREAD_TITLE_SELECTOR);
+    const owner = title?.closest("table");
+    return owner instanceof HTMLTableElement ? owner : null;
+  }
+  function createForumThreadRecordFromRow(row, threadId, sourceUrl, forumId, pageNumber, pageSize, pageIndex, scrapeStartedAt) {
+    const title = row.querySelector(THREAD_TITLE_SELECTOR);
+    if (!(title instanceof HTMLAnchorElement)) {
+      return null;
+    }
+    const titleText = normalizeText(title.textContent);
+    const cells = Array.from(row.cells);
+    const titleCell = title.closest("td");
+    const titleCellIndex = titleCell instanceof HTMLTableCellElement ? cells.indexOf(titleCell) : -1;
+    const author = normalizeText(titleCell?.querySelector(".smallfont span")?.textContent);
+    const lastPostCell = titleCellIndex >= 0 ? cells[titleCellIndex + 1] : null;
+    const statsCell = titleCellIndex >= 0 ? cells[titleCellIndex + 2] : null;
+    const recentIndex = (pageNumber - 1) * pageSize + pageIndex;
+    return {
+      version: FORUM_THREAD_CACHE_RECORD_VERSION,
+      id: threadId,
+      forumId,
+      url: new URL(title.getAttribute("href") || "", sourceUrl).href,
+      title: titleText,
+      tags: getTagsFromText(titleText),
+      html: getSerializableForumThreadRowHtml(row, sourceUrl),
+      preview: normalizeText(titleCell?.getAttribute("title")),
+      author,
+      lastPostText: normalizeText(lastPostCell?.textContent),
+      statsText: normalizeText(statsCell?.getAttribute("title") || statsCell?.textContent),
+      rowText: normalizeText(row.textContent),
+      sourcePage: pageNumber,
+      sourceIndex: pageIndex,
+      recentIndex,
+      lastSeen: scrapeStartedAt,
+      updatedAt: Date.now(),
+      isHidden: false,
+      hiddenAt: 0
+    };
+  }
+
   // src/adapters/forocoches/forumThreadListDom.ts
   function renderVisibleForumThreadTitleTags(root, renderTaggedTitle) {
     for (const title of root.querySelectorAll(THREAD_TITLE_SELECTOR)) {
@@ -1407,60 +1774,135 @@
     }
   }
 
-  // src/services/queryState.ts
-  function readForumQueryState(url = new URL(location.href)) {
-    const tag = normalizeAuthorName(url.searchParams.get(FORUM_STATE_QUERY_PARAMS.tag));
-    const page = Number(url.searchParams.get("page") || "1");
+  // src/app/core/forumTagsController.ts
+  function createForumTagsController(options) {
+    function createTagChip(tag) {
+      return TagChip({
+        tag,
+        onToggle: toggleTagFilter
+      });
+    }
+    function renderTaggedTitle(title) {
+      if (title.dataset.fcPremiumTagsRendered === "true") {
+        return;
+      }
+      const originalTitle = normalizeText(title.textContent);
+      if (findTagsInText(originalTitle).length === 0) {
+        return;
+      }
+      title.dataset.fcPremiumTagsRendered = "true";
+      title.title = originalTitle;
+      title.textContent = "";
+      for (const part of splitTextByTags(originalTitle)) {
+        if (part.type === "text") {
+          title.append(document.createTextNode(part.text));
+        } else if (part.tag) {
+          title.append(createTagChip(part.tag));
+        }
+      }
+    }
+    function enhanceThreadTitleTags() {
+      options.ensureStyle();
+      for (const title of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
+        if (title instanceof HTMLAnchorElement) {
+          renderTaggedTitle(title);
+        }
+      }
+      if (isForumDisplayPage()) {
+        renderTopTagBar();
+      }
+    }
+    function renderVisibleForumThreadTitleTags2(root = document) {
+      renderVisibleForumThreadTitleTags(root, renderTaggedTitle);
+    }
+    function toggleTagFilter(tag) {
+      if (!isForumDisplayPage()) {
+        return;
+      }
+      options.setActiveTagFilter(options.getActiveTagFilter() === tag ? null : tag);
+      options.setActiveForumTagPage(1);
+      options.syncForumTagUrl({ history: "push" });
+      options.refreshForumTagUi();
+    }
+    function clearTagFilter() {
+      if (!options.getActiveTagFilter()) {
+        return;
+      }
+      options.setActiveTagFilter(null);
+      options.setActiveForumTagPage(1);
+      options.syncForumTagUrl({ history: "push" });
+      options.refreshForumTagUi();
+    }
+    function getTopTitleTags() {
+      const tagsByName = new Map;
+      let titleIndex = 0;
+      const forumRecords = options.getVisibleCachedForumThreadsForCurrentForum();
+      if (forumRecords.length > 0) {
+        for (const record of sortForumThreadRecords(forumRecords)) {
+          for (const tag of record.tags) {
+            const summary = tagsByName.get(tag);
+            if (summary) {
+              summary.count += 1;
+            } else {
+              tagsByName.set(tag, {
+                tag,
+                count: 1,
+                firstIndex: titleIndex
+              });
+            }
+          }
+          titleIndex += 1;
+        }
+        return Array.from(tagsByName.values()).sort(compareTopTagSummary).slice(0, 12);
+      }
+      for (const title of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
+        if (!(title instanceof HTMLAnchorElement)) {
+          continue;
+        }
+        for (const tag of getTitleTags(title)) {
+          const summary = tagsByName.get(tag);
+          if (summary) {
+            summary.count += 1;
+          } else {
+            tagsByName.set(tag, { tag, count: 1, firstIndex: titleIndex });
+          }
+        }
+        titleIndex += 1;
+      }
+      return Array.from(tagsByName.values()).sort(compareTopTagSummary).slice(0, 12);
+    }
+    function compareTopTagSummary(left, right) {
+      if (left.count !== right.count) {
+        return right.count - left.count;
+      }
+      return left.firstIndex - right.firstIndex;
+    }
+    function renderTopTagBar() {
+      document.getElementById(TOP_TAGS_ID)?.remove();
+      if (!isForumDisplayPage()) {
+        return;
+      }
+      const topTags = getTopTitleTags();
+      if (topTags.length === 0) {
+        return;
+      }
+      const table = getForumThreadsTable();
+      if (!table?.parentElement) {
+        return;
+      }
+      table.before(TopTagBar({
+        tags: topTags,
+        activeTag: options.getActiveTagFilter(),
+        onToggle: toggleTagFilter
+      }));
+    }
     return {
-      tag: tag || null,
-      page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
-    };
-  }
-  function clearForumStateQueryParams(url) {
-    for (const param of Object.values(FORUM_STATE_QUERY_PARAMS)) {
-      url.searchParams.delete(param);
-    }
-  }
-  function isGraphViewType(type) {
-    return GRAPH_VIEW_TYPES.includes(type || "");
-  }
-  function isThreadUrl(url) {
-    return url.pathname.endsWith("/showthread.php") && Boolean(getThreadId(url) || getPostQueryId(url));
-  }
-  function clearThreadStateQueryParams(url) {
-    for (const param of Object.values(THREAD_STATE_QUERY_PARAMS)) {
-      url.searchParams.delete(param);
-    }
-    for (const param of LEGACY_THREAD_STATE_QUERY_PARAMS) {
-      url.searchParams.delete(param);
-    }
-  }
-  function readThreadQueryState(url = new URL(location.href)) {
-    const emptyState = {
-      graphView: null,
-      pageFilter: null,
-      authorFilters: [],
-      searchQuery: ""
-    };
-    if (!isThreadUrl(url)) {
-      return emptyState;
-    }
-    const graphType = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.graphType);
-    const graphRoot = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.graphRoot);
-    const graphRelated = url.searchParams.get(THREAD_STATE_QUERY_PARAMS.graphRelated);
-    const pageFilter = Number(url.searchParams.get(THREAD_STATE_QUERY_PARAMS.pageFilter) || "");
-    const authorFilters = Array.from(new Set(url.searchParams.getAll(THREAD_STATE_QUERY_PARAMS.authorFilter).map((author) => normalizeAuthorName(author)).filter(Boolean)));
-    const searchQuery = normalizeText(url.searchParams.get(THREAD_STATE_QUERY_PARAMS.searchQuery));
-    const graphView = isGraphViewType(graphType) && graphRoot ? {
-      type: graphType,
-      rootPostId: graphRoot,
-      relatedPostId: graphRelated || null
-    } : null;
-    return {
-      graphView,
-      pageFilter: !graphView && authorFilters.length === 0 && !searchQuery && Number.isFinite(pageFilter) && pageFilter > 0 ? pageFilter : null,
-      authorFilters,
-      searchQuery
+      renderTaggedTitle,
+      enhanceThreadTitleTags,
+      renderVisibleForumThreadTitleTags: renderVisibleForumThreadTitleTags2,
+      toggleTagFilter,
+      clearTagFilter,
+      renderTopTagBar
     };
   }
 
@@ -1859,217 +2301,559 @@
       console.warn("Forocoches Premium: no se pudo limpiar la cache del foro", error);
     }
   }
-  // src/services/keyboard.ts
-  function isEditableTarget(target) {
-    if (!(target instanceof HTMLElement)) {
-      return false;
+  // src/adapters/forocoches/threadParser.ts
+  function getMaxThreadPage(doc) {
+    const currentUrl = new URL(location.href);
+    const currentThreadId = getThreadId(currentUrl) || getThreadIdFromDocument(doc);
+    let maxPage = getPageNumber(currentUrl);
+    for (const link of doc.querySelectorAll("a[href*='showthread.php']")) {
+      if (!(link instanceof HTMLAnchorElement)) {
+        continue;
+      }
+      const url = toUrl(link.getAttribute("href") || link.href);
+      if (!url || getThreadId(url) !== currentThreadId) {
+        continue;
+      }
+      maxPage = Math.max(maxPage, getPageNumber(url));
     }
-    return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+    return maxPage;
   }
-  function hasKeyboardModifier(event) {
-    return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+  function getThreadIdFromDocument(doc = document) {
+    for (const link of doc.querySelectorAll("a[href*='showthread.php?t=']")) {
+      if (!(link instanceof HTMLAnchorElement)) {
+        continue;
+      }
+      const url = toUrl(link.getAttribute("href") || link.href);
+      const threadId = url ? getThreadId(url) : null;
+      if (threadId) {
+        return threadId;
+      }
+    }
+    return null;
   }
-  function isMacKeyboardPlatform() {
-    return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || "");
+  function getPostWrapper(doc, postTable) {
+    const posts = doc.querySelector(POSTS_SELECTOR);
+    if (!posts) {
+      return postTable;
+    }
+    let wrapper = postTable;
+    while (wrapper.parentElement && wrapper.parentElement !== posts) {
+      wrapper = wrapper.parentElement;
+    }
+    return posts.contains(wrapper) ? wrapper : postTable;
   }
-  function isOpenInNewTabKeyboardShortcut(event, key) {
-    if (event.key !== key || event.altKey || event.shiftKey) {
-      return false;
+  function getQuotedPostId(href) {
+    const url = toUrl(href);
+    if (!url) {
+      return null;
     }
-    return isMacKeyboardPlatform() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+    const fromPostParam = url.searchParams.get("p");
+    if (fromPostParam && /^\d+$/.test(fromPostParam)) {
+      return fromPostParam;
+    }
+    const hashMatch = url.hash.match(/^#post(\d+)$/);
+    return hashMatch?.[1] || null;
   }
-
-  // src/app/core/navigationController.ts
-  function createNavigationController(options, state = {
-    navigationItems: [],
-    selectedNavigationIndex: -1
-  }) {
-    function collectNavigationItems() {
-      return options.collectNavigationItems();
+  function getQuotedPostIds(doc, postId) {
+    const message = doc.getElementById(`post_message_${postId}`);
+    if (!message) {
+      return [];
     }
-    function renderNavigationStatus(selected) {
-      options.onRenderNavigationStatus?.(selected);
-    }
-    function updateSelectedPostUrl(selected) {
-      options.onUpdateSelectedThreadUrl?.(selected);
-    }
-    function getPostsElement() {
-      return options.getPostsElement();
-    }
-    function renderNavigationSelection(renderOptions = {}) {
-      clearNavigationSelection();
-      const selected = state.navigationItems[state.selectedNavigationIndex];
-      if (!selected) {
-        renderNavigationStatus(null);
-        return;
+    const quotedIds = new Set;
+    for (const link of message.querySelectorAll("a[href*='showthread.php?p='][href*='#post']")) {
+      if (!(link instanceof HTMLAnchorElement)) {
+        continue;
       }
-      markNavigationItemSelected(selected);
-      renderNavigationStatus(selected);
-      if (renderOptions.updateUrl && isThreadPage()) {
-        updateSelectedPostUrl(selected);
-      }
-      if (renderOptions.scroll) {
-        const mode = isThreadPage() ? "start" : "nearest";
-        scrollNavigationElementIntoView(selected.element, mode);
+      const quotedPostId = getQuotedPostId(link.getAttribute("href") || link.href);
+      if (quotedPostId && quotedPostId !== postId) {
+        quotedIds.add(quotedPostId);
       }
     }
-    function refreshNavigation(options2 = {}) {
-      const previousElement = state.navigationItems[state.selectedNavigationIndex]?.element;
-      state.navigationItems = collectNavigationItems();
-      if (state.navigationItems.length === 0) {
-        state.selectedNavigationIndex = -1;
-        renderNavigationSelection(options2);
-        return;
+    return Array.from(quotedIds);
+  }
+  function collectPosts(doc, pageNumber, pageOffset) {
+    const posts = [];
+    const seenWrappers = new Set;
+    for (const table of doc.querySelectorAll(POST_TABLE_SELECTOR)) {
+      if (!(table instanceof HTMLTableElement) || !/^post\d+$/.test(table.id)) {
+        continue;
       }
-      if (options2.reset || state.selectedNavigationIndex < 0) {
-        state.selectedNavigationIndex = 0;
-      } else {
-        const preservedIndex = state.navigationItems.findIndex((item) => item.element === previousElement);
-        state.selectedNavigationIndex = preservedIndex >= 0 ? preservedIndex : 0;
+      const id = table.id.replace(/^post/, "");
+      const wrapper = getPostWrapper(doc, table);
+      if (seenWrappers.has(wrapper)) {
+        continue;
       }
-      renderNavigationSelection(options2);
-    }
-    function moveNavigation(direction) {
-      if (state.navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      if (state.navigationItems.length === 0) {
-        return;
-      }
-      state.selectedNavigationIndex = Math.min(Math.max(state.selectedNavigationIndex + direction, 0), state.navigationItems.length - 1);
-      renderNavigationSelection({ scroll: true, updateUrl: true });
-    }
-    function selectNavigationIndex(index) {
-      if (state.navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      if (state.navigationItems.length === 0) {
-        return;
-      }
-      state.selectedNavigationIndex = Math.min(Math.max(index, 0), state.navigationItems.length - 1);
-      renderNavigationSelection({ scroll: true, updateUrl: true });
-    }
-    function selectNavigationElement(element, options2 = {}) {
-      const index = state.navigationItems.findIndex((item) => item.element === element);
-      if (index < 0) {
-        if (options2.scroll !== false) {
-          const mode = isThreadPage() ? "start" : "nearest";
-          scrollNavigationElementIntoView(element, mode);
-        }
-        return;
-      }
-      state.selectedNavigationIndex = index;
-      renderNavigationSelection({
-        scroll: options2.scroll !== false,
-        updateUrl: options2.updateUrl !== false
+      seenWrappers.add(wrapper);
+      const author = normalizeText(doc.querySelector(`#postmenu_${id} .bigusername`)?.textContent || doc.querySelector(`#postmenu_${id}`)?.textContent);
+      const postNumber = normalizeText(doc.querySelector(`#postcount${id}`)?.textContent) || String(pageOffset + posts.length + 1);
+      const postNumberValue = Number(postNumber);
+      posts.push({
+        id,
+        html: wrapper.outerHTML,
+        author,
+        postNumber,
+        pageNumber,
+        pageIndex: posts.length,
+        originalIndex: Number.isFinite(postNumberValue) && postNumberValue > 0 ? postNumberValue - 1 : pageOffset + posts.length,
+        quotedPostIds: getQuotedPostIds(doc, id),
+        replyingPostIds: [],
+        isOriginalPoster: false,
+        replyCount: 0
       });
     }
-    function getSelectedPostWrapper2() {
-      if (state.navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
-      }
-      const selected = state.navigationItems[state.selectedNavigationIndex]?.element;
-      if (selected instanceof HTMLElement && selected.matches(".fc-premium-post-wrapper")) {
-        return selected;
-      }
-      return getSelectedPostWrapper();
+    return posts;
+  }
+  function parseHtml(html) {
+    return new DOMParser().parseFromString(html, "text/html");
+  }
+  async function fetchThreadDocument(url) {
+    const response = await fetch(url, {
+      cache: "no-cache",
+      credentials: "same-origin"
+    });
+    if (!response.ok) {
+      throw new Error(`Could not load ${url}: ${response.status}`);
     }
-    function getSelectedNavigationItem() {
-      if (state.navigationItems.length === 0) {
-        refreshNavigation({ reset: true });
+    return parseHtml(await response.text());
+  }
+
+  // src/app/core/forumThreadCacheController.ts
+  function createForumThreadCacheController(options) {
+    let forumThreadScrapeStarted = false;
+    let cachedForumThreads = [];
+    function getCachedForumThreadsForCurrentForum() {
+      const forumId = getForumId();
+      return cachedForumThreads.filter((record) => record.forumId === forumId);
+    }
+    function getVisibleCachedForumThreadsForCurrentForum() {
+      return getVisibleForumThreadRecords(getCachedForumThreadsForCurrentForum());
+    }
+    function getHiddenForumThreadRecordsForCurrentForum() {
+      return getHiddenForumThreadRecords(getCachedForumThreadsForCurrentForum());
+    }
+    function getForumThreadRecordsForTag(tag) {
+      return filterForumThreadRecords(getCachedForumThreadsForCurrentForum(), {
+        tag,
+        searchQuery: options.getActiveForumSearchQuery()
+      });
+    }
+    function mergeCachedForumThreadRecords(records) {
+      if (records.length === 0) {
+        return;
       }
-      return state.navigationItems[state.selectedNavigationIndex] || null;
+      const byId = new Map(cachedForumThreads.map((record) => [record.id, record]));
+      for (const record of records) {
+        const previous = byId.get(record.id);
+        byId.set(record.id, {
+          ...record,
+          isHidden: Boolean(previous?.isHidden || record.isHidden),
+          hiddenAt: previous?.hiddenAt || record.hiddenAt || 0
+        });
+      }
+      cachedForumThreads = Array.from(byId.values());
+    }
+    function collectCurrentForumThreadRecords() {
+      const forumId = getForumId();
+      if (!forumId) {
+        return [];
+      }
+      return collectForumThreadRecords(document, location.href, forumId, getPageNumber(new URL(location.href)), options.getForumThreadsPerPage(), Date.now());
+    }
+    function getCurrentForumThreadRecord(threadId) {
+      return collectCurrentForumThreadRecords().find((record) => record.id === threadId) || null;
+    }
+    async function cacheCurrentForumThreadRows() {
+      const records = collectCurrentForumThreadRecords();
+      if (records.length === 0) {
+        return;
+      }
+      mergeCachedForumThreadRecords(records);
+      await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
+    }
+    async function setForumThreadHiddenState(threadId, hidden) {
+      if (!threadId) {
+        return false;
+      }
+      const now = Date.now();
+      let existing = cachedForumThreads.find((record2) => record2.id === threadId) || getCurrentForumThreadRecord(threadId);
+      if (hidden && getCachedForumThreadsForCurrentForum().length === 0) {
+        await cacheCurrentForumThreadRows();
+        existing = cachedForumThreads.find((record2) => record2.id === threadId) || existing;
+      }
+      if (!existing) {
+        return false;
+      }
+      const record = {
+        ...existing,
+        isHidden: hidden,
+        hiddenAt: hidden ? now : 0,
+        updatedAt: now
+      };
+      cachedForumThreads = cachedForumThreads.filter((cachedRecord) => cachedRecord.id !== threadId).concat(record);
+      await writeForumThreadCacheRecords([record]);
+      cachedForumThreads = await readForumThreadCacheRecords();
+      options.refreshForumTagUi();
+      if (options.isHiddenThreadsModalOpen()) {
+        options.renderHiddenThreadsModalBody();
+      }
+      return true;
+    }
+    async function hideSelectedForumThread() {
+      const selected = options.getSelectedNavigationItem();
+      const link = selected?.link;
+      const threadId = link ? getThreadId(new URL(link.href)) : null;
+      if (!threadId) {
+        return false;
+      }
+      const previousIndex = Math.max(options.getNavigationItems().findIndex((item) => item === selected), 0);
+      const hidden = await setForumThreadHiddenState(threadId, true);
+      if (hidden && options.getNavigationLength() > 0) {
+        options.selectNavigationIndex(Math.min(previousIndex, options.getNavigationLength() - 1));
+      }
+      return hidden;
+    }
+    function getForumRecentPageUrl(pageNumber) {
+      const url = new URL(location.href);
+      clearForumStateQueryParams(url);
+      url.hash = "";
+      url.searchParams.delete("page");
+      if (pageNumber > 1) {
+        url.searchParams.set("page", String(pageNumber));
+      }
+      return url;
+    }
+    function replaceForumPagersFromDocument(doc) {
+      const currentPagers = Array.from(document.querySelectorAll(".pagenav"));
+      const nextPagers = Array.from(doc.querySelectorAll(".pagenav"));
+      currentPagers.forEach((pager, index) => {
+        const nextPager = nextPagers[index];
+        if (pager instanceof HTMLElement && nextPager instanceof HTMLElement) {
+          pager.innerHTML = nextPager.innerHTML;
+        }
+      });
+    }
+    async function loadForumDisplayPageWithJavascript(url) {
+      const forumId = getForumId(url);
+      if (!forumId) {
+        location.href = url.href;
+        return;
+      }
+      options.setForumThreadLoadState({ isLoading: true });
+      try {
+        const pageNumber = getPageNumber(url);
+        const doc = pageNumber === getPageNumber(new URL(location.href)) && url.pathname === location.pathname ? parseHtml(document.documentElement.outerHTML) : await fetchThreadDocument(url.href);
+        const records = collectForumThreadRecords(doc, url.href, forumId, pageNumber, options.getForumThreadsPerPage(), Date.now());
+        if (records.length === 0) {
+          location.href = url.href;
+          return;
+        }
+        replaceForumPagersFromDocument(doc);
+        options.setActiveTagFilter(null);
+        options.setActiveForumSearchQuery("");
+        options.setActiveForumTagPage(pageNumber);
+        options.setNativeForumThreadRows(records.map((record) => record.html), records.length, `native-page-${pageNumber}`);
+        options.applyHiddenForumThreadRows();
+        options.updateBrowserHistory(url, "push");
+        mergeCachedForumThreadRecords(records);
+        await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
+        cachedForumThreads = await readForumThreadCacheRecords();
+        options.renderTopTagBar();
+        options.refreshNavigation({ reset: true });
+        window.scrollTo({ top: 0, behavior: "auto" });
+      } catch (error) {
+        console.warn("Forocoches Premium: no se pudo cargar la pagina del foro con JavaScript", error);
+        location.href = url.href;
+      } finally {
+        options.setForumThreadLoadState({ isLoading: false });
+      }
+    }
+    async function scrapeForumThreadPage(pageNumber, scrapeStartedAt) {
+      const forumId = getForumId();
+      if (!forumId) {
+        return [];
+      }
+      const url = getForumRecentPageUrl(pageNumber);
+      const doc = pageNumber === 1 && getPageNumber(new URL(location.href)) === 1 ? document : await fetchThreadDocument(url.href);
+      return collectForumThreadRecords(doc, url.href, forumId, pageNumber, options.getForumThreadsPerPage(), scrapeStartedAt);
+    }
+    async function saveScrapedForumThreadRecords(records) {
+      mergeCachedForumThreadRecords(records);
+      await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
+      cachedForumThreads = await readForumThreadCacheRecords();
+      options.refreshForumTagUi();
+    }
+    async function scrapeRecentForumThreadPages(startPage, scrapeStartedAt) {
+      if (forumThreadScrapeStarted) {
+        return;
+      }
+      forumThreadScrapeStarted = true;
+      options.setForumThreadLoadState({ isLoading: true });
+      for (let pageNumber = startPage;pageNumber <= FORUM_THREAD_CACHE_RECENT_PAGES; pageNumber += 1) {
+        try {
+          const records = await scrapeForumThreadPage(pageNumber, scrapeStartedAt);
+          await saveScrapedForumThreadRecords(records);
+        } catch (error) {
+          console.warn(`Forocoches Premium: no se pudo cachear la pagina ${pageNumber} del foro`, error);
+        } finally {
+          options.setForumThreadLoadState({
+            loadedPages: Math.max(options.getForumThreadLoadState().loadedPages, pageNumber)
+          });
+        }
+        if (pageNumber < FORUM_THREAD_CACHE_RECENT_PAGES) {
+          await sleep(PAGE_LOAD_DELAY_MS);
+        }
+      }
+      await cleanupForumThreadCache();
+      cachedForumThreads = await readForumThreadCacheRecords();
+      options.setForumThreadLoadState({
+        loadedPages: FORUM_THREAD_CACHE_RECENT_PAGES,
+        isLoading: false
+      });
+      options.refreshForumTagUi();
+    }
+    async function initializeForumThreadCache() {
+      cachedForumThreads = await readForumThreadCacheRecords();
+      options.setForumThreadLoadState({
+        loadedPages: 0,
+        targetPages: FORUM_THREAD_CACHE_RECENT_PAGES,
+        isLoading: true
+      });
+      const scrapeStartedAt = Date.now();
+      try {
+        const firstPageRecords = await scrapeForumThreadPage(1, scrapeStartedAt);
+        await saveScrapedForumThreadRecords(firstPageRecords);
+      } catch (error) {
+        console.warn("Forocoches Premium: no se pudo cachear la primera pagina del foro", error);
+        options.refreshForumTagUi();
+      } finally {
+        options.setForumThreadLoadState({
+          loadedPages: Math.max(options.getForumThreadLoadState().loadedPages, 1)
+        });
+      }
+      scrapeRecentForumThreadPages(2, scrapeStartedAt);
     }
     return {
-      refreshNavigation,
-      getNavigationItems: () => state.navigationItems,
-      getSelectedNavigationItem,
-      getNavigationLength: () => state.navigationItems.length,
-      getSelectedPostWrapper: getSelectedPostWrapper2,
-      moveNavigation,
-      selectNavigationIndex,
-      selectNavigationElement
+      getCachedForumThreadsForCurrentForum,
+      getVisibleCachedForumThreadsForCurrentForum,
+      getHiddenForumThreadRecordsForCurrentForum,
+      getForumThreadRecordsForTag,
+      loadForumDisplayPageWithJavascript,
+      initializeForumThreadCache,
+      setForumThreadHiddenState,
+      hideSelectedForumThread
     };
   }
 
-  // src/app/core/forumPageKeyboardController.ts
-  function createForumPageKeyboardController(handlers) {
-    function handleNavigationKeyDown(event) {
-      if (isEditableTarget(event.target)) {
-        return false;
-      }
-      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && hasKeyboardModifier(event)) {
-        return false;
-      }
-      if (event.key === KEY_OPEN_SHORTCUT_HELP) {
-        event.preventDefault();
-        setShortcutHelpPopoverOpen(true);
-        return true;
-      }
-      if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
-        event.preventDefault();
-        closeShortcutHelpPopover();
-        return true;
-      }
-      if (event.key === KEY_NAV_NEXT_POST) {
-        if (!hasKeyboardModifier(event)) {
-          event.preventDefault();
-          handlers.moveNavigation(1);
-          return true;
-        }
-        return false;
-      }
-      if (event.key === KEY_NAV_PREVIOUS_POST) {
-        if (!hasKeyboardModifier(event)) {
-          event.preventDefault();
-          handlers.moveNavigation(-1);
-          return true;
-        }
-        return false;
-      }
-      if (event.key === KEY_NAV_FIRST_POST) {
-        event.preventDefault();
-        handlers.selectNavigationIndex(0);
-        return true;
-      }
-      if (event.key === KEY_NAV_LAST_POST) {
-        event.preventDefault();
-        if (handlers.getNavigationLength() === 0) {
-          handlers.refreshNavigation({ reset: true });
-        }
-        handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
-        return true;
-      }
-      if (event.key === KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB && handlers.isOpenSelectedThreadInNewTabShortcut(event)) {
-        event.preventDefault();
-        handlers.openSelectedForumThreadInNewTab();
-        return true;
-      }
-      if (event.key === KEY_CLEAR_ACTIVE_VIEW) {
-        if (handlers.isHiddenThreadsModalOpen()) {
-          event.preventDefault();
-          handlers.closeHiddenThreadsModal();
-          return true;
-        }
-        if (handlers.activeTagFilterExists()) {
-          event.preventDefault();
-          handlers.clearTagFilter();
-          return true;
-        }
-      }
-      if (event.key === KEY_HIDE_SELECTED_THREAD) {
-        event.preventDefault();
-        handlers.hideSelectedForumThread();
-        return true;
-      }
-      if (event.key === KEY_QUOTE_SELECTED_POST && !handlers.isThreadPage()) {
-        event.preventDefault();
-        handlers.openSelectedNavigationItem();
-        return true;
-      }
-      return false;
+  // src/domain/forumThreadList.ts
+  function getForumThreadRowsSignature(rowHtmlList, scope) {
+    return `${scope}|${rowHtmlList.length}|${rowHtmlList.map((html) => hashString(html).toString(36)).join(":")}`;
+  }
+  function getForumThreadListPage(records, requestedPage, pageSize) {
+    const totalPages = getForumThreadListTotalPages(records.length, pageSize);
+    const currentPage = clampForumThreadListPage(requestedPage, totalPages);
+    const start = (currentPage - 1) * pageSize;
+    const pageRecords = records.slice(start, start + pageSize);
+    return {
+      currentPage,
+      totalPages,
+      pageSize,
+      records: pageRecords,
+      rowHtmlList: pageRecords.map((record) => record.html)
+    };
+  }
+  function getForumThreadListTotalPages(totalRecords, pageSize) {
+    return Math.max(1, Math.ceil(totalRecords / pageSize));
+  }
+  function clampForumThreadListPage(pageNumber, totalPages) {
+    return Math.min(Math.max(pageNumber, 1), totalPages);
+  }
+
+  // src/domain/pagination.ts
+  function getVisiblePageNumbers(totalPages, currentPage) {
+    if (totalPages <= 11) {
+      return Array.from({ length: totalPages }, (_value, index) => index + 1);
     }
-    return { handleNavigationKeyDown };
+    const page = currentPage || 1;
+    const maxVisible = 11;
+    const halfWindow = Math.floor(maxVisible / 2);
+    const start = Math.max(1, Math.min(page - halfWindow, totalPages - maxVisible + 1));
+    return Array.from({ length: maxVisible }, (_value, index) => start + index);
+  }
+
+  // src/ui/components/ForumPager.tsx
+  function ForumPager(props) {
+    return /* @__PURE__ */ createElement("table", {
+      className: "tborder",
+      cellPadding: "3",
+      cellSpacing: "1",
+      border: "0"
+    }, /* @__PURE__ */ createElement("tbody", null, /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
+      className: "vbmenu_control",
+      style: "font-weight: normal"
+    }, "Pág ", props.currentPage, " de ", props.totalPages), props.visiblePages.map((pageNumber) => pageNumber === props.currentPage ? /* @__PURE__ */ createElement("td", {
+      className: "alt2"
+    }, /* @__PURE__ */ createElement("span", {
+      className: "mfont",
+      title: "Mostrando resultados filtrados"
+    }, /* @__PURE__ */ createElement("strong", null, pageNumber))) : /* @__PURE__ */ createElement(ForumPagerLinkCell, {
+      pageNumber,
+      label: String(pageNumber),
+      href: props.hrefForPage(pageNumber),
+      onPageClick: props.onPageClick
+    })), props.currentPage < props.totalPages ? /* @__PURE__ */ createElement(ForumPagerLinkCell, {
+      pageNumber: props.currentPage + 1,
+      label: ">",
+      href: props.hrefForPage(props.currentPage + 1),
+      onPageClick: props.onPageClick
+    }) : null, props.currentPage < props.totalPages ? /* @__PURE__ */ createElement(ForumPagerLinkCell, {
+      pageNumber: props.totalPages,
+      label: "Último »",
+      href: props.hrefForPage(props.totalPages),
+      onPageClick: props.onPageClick
+    }) : null)));
+  }
+  function ForumPagerLinkCell(props) {
+    return /* @__PURE__ */ createElement("td", {
+      className: "alt1"
+    }, /* @__PURE__ */ createElement("a", {
+      className: "mfont",
+      href: props.href,
+      onClick: (event) => {
+        event.preventDefault();
+        props.onPageClick(props.pageNumber);
+      }
+    }, props.label));
+  }
+
+  // src/app/core/forumThreadListRenderer.ts
+  function createForumThreadListRenderer(options) {
+    let renderedForumThreadListSignature = null;
+    let forumThreadsPerPage = FORUM_THREAD_FALLBACK_PAGE_SIZE;
+    let nativeForumThreadRowHtml = [];
+    let nativeForumThreadHeaderRowHtml = [];
+    function captureNativeForumThreadRows() {
+      if (nativeForumThreadRowHtml.length > 0) {
+        return;
+      }
+      const table = getForumThreadsTable();
+      if (!table) {
+        return;
+      }
+      const rows = Array.from(table.rows);
+      const firstThreadIndex = rows.findIndex((row) => row.querySelector(THREAD_TITLE_SELECTOR));
+      const threadRows = firstThreadIndex >= 0 ? rows.slice(firstThreadIndex) : rows;
+      nativeForumThreadHeaderRowHtml = firstThreadIndex > 0 ? rows.slice(0, firstThreadIndex).map((row) => row.outerHTML) : [];
+      nativeForumThreadRowHtml = threadRows.map((row) => row.outerHTML);
+      forumThreadsPerPage = threadRows.filter((row) => row.querySelector(THREAD_TITLE_SELECTOR)).length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
+      renderedForumThreadListSignature = getForumThreadRowsSignature(nativeForumThreadRowHtml, "native");
+    }
+    function getForumThreadsPerPage() {
+      return forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE;
+    }
+    function getForumDynamicPageUrl(pageNumber) {
+      return options.getForumDynamicPageUrl(pageNumber);
+    }
+    function renderNativeForumPagers(total) {
+      const pageSize = getForumThreadsPerPage();
+      const totalPages = getForumThreadListTotalPages(total, pageSize);
+      const currentPage = clampForumThreadListPage(options.getActiveForumTagPage(), totalPages);
+      options.setActiveForumTagPage(currentPage);
+      for (const pager of document.querySelectorAll(".pagenav")) {
+        if (!(pager instanceof HTMLElement)) {
+          continue;
+        }
+        const container = pager.closest("table[width='100%']") || pager;
+        if (container instanceof HTMLElement) {
+          setForumLayoutElementHidden(container, false);
+        }
+        pager.textContent = "";
+        pager.append(ForumPager({
+          currentPage,
+          totalPages,
+          visiblePages: getVisiblePageNumbers(totalPages, currentPage),
+          hrefForPage: (pageNumber) => getForumDynamicPageUrl(pageNumber).href,
+          onPageClick: options.setForumTagPage
+        }));
+      }
+    }
+    function renderForumThreadRows(rowHtmlList, signature) {
+      const changed = renderForumThreadRowsFromHtml({
+        headerRowHtml: nativeForumThreadHeaderRowHtml,
+        rowHtmlList,
+        signature,
+        currentSignature: renderedForumThreadListSignature,
+        renderTaggedTitle: options.renderTaggedTitle
+      });
+      if (!changed) {
+        return false;
+      }
+      renderedForumThreadListSignature = signature;
+      return true;
+    }
+    function setNativeForumThreadRows(rowHtmlList, pageSize, signatureKey) {
+      nativeForumThreadRowHtml = rowHtmlList;
+      forumThreadsPerPage = pageSize || FORUM_THREAD_FALLBACK_PAGE_SIZE;
+      renderedForumThreadListSignature = null;
+      return renderForumThreadRows(nativeForumThreadRowHtml, getForumThreadRowsSignature(nativeForumThreadRowHtml, signatureKey));
+    }
+    function restoreNativeForumThreadRows() {
+      const nativeSignature = getForumThreadRowsSignature(nativeForumThreadRowHtml, "native");
+      const changed = restoreForumThreadRowsFromHtml({
+        headerRowHtml: nativeForumThreadHeaderRowHtml,
+        nativeRowHtml: nativeForumThreadRowHtml,
+        nativeSignature,
+        currentSignature: renderedForumThreadListSignature,
+        renderTaggedTitle: options.renderTaggedTitle
+      });
+      if (changed) {
+        renderedForumThreadListSignature = nativeSignature;
+      }
+      options.renderVisibleForumThreadTitleTags();
+      return changed;
+    }
+    function applyHiddenForumThreadRows2() {
+      const hiddenThreadIds = new Set(options.getHiddenForumThreadRecordsForCurrentForum().map((record) => record.id));
+      applyHiddenForumThreadRows(hiddenThreadIds);
+    }
+    function renderForumThreadList() {
+      if (!isForumDisplayPage()) {
+        return false;
+      }
+      captureNativeForumThreadRows();
+      const activeTagFilter = options.getActiveTagFilter();
+      const activeForumSearchQuery = options.getActiveForumSearchQuery();
+      const cachedForumRecords = options.getCachedForumThreadsForCurrentForum();
+      const records = options.getForumThreadRecordsForTag(activeTagFilter);
+      if (!activeTagFilter && !activeForumSearchQuery) {
+        const changed2 = restoreNativeForumThreadRows();
+        applyHiddenForumThreadRows2();
+        return changed2;
+      }
+      if (cachedForumRecords.length === 0) {
+        const changed2 = restoreNativeForumThreadRows();
+        applyHiddenForumThreadRows2();
+        return changed2;
+      }
+      const page = getForumThreadListPage(records, options.getActiveForumTagPage(), getForumThreadsPerPage());
+      options.setActiveForumTagPage(page.currentPage);
+      const signature = getForumThreadRowsSignature(page.rowHtmlList, [
+        "dynamic",
+        activeTagFilter || "",
+        activeForumSearchQuery,
+        page.currentPage,
+        page.pageSize
+      ].join(":"));
+      const changed = renderForumThreadRows(page.rowHtmlList, signature);
+      renderNativeForumPagers(records.length);
+      return changed;
+    }
+    return {
+      captureNativeForumThreadRows,
+      getForumThreadsPerPage,
+      setNativeForumThreadRows,
+      applyHiddenForumThreadRows: applyHiddenForumThreadRows2,
+      renderForumThreadList
+    };
   }
 
   // src/app/core/forumPageController.ts
@@ -2079,27 +2863,11 @@
     let activeForumTagPage = initialForumQueryState.page;
     let activeForumSearchQuery = "";
     let forumLiveSearchTimer = 0;
-    let renderedForumThreadListSignature = null;
-    let forumThreadsPerPage = FORUM_THREAD_FALLBACK_PAGE_SIZE;
-    let forumThreadScrapeStarted = false;
     let forumThreadLoadState = {
       loadedPages: 0,
       targetPages: FORUM_THREAD_CACHE_RECENT_PAGES,
       isLoading: false
     };
-    let cachedForumThreads = [];
-    let nativeForumThreadRowHtml = [];
-    let nativeForumThreadHeaderRowHtml = [];
-    let forumSidebarHidden = getSavedForumSidebarHidden();
-    function getSavedForumSidebarHidden() {
-      const saved = localStorage.getItem(FORUM_SIDEBAR_STORAGE_KEY);
-      return saved === null ? true : saved === "true";
-    }
-    function setSavedForumSidebarHidden(hidden) {
-      forumSidebarHidden = hidden;
-      localStorage.setItem(FORUM_SIDEBAR_STORAGE_KEY, String(hidden));
-      applyForumSidebarVisibility();
-    }
     function getPostsElement() {
       const posts = document.querySelector(POSTS_SELECTOR);
       return posts instanceof HTMLElement ? posts : null;
@@ -2175,10 +2943,7 @@
       selected.link.click();
     }
     function renderShortcutHelpButton2() {
-      renderShortcutHelpButton({
-        items: getShortcutHelpItems(),
-        formatKey: formatShortcutHelpKey
-      });
+      renderShortcutHelpButton({ items: getShortcutHelpItems(), formatKey: formatShortcutHelpKey });
     }
     function installForumKeyboardNavigation() {
       window.addEventListener("keydown", forumPageKeyboard.handleNavigationKeyDown, true);
@@ -3215,167 +3980,39 @@ body table.tborder:has(.navbar) {
         document.head.appendChild(style);
       }
     }
-    function createTagChip(tag) {
-      return TagChip({
-        tag,
-        onToggle: toggleTagFilter
-      });
-    }
-    function renderTaggedTitle(title) {
-      if (title.dataset.fcPremiumTagsRendered === "true") {
-        return;
-      }
-      const originalTitle = normalizeText(title.textContent);
-      if (findTagsInText(originalTitle).length === 0) {
-        return;
-      }
-      title.dataset.fcPremiumTagsRendered = "true";
-      title.title = originalTitle;
-      title.textContent = "";
-      for (const part of splitTextByTags(originalTitle)) {
-        if (part.type === "text") {
-          title.append(document.createTextNode(part.text));
-        } else if (part.tag) {
-          title.append(createTagChip(part.tag));
-        }
-      }
-    }
-    function enhanceThreadTitleTags() {
-      ensureStyle();
-      for (const title of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
-        if (title instanceof HTMLAnchorElement) {
-          renderTaggedTitle(title);
-        }
-      }
-      if (isForumDisplayPage()) {
-        renderTopTagBar();
-      }
-    }
-    function getMainContentAnchor() {
-      return getForumThreadsTable() || getPostsElement() || getThreadTitleTable();
-    }
-    function isBeforeMainContent(element) {
-      const anchor = getMainContentAnchor();
-      if (anchor && element.contains(anchor)) {
-        return false;
-      }
-      return !anchor || Boolean(element.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING);
-    }
-    function hideUnusedTopNavigationBars() {
-      if (!isForumDisplayPage() && !isThreadPage()) {
-        return;
-      }
-      for (const table of document.querySelectorAll("table")) {
-        if (!(table instanceof HTMLTableElement)) {
-          continue;
-        }
-        if (shouldIgnoreTopNavigationTable(table)) {
-          continue;
-        }
-        if (isBeforeMainContent(table) && isForumTopShortcutBar(table)) {
-          hideElementAndAdjacentSpacers(table);
-        }
-      }
-    }
-    function getOrCreateForumSidebarToggleButton() {
-      const existing = document.getElementById(FORUM_SIDEBAR_TOGGLE_ID);
-      const button = ForumSidebarToggleButton({
-        hidden: forumSidebarHidden,
-        onToggle: () => {
-          setSavedForumSidebarHidden(!forumSidebarHidden);
-        }
-      });
-      if (existing instanceof HTMLButtonElement) {
-        existing.replaceWith(button);
-      }
-      return button;
-    }
-    function getForumToolbarRow() {
-      const toolsCell = document.getElementById("forumtools");
-      const row = toolsCell?.parentElement;
-      return row instanceof HTMLTableRowElement ? row : null;
-    }
-    function renderHiddenThreadsToolbarButton2() {
-      if (!isForumDisplayPage()) {
-        return;
-      }
-      renderHiddenThreadsToolbarButton({
-        toolbarRow: getForumToolbarRow(),
-        toolsCell: document.getElementById("forumtools"),
-        onOpen: openHiddenThreadsModal2
-      });
-    }
-    function ensureHiddenThreadsModal2() {
-      return ensureHiddenThreadsModal({
-        records: getHiddenForumThreadRecordsForCurrentForum(),
-        onClose: closeHiddenThreadsModal2,
-        onRestore: (threadId) => {
-          setForumThreadHiddenState(threadId, false);
-        }
-      });
-    }
-    function isHiddenThreadsModalOpen2() {
-      return isHiddenThreadsModalOpen();
-    }
-    function closeHiddenThreadsModal2() {
-      closeHiddenThreadsModal();
-    }
-    function renderHiddenThreadsModalBody2() {
-      renderHiddenThreadsModalBody({
-        modal: ensureHiddenThreadsModal2(),
-        records: getHiddenForumThreadRecordsForCurrentForum(),
-        onRestore: (threadId) => {
-          setForumThreadHiddenState(threadId, false);
-        }
-      });
-    }
-    function openHiddenThreadsModal2() {
-      openHiddenThreadsModal({
-        modal: ensureHiddenThreadsModal2(),
-        records: getHiddenForumThreadRecordsForCurrentForum(),
-        onRestore: (threadId) => {
-          setForumThreadHiddenState(threadId, false);
-        }
-      });
-    }
-    function isNativeForumControlsTable(table) {
-      return Boolean(table.querySelector("a[href*='newthread.php'][href*='do=newthread']") && table.querySelector(".pagenav"));
-    }
-    function getNativeForumControlsTable() {
-      const existing = document.getElementById(FORUM_CONTROLS_ROW_ID);
-      if (existing instanceof HTMLTableElement) {
-        return existing;
-      }
-      const threadsTable = getForumThreadsTable();
-      const candidates = Array.from(document.querySelectorAll("table")).filter((table) => {
-        if (!(table instanceof HTMLTableElement)) {
-          return false;
-        }
-        if (!isNativeForumControlsTable(table)) {
-          return false;
-        }
-        return !threadsTable || Boolean(table.compareDocumentPosition(threadsTable) & Node.DOCUMENT_POSITION_FOLLOWING);
-      });
-      return candidates[candidates.length - 1] || null;
-    }
-    function createForumLoadingStatus() {
-      return ForumLoadingStatus();
-    }
-    function renderForumLoadingStatus() {
-      const status = document.getElementById(FORUM_LOADING_STATUS_ID);
-      if (!(status instanceof HTMLElement)) {
-        return;
-      }
-      const visible = forumThreadLoadState.isLoading;
-      const loadedPages = Math.min(forumThreadLoadState.loadedPages, forumThreadLoadState.targetPages);
-      const text = status.querySelector("[data-fc-premium-loading-text]");
-      status.dataset.fcPremiumLoading = String(visible);
-      status.setAttribute("aria-hidden", String(!visible));
-      status.title = visible ? "Cargando paginas del foro" : "";
-      if (text instanceof HTMLElement) {
-        text.textContent = `Cargando paginas ${loadedPages}/${forumThreadLoadState.targetPages}`;
-      }
-    }
+    const forumTagsController = createForumTagsController({
+      ensureStyle,
+      getActiveTagFilter: () => activeTagFilter,
+      setActiveTagFilter: (tag) => {
+        activeTagFilter = tag;
+      },
+      setActiveForumTagPage: (page) => {
+        activeForumTagPage = page;
+      },
+      syncForumTagUrl,
+      refreshForumTagUi: () => refreshForumTagUi(),
+      getVisibleCachedForumThreadsForCurrentForum
+    });
+    const renderTaggedTitle = forumTagsController.renderTaggedTitle;
+    const enhanceThreadTitleTags = forumTagsController.enhanceThreadTitleTags;
+    const renderVisibleForumThreadTitleTags2 = forumTagsController.renderVisibleForumThreadTitleTags;
+    const clearTagFilter = forumTagsController.clearTagFilter;
+    const renderTopTagBar = forumTagsController.renderTopTagBar;
+    const forumLayoutController = createForumLayoutController({
+      ensureStyle,
+      getPostsElement,
+      getForumThreadLoadState: () => forumThreadLoadState,
+      scheduleForumLiveSearch,
+      getHiddenForumThreadRecordsForCurrentForum,
+      setForumThreadHiddenState: (threadId, hidden) => setForumThreadHiddenState(threadId, hidden)
+    });
+    const renderForumControlsRow = forumLayoutController.renderForumControlsRow;
+    const renderForumLoadingStatus = forumLayoutController.renderForumLoadingStatus;
+    const enhanceForumDisplayPage = forumLayoutController.enhanceForumDisplayPage;
+    const renderHiddenThreadsToolbarButton2 = forumLayoutController.renderHiddenThreadsToolbarButton;
+    const isHiddenThreadsModalOpen2 = forumLayoutController.isHiddenThreadsModalOpen;
+    const closeHiddenThreadsModal2 = forumLayoutController.closeHiddenThreadsModal;
+    const renderHiddenThreadsModalBody2 = forumLayoutController.renderHiddenThreadsModalBody;
     function setForumThreadLoadState(state) {
       forumThreadLoadState = {
         ...forumThreadLoadState,
@@ -3398,186 +4035,17 @@ body table.tborder:has(.navbar) {
         applyForumLiveSearchQuery(query2);
       }, FORUM_LIVE_SEARCH_DEBOUNCE_MS);
     }
-    function installForumLiveSearch(root) {
-      const input = root?.querySelector("input[name='query']");
-      if (!(input instanceof HTMLInputElement)) {
-        return;
-      }
-      if (input.dataset.fcPremiumLiveSearchInstalled === "true") {
-        return;
-      }
-      input.dataset.fcPremiumLiveSearchInstalled = "true";
-      input.addEventListener("input", () => {
-        scheduleForumLiveSearch(input.value);
-      });
-    }
-    function detachMovedForumSearchForm(controlsTable) {
-      const form = document.querySelector("form[name='busca'][action*='forocoches_search']");
-      if (form instanceof HTMLFormElement && controlsTable.contains(form)) {
-        form.remove();
-        return form;
-      }
-      return null;
-    }
-    function refreshExistingForumControlsRow(table) {
-      table.classList.add("fc-premium-forum-controls-table");
-      table.removeAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE);
-      const toggleCell = table.querySelector(".fc-premium-forum-sidebar-toggle-cell");
-      if (toggleCell instanceof HTMLTableCellElement) {
-        const button = getOrCreateForumSidebarToggleButton();
-        if (!toggleCell.contains(button)) {
-          toggleCell.textContent = "";
-          toggleCell.append(button);
-        }
-      }
-      installForumLiveSearch(table);
-      if (!document.getElementById(FORUM_LOADING_STATUS_ID)) {
-        const searchCell = table.querySelector(`#${FORUM_SEARCH_SLOT_ID}`);
-        if (searchCell instanceof HTMLElement) {
-          searchCell.append(createForumLoadingStatus());
-        }
-      }
-      renderForumLoadingStatus();
-    }
-    function renderForumControlsRow() {
-      const existing = document.getElementById(FORUM_CONTROLS_ROW_ID);
-      if (existing instanceof HTMLTableElement) {
-        refreshExistingForumControlsRow(existing);
-        return existing;
-      }
-      const table = getNativeForumControlsTable();
-      if (!(table instanceof HTMLTableElement)) {
-        renderForumLoadingStatus();
-        return null;
-      }
-      const newThreadLink = table.querySelector("a[href*='newthread.php'][href*='do=newthread']");
-      const pager = table.querySelector(".pagenav");
-      const searchForm = detachMovedForumSearchForm(table);
-      const button = getOrCreateForumSidebarToggleButton();
-      newThreadLink?.remove();
-      pager?.remove();
-      button.remove();
-      table.id = FORUM_CONTROLS_ROW_ID;
-      table.classList.add("fc-premium-forum-controls-table");
-      table.removeAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE);
-      const body = table.tBodies[0] || table.createTBody();
-      body.textContent = "";
-      const row = body.insertRow();
-      const toggleCell = row.insertCell();
-      toggleCell.className = "smallfont fc-premium-forum-sidebar-toggle-cell";
-      toggleCell.append(button);
-      const newThreadCell = row.insertCell();
-      newThreadCell.className = "smallfont fc-premium-forum-new-thread-cell";
-      if (newThreadLink) {
-        newThreadCell.append(newThreadLink);
-      }
-      const searchCell = row.insertCell();
-      searchCell.id = FORUM_SEARCH_SLOT_ID;
-      searchCell.className = "smallfont fc-premium-forum-search-cell";
-      if (searchForm) {
-        searchCell.append(searchForm);
-      } else {
-        moveForumHeaderSearchForm(searchCell);
-      }
-      installForumLiveSearch(searchCell);
-      searchCell.append(createForumLoadingStatus());
-      const pagerCell = row.insertCell();
-      pagerCell.className = "smallfont fc-premium-forum-pager-cell";
-      pagerCell.align = "right";
-      if (pager) {
-        pagerCell.append(pager);
-      }
-      renderForumLoadingStatus();
-      return table;
-    }
-    function renderForumSidebarToggle(mainCell) {
-      if (renderForumControlsRow()) {
-        document.getElementById(FORUM_SIDEBAR_TOGGLE_BAR_ID)?.remove();
-        return;
-      }
-      let bar = document.getElementById(FORUM_SIDEBAR_TOGGLE_BAR_ID);
-      if (!(bar instanceof HTMLElement)) {
-        bar = document.createElement("div");
-        bar.id = FORUM_SIDEBAR_TOGGLE_BAR_ID;
-      }
-      bar.textContent = "";
-      bar.append(getOrCreateForumSidebarToggleButton());
-      const anchor = getForumThreadListHeaderTable() || getForumThreadsTable();
-      if (anchor?.parentElement === mainCell) {
-        mainCell.insertBefore(bar, anchor);
-      } else if (bar.parentElement !== mainCell) {
-        mainCell.prepend(bar);
-      }
-    }
-    function applyForumSidebarVisibility() {
-      const panel = getRelatedForumsPanel();
-      if (!panel) {
-        return;
-      }
-      const sidebarCell = getForumSidebarCell(panel);
-      if (!sidebarCell) {
-        return;
-      }
-      const mainCell = getForumMainCell(sidebarCell);
-      if (!mainCell) {
-        return;
-      }
-      document.body.classList.toggle(FORUM_SIDEBAR_HIDDEN_CLASS, forumSidebarHidden);
-      setForumLayoutElementHidden(sidebarCell, forumSidebarHidden);
-      const spacerCell = getForumSidebarSpacerCell(sidebarCell);
-      if (spacerCell) {
-        setForumLayoutElementHidden(spacerCell, forumSidebarHidden);
-      }
-      setForumMainCellExpanded(mainCell, forumSidebarHidden);
-      renderForumSidebarToggle(mainCell);
-    }
-    function enhanceForumDisplayPage() {
-      ensureStyle();
-      hideUnusedTopNavigationBars();
-      removeForumTitleTables();
-      applyForumSidebarVisibility();
-      renderForumControlsRow();
-      renderHiddenThreadsToolbarButton2();
-      hideUnusedTopNavigationBars();
-    }
-    function getForumThreadRows() {
-      const table = getForumThreadsTable();
-      return table ? Array.from(table.rows) : [];
-    }
-    function captureNativeForumThreadRows() {
-      if (nativeForumThreadRowHtml.length > 0) {
-        return;
-      }
-      const table = getForumThreadsTable();
-      if (!table) {
-        return;
-      }
-      const rows = Array.from(table.rows);
-      const firstThreadIndex = rows.findIndex((row) => row.querySelector(THREAD_TITLE_SELECTOR));
-      const threadRows = firstThreadIndex >= 0 ? rows.slice(firstThreadIndex) : rows;
-      nativeForumThreadHeaderRowHtml = firstThreadIndex > 0 ? rows.slice(0, firstThreadIndex).map((row) => row.outerHTML) : [];
-      nativeForumThreadRowHtml = threadRows.map((row) => row.outerHTML);
-      forumThreadsPerPage = threadRows.filter((row) => row.querySelector(THREAD_TITLE_SELECTOR)).length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-      renderedForumThreadListSignature = getForumThreadRowsSignature(nativeForumThreadRowHtml, "native");
-    }
-    function renderVisibleForumThreadTitleTags2(root = document) {
-      renderVisibleForumThreadTitleTags(root, renderTaggedTitle);
-    }
     function getCachedForumThreadsForCurrentForum() {
-      const forumId = getForumId();
-      return cachedForumThreads.filter((record) => record.forumId === forumId);
+      return forumThreadCacheController.getCachedForumThreadsForCurrentForum();
     }
     function getVisibleCachedForumThreadsForCurrentForum() {
-      return getVisibleForumThreadRecords(getCachedForumThreadsForCurrentForum());
+      return forumThreadCacheController.getVisibleCachedForumThreadsForCurrentForum();
     }
     function getHiddenForumThreadRecordsForCurrentForum() {
-      return getHiddenForumThreadRecords(getCachedForumThreadsForCurrentForum());
+      return forumThreadCacheController.getHiddenForumThreadRecordsForCurrentForum();
     }
     function getForumThreadRecordsForTag(tag) {
-      return filterForumThreadRecords(getCachedForumThreadsForCurrentForum(), {
-        tag,
-        searchQuery: activeForumSearchQuery
-      });
+      return forumThreadCacheController.getForumThreadRecordsForTag(tag);
     }
     function syncForumTagUrl(options = {}) {
       if (!isForumDisplayPage()) {
@@ -3607,28 +4075,6 @@ body table.tborder:has(.navbar) {
       }
       return url;
     }
-    function renderNativeForumPagers(total) {
-      const pageSize = forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-      const totalPages = getForumThreadListTotalPages(total, pageSize);
-      activeForumTagPage = clampForumThreadListPage(activeForumTagPage, totalPages);
-      for (const pager of document.querySelectorAll(".pagenav")) {
-        if (!(pager instanceof HTMLElement)) {
-          continue;
-        }
-        const container = pager.closest("table[width='100%']") || pager;
-        if (container instanceof HTMLElement) {
-          setForumLayoutElementHidden(container, false);
-        }
-        pager.textContent = "";
-        pager.append(ForumPager({
-          currentPage: activeForumTagPage,
-          totalPages,
-          visiblePages: getVisiblePageNumbers(totalPages, activeForumTagPage),
-          hrefForPage: (pageNumber) => getForumDynamicPageUrl(pageNumber).href,
-          onPageClick: setForumTagPage
-        }));
-      }
-    }
     function setForumTagPage(pageNumber) {
       activeForumTagPage = pageNumber;
       if (!activeForumSearchQuery) {
@@ -3637,205 +4083,57 @@ body table.tborder:has(.navbar) {
       refreshForumTagUi({ readUrlState: !activeForumSearchQuery });
       window.scrollTo({ top: 0, behavior: "auto" });
     }
-    function renderForumThreadRows(rowHtmlList, signature) {
-      const changed = renderForumThreadRowsFromHtml({
-        headerRowHtml: nativeForumThreadHeaderRowHtml,
-        rowHtmlList,
-        signature,
-        currentSignature: renderedForumThreadListSignature,
-        renderTaggedTitle
-      });
-      if (!changed) {
-        return false;
-      }
-      renderedForumThreadListSignature = signature;
-      return true;
-    }
-    function restoreNativeForumThreadRows() {
-      const nativeSignature = getForumThreadRowsSignature(nativeForumThreadRowHtml, "native");
-      const changed = restoreForumThreadRowsFromHtml({
-        headerRowHtml: nativeForumThreadHeaderRowHtml,
-        nativeRowHtml: nativeForumThreadRowHtml,
-        nativeSignature,
-        currentSignature: renderedForumThreadListSignature,
-        renderTaggedTitle
-      });
-      if (changed) {
-        renderedForumThreadListSignature = nativeSignature;
-      }
-      renderVisibleForumThreadTitleTags2();
-      return changed;
-    }
-    function applyHiddenForumThreadRows2() {
-      const hiddenThreadIds = new Set(getHiddenForumThreadRecordsForCurrentForum().map((record) => record.id));
-      applyHiddenForumThreadRows(hiddenThreadIds);
-    }
-    function renderForumThreadList() {
-      if (!isForumDisplayPage()) {
-        return false;
-      }
-      captureNativeForumThreadRows();
-      const cachedForumRecords = getCachedForumThreadsForCurrentForum();
-      const records = getForumThreadRecordsForTag(activeTagFilter);
-      if (!activeTagFilter && !activeForumSearchQuery) {
-        const changed2 = restoreNativeForumThreadRows();
-        applyHiddenForumThreadRows2();
-        return changed2;
-      }
-      if (cachedForumRecords.length === 0) {
-        const changed2 = restoreNativeForumThreadRows();
-        applyHiddenForumThreadRows2();
-        return changed2;
-      }
-      const page = getForumThreadListPage(records, activeForumTagPage, forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE);
-      activeForumTagPage = page.currentPage;
-      const signature = getForumThreadRowsSignature(page.rowHtmlList, [
-        "dynamic",
-        activeTagFilter || "",
-        activeForumSearchQuery,
-        page.currentPage,
-        page.pageSize
-      ].join(":"));
-      const changed = renderForumThreadRows(page.rowHtmlList, signature);
-      renderNativeForumPagers(records.length);
-      return changed;
-    }
-    function collectCurrentForumThreadRecords() {
-      const forumId = getForumId();
-      if (!forumId) {
-        return [];
-      }
-      return collectForumThreadRecords(document, location.href, forumId, getPageNumber(new URL(location.href)), forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE, Date.now());
-    }
-    function getCurrentForumThreadRecord(threadId) {
-      return collectCurrentForumThreadRecords().find((record) => record.id === threadId) || null;
-    }
-    async function cacheCurrentForumThreadRows() {
-      const records = collectCurrentForumThreadRecords();
-      if (records.length === 0) {
-        return;
-      }
-      mergeCachedForumThreadRecords(records);
-      await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
-    }
-    async function setForumThreadHiddenState(threadId, hidden) {
-      if (!isForumDisplayPage() || !threadId) {
-        return false;
-      }
-      const now = Date.now();
-      let existing = cachedForumThreads.find((record2) => record2.id === threadId) || getCurrentForumThreadRecord(threadId);
-      if (hidden && getCachedForumThreadsForCurrentForum().length === 0) {
-        await cacheCurrentForumThreadRows();
-        existing = cachedForumThreads.find((record2) => record2.id === threadId) || existing;
-      }
-      if (!existing) {
-        return false;
-      }
-      const record = {
-        ...existing,
-        isHidden: hidden,
-        hiddenAt: hidden ? now : 0,
-        updatedAt: now
-      };
-      cachedForumThreads = cachedForumThreads.filter((cachedRecord) => cachedRecord.id !== threadId).concat(record);
-      await writeForumThreadCacheRecords([record]);
-      cachedForumThreads = await readForumThreadCacheRecords();
-      refreshForumTagUi();
-      if (isHiddenThreadsModalOpen2()) {
-        renderHiddenThreadsModalBody2();
-      }
-      return true;
-    }
-    async function hideSelectedForumThread() {
-      if (!isForumDisplayPage()) {
-        return false;
-      }
-      const selected = getSelectedNavigationItem();
-      const link = selected?.link;
-      const threadId = link ? getThreadId(new URL(link.href)) : null;
-      if (!threadId) {
-        return false;
-      }
-      const previousIndex = Math.max(getNavigationItems().findIndex((item) => item === selected), 0);
-      const hidden = await setForumThreadHiddenState(threadId, true);
-      if (hidden && getNavigationLength() > 0) {
-        selectNavigationIndex(Math.min(previousIndex, getNavigationLength() - 1));
-      }
-      return hidden;
-    }
-    function mergeCachedForumThreadRecords(records) {
-      if (records.length === 0) {
-        return;
-      }
-      const byId = new Map(cachedForumThreads.map((record) => [record.id, record]));
-      for (const record of records) {
-        const previous = byId.get(record.id);
-        byId.set(record.id, {
-          ...record,
-          isHidden: Boolean(previous?.isHidden || record.isHidden),
-          hiddenAt: previous?.hiddenAt || record.hiddenAt || 0
-        });
-      }
-      cachedForumThreads = Array.from(byId.values());
-    }
-    function getForumRecentPageUrl(pageNumber) {
-      const url = new URL(location.href);
-      clearForumStateQueryParams(url);
-      url.hash = "";
-      url.searchParams.delete("page");
-      if (pageNumber > 1) {
-        url.searchParams.set("page", String(pageNumber));
-      }
-      return url;
-    }
-    function replaceForumPagersFromDocument(doc) {
-      const currentPagers = Array.from(document.querySelectorAll(".pagenav"));
-      const nextPagers = Array.from(doc.querySelectorAll(".pagenav"));
-      currentPagers.forEach((pager, index) => {
-        const nextPager = nextPagers[index];
-        if (pager instanceof HTMLElement && nextPager instanceof HTMLElement) {
-          pager.innerHTML = nextPager.innerHTML;
-        }
-      });
-    }
-    async function loadForumDisplayPageWithJavascript(url) {
-      const forumId = getForumId(url);
-      if (!forumId) {
-        location.href = url.href;
-        return;
-      }
-      setForumThreadLoadState({ isLoading: true });
-      try {
-        const pageNumber = getPageNumber(url);
-        const doc = pageNumber === getPageNumber(new URL(location.href)) && url.pathname === location.pathname ? parseHtml(document.documentElement.outerHTML) : await fetchThreadDocument(url.href);
-        const records = collectForumThreadRecords(doc, url.href, forumId, pageNumber, forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE, Date.now());
-        if (records.length === 0) {
-          location.href = url.href;
-          return;
-        }
-        replaceForumPagersFromDocument(doc);
-        activeTagFilter = null;
-        activeForumSearchQuery = "";
-        activeForumTagPage = pageNumber;
-        nativeForumThreadRowHtml = records.map((record) => record.html);
-        forumThreadsPerPage = records.length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-        renderedForumThreadListSignature = null;
-        renderForumThreadRows(nativeForumThreadRowHtml, getForumThreadRowsSignature(nativeForumThreadRowHtml, `native-page-${pageNumber}`));
-        applyHiddenForumThreadRows2();
-        updateBrowserHistory(url, "push");
-        mergeCachedForumThreadRecords(records);
-        await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
-        cachedForumThreads = await readForumThreadCacheRecords();
-        renderTopTagBar();
-        refreshNavigation({ reset: true });
-        window.scrollTo({ top: 0, behavior: "auto" });
-      } catch (error) {
-        console.warn("Forocoches Premium: no se pudo cargar la pagina del foro con JavaScript", error);
-        location.href = url.href;
-      } finally {
-        setForumThreadLoadState({ isLoading: false });
-      }
-    }
+    const forumThreadCacheController = createForumThreadCacheController({
+      getActiveForumSearchQuery: () => activeForumSearchQuery,
+      setActiveForumSearchQuery: (query2) => {
+        activeForumSearchQuery = query2;
+      },
+      setActiveTagFilter: (tag) => {
+        activeTagFilter = tag;
+      },
+      setActiveForumTagPage: (page) => {
+        activeForumTagPage = page;
+      },
+      getForumThreadsPerPage: () => getForumThreadsPerPage(),
+      getForumThreadLoadState: () => forumThreadLoadState,
+      setForumThreadLoadState,
+      setNativeForumThreadRows: (rows, pageSize, signatureKey) => setNativeForumThreadRows(rows, pageSize, signatureKey),
+      applyHiddenForumThreadRows: () => applyHiddenForumThreadRows2(),
+      refreshForumTagUi: () => refreshForumTagUi(),
+      renderTopTagBar: () => renderTopTagBar(),
+      updateBrowserHistory,
+      refreshNavigation,
+      getSelectedNavigationItem,
+      getNavigationItems,
+      getNavigationLength,
+      selectNavigationIndex,
+      isHiddenThreadsModalOpen: isHiddenThreadsModalOpen2,
+      renderHiddenThreadsModalBody: renderHiddenThreadsModalBody2
+    });
+    const loadForumDisplayPageWithJavascript = forumThreadCacheController.loadForumDisplayPageWithJavascript;
+    const initializeForumThreadCache = forumThreadCacheController.initializeForumThreadCache;
+    const setForumThreadHiddenState = forumThreadCacheController.setForumThreadHiddenState;
+    const hideSelectedForumThread = forumThreadCacheController.hideSelectedForumThread;
+    const forumThreadListRenderer = createForumThreadListRenderer({
+      getActiveTagFilter: () => activeTagFilter,
+      getActiveForumTagPage: () => activeForumTagPage,
+      setActiveForumTagPage: (page) => {
+        activeForumTagPage = page;
+      },
+      getActiveForumSearchQuery: () => activeForumSearchQuery,
+      getCachedForumThreadsForCurrentForum,
+      getHiddenForumThreadRecordsForCurrentForum,
+      getForumThreadRecordsForTag,
+      getForumDynamicPageUrl,
+      setForumTagPage,
+      renderTaggedTitle,
+      renderVisibleForumThreadTitleTags: () => renderVisibleForumThreadTitleTags2()
+    });
+    const captureNativeForumThreadRows = forumThreadListRenderer.captureNativeForumThreadRows;
+    const getForumThreadsPerPage = forumThreadListRenderer.getForumThreadsPerPage;
+    const setNativeForumThreadRows = forumThreadListRenderer.setNativeForumThreadRows;
+    const applyHiddenForumThreadRows2 = forumThreadListRenderer.applyHiddenForumThreadRows;
+    const renderForumThreadList = forumThreadListRenderer.renderForumThreadList;
     function handleForumPageNavigationClick(event) {
       if (event.defaultPrevented || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
         return;
@@ -3872,72 +4170,6 @@ body table.tborder:has(.navbar) {
       renderHiddenThreadsToolbarButton2();
       refreshNavigation({ reset: threadListChanged });
     }
-    async function scrapeForumThreadPage(pageNumber, scrapeStartedAt) {
-      const forumId = getForumId();
-      if (!forumId) {
-        return [];
-      }
-      const url = getForumRecentPageUrl(pageNumber);
-      const doc = pageNumber === 1 && getPageNumber(new URL(location.href)) === 1 ? document : await fetchThreadDocument(url.href);
-      return collectForumThreadRecords(doc, url.href, forumId, pageNumber, forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE, scrapeStartedAt);
-    }
-    async function saveScrapedForumThreadRecords(records) {
-      mergeCachedForumThreadRecords(records);
-      await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
-      cachedForumThreads = await readForumThreadCacheRecords();
-      refreshForumTagUi();
-    }
-    async function scrapeRecentForumThreadPages(startPage, scrapeStartedAt) {
-      if (forumThreadScrapeStarted || !isForumDisplayPage()) {
-        return;
-      }
-      forumThreadScrapeStarted = true;
-      setForumThreadLoadState({ isLoading: true });
-      for (let pageNumber = startPage;pageNumber <= FORUM_THREAD_CACHE_RECENT_PAGES; pageNumber += 1) {
-        try {
-          const records = await scrapeForumThreadPage(pageNumber, scrapeStartedAt);
-          await saveScrapedForumThreadRecords(records);
-        } catch (error) {
-          console.warn(`Forocoches Premium: no se pudo cachear la pagina ${pageNumber} del foro`, error);
-        } finally {
-          setForumThreadLoadState({
-            loadedPages: Math.max(forumThreadLoadState.loadedPages, pageNumber)
-          });
-        }
-        if (pageNumber < FORUM_THREAD_CACHE_RECENT_PAGES) {
-          await sleep(PAGE_LOAD_DELAY_MS);
-        }
-      }
-      await cleanupForumThreadCache();
-      cachedForumThreads = await readForumThreadCacheRecords();
-      setForumThreadLoadState({
-        loadedPages: FORUM_THREAD_CACHE_RECENT_PAGES,
-        isLoading: false
-      });
-      refreshForumTagUi();
-    }
-    async function initializeForumThreadCache() {
-      captureNativeForumThreadRows();
-      cachedForumThreads = await readForumThreadCacheRecords();
-      setForumThreadLoadState({
-        loadedPages: 0,
-        targetPages: FORUM_THREAD_CACHE_RECENT_PAGES,
-        isLoading: true
-      });
-      const scrapeStartedAt = Date.now();
-      try {
-        const firstPageRecords = await scrapeForumThreadPage(1, scrapeStartedAt);
-        await saveScrapedForumThreadRecords(firstPageRecords);
-      } catch (error) {
-        console.warn("Forocoches Premium: no se pudo cachear la primera pagina del foro", error);
-        refreshForumTagUi();
-      } finally {
-        setForumThreadLoadState({
-          loadedPages: Math.max(forumThreadLoadState.loadedPages, 1)
-        });
-      }
-      scrapeRecentForumThreadPages(2, scrapeStartedAt);
-    }
     function applyForumUrlState() {
       if (!isForumDisplayPage()) {
         return;
@@ -3949,91 +4181,6 @@ body table.tborder:has(.navbar) {
     }
     function installForumHistoryNavigation() {
       window.addEventListener("popstate", applyForumUrlState);
-    }
-    function toggleTagFilter(tag) {
-      if (!isForumDisplayPage()) {
-        return;
-      }
-      activeTagFilter = activeTagFilter === tag ? null : tag;
-      activeForumTagPage = 1;
-      syncForumTagUrl({ history: "push" });
-      refreshForumTagUi();
-    }
-    function clearTagFilter() {
-      if (!activeTagFilter) {
-        return;
-      }
-      activeTagFilter = null;
-      activeForumTagPage = 1;
-      syncForumTagUrl({ history: "push" });
-      refreshForumTagUi();
-    }
-    function getTopTitleTags() {
-      const tagsByName = new Map;
-      let titleIndex = 0;
-      const forumRecords = getVisibleCachedForumThreadsForCurrentForum();
-      if (forumRecords.length > 0) {
-        for (const record of sortForumThreadRecords(forumRecords)) {
-          for (const tag of record.tags) {
-            const summary = tagsByName.get(tag);
-            if (summary) {
-              summary.count += 1;
-            } else {
-              tagsByName.set(tag, {
-                tag,
-                count: 1,
-                firstIndex: titleIndex
-              });
-            }
-          }
-          titleIndex += 1;
-        }
-        return Array.from(tagsByName.values()).sort((left, right) => {
-          if (left.count !== right.count) {
-            return right.count - left.count;
-          }
-          return left.firstIndex - right.firstIndex;
-        }).slice(0, 12);
-      }
-      for (const title of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
-        if (!(title instanceof HTMLAnchorElement)) {
-          continue;
-        }
-        for (const tag of getTitleTags(title)) {
-          const summary = tagsByName.get(tag);
-          if (summary) {
-            summary.count += 1;
-          } else {
-            tagsByName.set(tag, { tag, count: 1, firstIndex: titleIndex });
-          }
-        }
-        titleIndex += 1;
-      }
-      return Array.from(tagsByName.values()).sort((left, right) => {
-        if (left.count !== right.count) {
-          return right.count - left.count;
-        }
-        return left.firstIndex - right.firstIndex;
-      }).slice(0, 12);
-    }
-    function renderTopTagBar() {
-      document.getElementById(TOP_TAGS_ID)?.remove();
-      if (!isForumDisplayPage()) {
-        return;
-      }
-      const topTags = getTopTitleTags();
-      if (topTags.length === 0) {
-        return;
-      }
-      const table = getForumThreadsTable();
-      if (!table?.parentElement) {
-        return;
-      }
-      table.before(TopTagBar({
-        tags: topTags,
-        activeTag: activeTagFilter,
-        onToggle: toggleTagFilter
-      }));
     }
     function initForumPage() {
       if (!isForumDisplayPage()) {
@@ -4073,67 +4220,96 @@ body table.tborder:has(.navbar) {
     };
   }
 
-  // src/ui/components/ThreadSearchPanel.tsx
-  function ThreadSearchPanel(props) {
-    return /* @__PURE__ */ createElement("table", {
-      id: THREAD_SEARCH_PANEL_ID,
-      className: "tborder",
-      cellPadding: "4",
-      cellSpacing: "1",
-      border: "0"
-    }, /* @__PURE__ */ createElement("tbody", null, /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
-      className: "thead"
-    }, "Buscar mensajes")), /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
-      className: "alt1 fc-premium-thread-search-cell"
-    }, /* @__PURE__ */ createElement("div", {
-      className: "fc-premium-thread-search-layout"
-    }, /* @__PURE__ */ createElement("label", {
-      className: "fc-premium-thread-search-field"
-    }, "Texto", /* @__PURE__ */ createElement("input", {
-      id: THREAD_SEARCH_TEXT_INPUT_ID,
-      type: "search",
-      className: "bginput",
-      placeholder: "Buscar en mensajes",
-      value: props.searchQuery,
-      onInput: (event) => {
-        const input = event.currentTarget;
-        if (input instanceof HTMLInputElement) {
-          props.onSearchInput(input.value);
-        }
-      }
-    })), /* @__PURE__ */ createElement("label", {
-      className: "fc-premium-thread-search-field"
-    }, "Usuario", /* @__PURE__ */ createElement("input", {
-      id: THREAD_SEARCH_AUTHOR_INPUT_ID,
-      type: "text",
-      className: "bginput",
-      placeholder: "Escribe un usuario",
-      list: THREAD_SEARCH_AUTHOR_DATALIST_ID,
-      autocomplete: "off",
-      onKeyDown: (event) => {
-        if (event.key !== "Enter") {
-          return;
-        }
-        event.preventDefault();
-        props.onAddAuthor();
-      }
-    })), /* @__PURE__ */ createElement("button", {
-      type: "button",
-      className: "fc-premium-thread-search-button",
-      onClick: props.onAddAuthor
-    }, "Añadir"), /* @__PURE__ */ createElement("button", {
-      type: "button",
-      className: "fc-premium-thread-search-button",
-      onClick: props.onClearFilters
-    }, "Limpiar"), /* @__PURE__ */ createElement("span", {
-      id: THREAD_SEARCH_STATUS_ID
-    })), /* @__PURE__ */ createElement("datalist", {
-      id: THREAD_SEARCH_AUTHOR_DATALIST_ID
-    }), /* @__PURE__ */ createElement("div", {
-      id: THREAD_SEARCH_SELECTED_AUTHORS_ID
-    }), /* @__PURE__ */ createElement("div", {
-      id: THREAD_SEARCH_EMPTY_ID
-    })))));
+  // src/ui/threadSummaryDom.ts
+  function ensureThreadSummary(posts) {
+    if (!posts) {
+      return null;
+    }
+    const existing = document.getElementById(THREAD_SUMMARY_ID);
+    if (existing instanceof HTMLElement) {
+      installStickySummaryShadow(existing);
+      return existing;
+    }
+    const summary = document.createElement("div");
+    summary.id = THREAD_SUMMARY_ID;
+    posts.before(summary);
+    installStickySummaryShadow(summary);
+    return summary;
+  }
+  function renderThreadSummaryMenu(options) {
+    const summary = options.summary;
+    if (!(summary instanceof HTMLElement)) {
+      return;
+    }
+    summary.textContent = "";
+    summary.hidden = true;
+    const controlsTarget = renderThreadControls({
+      summary,
+      state: options.state,
+      onRefreshCache: options.onRefreshCache
+    });
+    if (controlsTarget === summary) {
+      summary.hidden = !options.state.isLoading;
+      renderThreadProgress(summary, options.state);
+    }
+  }
+  function renderThreadControls(options) {
+    document.getElementById(THREAD_CONTROLS_ID)?.remove();
+    const threadToolsCell = document.getElementById("threadtools");
+    const toolbarRow = threadToolsCell?.parentElement;
+    if (!options.summary && !(toolbarRow instanceof HTMLTableRowElement)) {
+      return null;
+    }
+    const controls = toolbarRow instanceof HTMLTableRowElement ? document.createElement("td") : document.createElement("div");
+    controls.id = THREAD_CONTROLS_ID;
+    if (controls instanceof HTMLTableCellElement) {
+      controls.className = "vbmenu_control fc-premium-thread-toolbar-controls";
+      controls.noWrap = true;
+    }
+    const cacheButton = document.createElement("button");
+    cacheButton.type = "button";
+    cacheButton.textContent = "Actualizar cache";
+    cacheButton.title = "Borrar la cache de este hilo y volver a cargar paginas";
+    cacheButton.addEventListener("click", () => {
+      options.onRefreshCache();
+    });
+    controls.append(cacheButton);
+    renderThreadProgress(controls, options.state);
+    if (toolbarRow instanceof HTMLTableRowElement && threadToolsCell instanceof HTMLTableCellElement) {
+      toolbarRow.insertBefore(controls, threadToolsCell);
+      return controls;
+    }
+    options.summary?.append(controls);
+    return options.summary || null;
+  }
+  function renderThreadProgress(summary, state) {
+    document.getElementById(THREAD_PROGRESS_ID)?.remove();
+    if (!(summary instanceof HTMLElement) || !state.isLoading) {
+      return;
+    }
+    const progress = document.createElement("span");
+    progress.id = THREAD_PROGRESS_ID;
+    const spinner = document.createElement("span");
+    spinner.className = "fc-premium-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    progress.append(spinner);
+    const text = document.createElement("span");
+    const pageLabel = `${state.loadedPages}/${state.targetPages}`;
+    text.textContent = `paginas ${pageLabel}`;
+    progress.append(text);
+    summary.append(progress);
+  }
+  function installStickySummaryShadow(summary) {
+    if (!summary || summary.dataset.fcPremiumStickyInstalled === "true") {
+      return;
+    }
+    summary.dataset.fcPremiumStickyInstalled = "true";
+    const updateShadow = () => {
+      summary.classList.toggle("fc-premium-summary-stuck", summary.getBoundingClientRect().top <= 0);
+    };
+    window.addEventListener("scroll", updateShadow, { passive: true });
+    window.addEventListener("resize", updateShadow);
+    updateShadow();
   }
 
   // src/domain/threadPosts.ts
@@ -4318,228 +4494,6 @@ body table.tborder:has(.navbar) {
     return chain.reverse();
   }
 
-  // src/domain/threadAuthors.ts
-  function getThreadOriginalPosterName(posts) {
-    return sortPostsChronologically(posts)[0]?.author || "";
-  }
-  function getThreadAuthorOptions(posts, currentUsername) {
-    const optionsByKey = new Map;
-    const originalPosterKey = normalizeAuthorName(getThreadOriginalPosterName(posts));
-    const currentUserKey = normalizeAuthorName(currentUsername);
-    for (const post of posts) {
-      const key = normalizeAuthorName(post.author);
-      if (!key) {
-        continue;
-      }
-      const option = optionsByKey.get(key) || {
-        key,
-        name: post.author,
-        count: 0,
-        isOriginalPoster: key === originalPosterKey,
-        isCurrentUser: key === currentUserKey
-      };
-      option.count += 1;
-      option.isOriginalPoster = option.isOriginalPoster || key === originalPosterKey;
-      option.isCurrentUser = option.isCurrentUser || key === currentUserKey;
-      optionsByKey.set(key, option);
-    }
-    if (currentUserKey && !optionsByKey.has(currentUserKey)) {
-      optionsByKey.set(currentUserKey, {
-        key: currentUserKey,
-        name: currentUsername,
-        count: 0,
-        isOriginalPoster: currentUserKey === originalPosterKey,
-        isCurrentUser: true
-      });
-    }
-    return Array.from(optionsByKey.values()).sort((left, right) => {
-      if (left.isOriginalPoster !== right.isOriginalPoster) {
-        return left.isOriginalPoster ? -1 : 1;
-      }
-      if (left.isCurrentUser !== right.isCurrentUser) {
-        return left.isCurrentUser ? -1 : 1;
-      }
-      return left.name.localeCompare(right.name, "es", {
-        sensitivity: "base"
-      });
-    });
-  }
-  function getThreadAuthorOptionLabel(option) {
-    const markers = [];
-    if (option.isOriginalPoster) {
-      markers.push("autor");
-    }
-    if (option.isCurrentUser) {
-      markers.push("tú");
-    }
-    return markers.length > 0 ? `${option.name} (${markers.join(", ")})` : option.name;
-  }
-  function resolveThreadAuthorInputValue(value, options) {
-    const input = normalizeText(value);
-    const inputKey = normalizeAuthorName(input);
-    if (!inputKey) {
-      return null;
-    }
-    for (const option of options) {
-      const labelKey = normalizeAuthorName(getThreadAuthorOptionLabel(option));
-      if (option.key === inputKey || normalizeAuthorName(option.name) === inputKey || labelKey === inputKey) {
-        return option.key;
-      }
-    }
-    return null;
-  }
-
-  // src/ui/threadSearchPanelDom.ts
-  function syncThreadSearchTextInput(searchQuery) {
-    const textInput = document.getElementById(THREAD_SEARCH_TEXT_INPUT_ID);
-    if (textInput instanceof HTMLInputElement && document.activeElement !== textInput) {
-      textInput.value = searchQuery;
-    }
-  }
-  function refreshThreadAuthorDatalist(options, activeAuthorFilters) {
-    const datalist = document.getElementById(THREAD_SEARCH_AUTHOR_DATALIST_ID);
-    if (!(datalist instanceof HTMLDataListElement)) {
-      return;
-    }
-    datalist.textContent = "";
-    for (const option of options) {
-      if (activeAuthorFilters.has(option.key)) {
-        continue;
-      }
-      const element = document.createElement("option");
-      element.value = getThreadAuthorOptionLabel(option);
-      element.label = `${option.count} mensajes`;
-      datalist.append(element);
-    }
-  }
-  function refreshSelectedThreadAuthors(authorKeys, authorOptions, onRemoveAuthor) {
-    const container = document.getElementById(THREAD_SEARCH_SELECTED_AUTHORS_ID);
-    if (!(container instanceof HTMLElement)) {
-      return;
-    }
-    container.textContent = "";
-    for (const authorKey of authorKeys) {
-      const option = authorOptions.find((candidate) => candidate.key === authorKey) || null;
-      const chip = document.createElement("span");
-      chip.className = "fc-premium-thread-author-chip";
-      chip.textContent = option ? getThreadAuthorOptionLabel(option) : authorKey;
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.textContent = "x";
-      remove.title = "Quitar usuario";
-      remove.addEventListener("click", () => {
-        onRemoveAuthor(authorKey);
-      });
-      chip.append(remove);
-      container.append(chip);
-    }
-  }
-  function renderThreadSearchStatus(options) {
-    const status = document.getElementById(THREAD_SEARCH_STATUS_ID);
-    if (!(status instanceof HTMLElement)) {
-      return;
-    }
-    const total = options.counts?.total ?? options.totalPosts;
-    const visible = options.counts?.visible ?? getVisibleThreadSearchPostWrapperCount();
-    const loading = options.threadLoadState.isLoading ? ` · cargando ${options.threadLoadState.loadedPages}/${options.threadLoadState.targetPages}` : "";
-    status.textContent = options.hasActiveFilters ? `${visible}/${total} mensajes${loading}` : `${total} mensajes${loading}`;
-  }
-  function renderThreadSearchEmptyState(options) {
-    const posts = options.posts;
-    if (!posts) {
-      return;
-    }
-    let empty = document.getElementById(THREAD_SEARCH_EMPTY_ID);
-    if (!empty) {
-      empty = document.createElement("div");
-      empty.id = THREAD_SEARCH_EMPTY_ID;
-      posts.before(empty);
-    }
-    empty.textContent = options.isLoading ? "No hay mensajes cargados que coincidan con estos filtros." : "No hay mensajes que coincidan con estos filtros.";
-    empty.hidden = !(options.hasActiveFilters && (options.counts?.visible ?? 0) === 0);
-  }
-  function getVisibleThreadSearchPostWrapperCount() {
-    return Array.from(document.querySelectorAll(".fc-premium-post-wrapper")).filter((wrapper) => wrapper instanceof HTMLElement && isVisible(wrapper)).length;
-  }
-
-  // src/ui/threadPostFiltersDom.ts
-  function applyPageFilterToRenderedPosts(posts, activePageFilter) {
-    let total = 0;
-    let visible = 0;
-    if (!posts) {
-      return { total, visible };
-    }
-    for (const wrapper of getRenderedPostWrappers(posts)) {
-      const pageNumber = Number(wrapper.dataset.fcPremiumOriginalPage || "0");
-      const matches = !activePageFilter || pageNumber === activePageFilter;
-      total += 1;
-      if (matches) {
-        visible += 1;
-        wrapper.removeAttribute(HIDDEN_POST_PAGE_ATTRIBUTE);
-      } else {
-        wrapper.setAttribute(HIDDEN_POST_PAGE_ATTRIBUTE, "true");
-      }
-    }
-    return { total, visible };
-  }
-  function applyThreadPostFiltersToRenderedPosts(options) {
-    let total = 0;
-    let visible = 0;
-    if (!options.posts) {
-      return { total, visible };
-    }
-    for (const wrapper of getRenderedPostWrappers(options.posts)) {
-      const authorKey = wrapper.dataset.fcPremiumAuthor || "";
-      const postId = getPostIdFromWrapper(wrapper);
-      const post = postId ? options.postById.get(postId) : null;
-      const matchesAuthor = options.activeAuthorFilters.size === 0 || options.activeAuthorFilters.has(authorKey);
-      const matchesText = !options.query || (post ? options.getPostSearchText(post).includes(options.query) : false);
-      const matches = matchesAuthor && matchesText;
-      total += 1;
-      if (matches) {
-        visible += 1;
-        wrapper.removeAttribute(HIDDEN_POST_FILTER_ATTRIBUTE);
-      } else {
-        wrapper.setAttribute(HIDDEN_POST_FILTER_ATTRIBUTE, "true");
-      }
-    }
-    return { total, visible };
-  }
-  function enhanceAuthorFilterButton(wrapper, author, onToggleAuthor) {
-    const authorKey = normalizeAuthorName(author);
-    if (!authorKey) {
-      return;
-    }
-    wrapper.dataset.fcPremiumAuthor = authorKey;
-    const username = wrapper.querySelector(".bigusername");
-    if (!(username instanceof HTMLElement)) {
-      return;
-    }
-    const existingButton = username.parentElement?.querySelector(".fc-premium-author-filter-button");
-    if (existingButton) {
-      return;
-    }
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "fc-premium-author-filter-button";
-    button.textContent = "filtrar";
-    button.title = `Filtrar mensajes de ${author}`;
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onToggleAuthor(author);
-    });
-    username.after(button);
-  }
-  function getRenderedPostWrappers(posts) {
-    return Array.from(posts.querySelectorAll(".fc-premium-post-wrapper")).filter((wrapper) => wrapper instanceof HTMLElement);
-  }
-  function getPostIdFromWrapper(wrapper) {
-    const postTable = wrapper.querySelector(POST_TABLE_SELECTOR);
-    const postId = postTable?.id.match(/^post(\d+)$/)?.[1];
-    return postId || null;
-  }
-
   // src/adapters/forocoches/postReplyActions.ts
   function clickPostQuoteAction(wrapper) {
     const link = getPostReplyActionLink(wrapper, "quote");
@@ -4610,760 +4564,99 @@ body table.tborder:has(.navbar) {
     return Array.from(document.querySelectorAll("a[href*='newreply.php'][href*='noquote=1']")).filter((link) => link instanceof HTMLAnchorElement).find(isThreadReplyWithoutQuoteLink) || null;
   }
 
-  // src/ui/postNativeDom.ts
-  function getPostStatusImage(wrapper) {
-    const footerRow = getPostFooterRow(wrapper);
-    const image = footerRow?.querySelector("img[src*='statusicon/user_']");
-    return image instanceof HTMLImageElement ? image : null;
-  }
-  function getPostReportLink(wrapper) {
-    const footerRow = getPostFooterRow(wrapper);
-    const link = footerRow?.querySelector("a[href*='report.php?p=']");
-    return link instanceof HTMLAnchorElement ? link : null;
-  }
-  function relocatePostFooterControls(wrapper) {
-    const footerRow = getPostFooterRow(wrapper);
-    const existingActions = wrapper.querySelector(".fc-premium-post-reply-actions");
-    const existingReplyLinks = Array.from(existingActions?.querySelectorAll("a[href*='newreply.php?do=newreply']") || []).filter((link) => link instanceof HTMLAnchorElement);
-    existingActions?.remove();
-    const footerReplyLinks = Array.from(footerRow?.querySelectorAll("a[href*='newreply.php?do=newreply']") || []).filter((link) => link instanceof HTMLAnchorElement);
-    const replyLinks = [...footerReplyLinks, ...existingReplyLinks].filter((link) => !isQuickReplyLink(link) && isQuoteReplyLink(link));
-    for (const link of footerReplyLinks) {
-      if (isQuickReplyLink(link)) {
-        link.remove();
-      }
-    }
-    if (replyLinks.length > 0) {
-      const actions = document.createElement("div");
-      actions.className = "fc-premium-post-reply-actions";
-      for (const link of replyLinks) {
-        actions.append(link);
-      }
-      wrapper.append(actions);
-    }
-    if (footerRow) {
-      footerRow.classList.add("fc-premium-post-footer-row");
-    }
-  }
-  function removeTrailingPostLayoutArtifacts(wrapper) {
-    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
-    const postContainer = table?.closest("div[id^='edit']");
-    if (!(table instanceof HTMLElement) || !postContainer) {
-      return;
-    }
-    let node = table.nextSibling;
-    while (node) {
-      const next = node.nextSibling;
-      if (isPreservedHiddenPostMenuNode(node)) {
-        node = next;
-        continue;
-      }
-      if (!isRemovableTrailingPostLayoutNode(node)) {
-        break;
-      }
-      node.remove();
-      node = next;
-    }
-  }
-  function getPostFooterRow(wrapper) {
-    const footerSelector = "a[href*='report.php?p='], a[href*='newreply.php?do=newreply'], img[src*='statusicon/user_']";
-    const rows = Array.from(wrapper.querySelectorAll("tr"));
-    return rows.find((row) => {
-      if (!(row instanceof HTMLTableRowElement)) {
-        return false;
-      }
-      return Array.from(row.querySelectorAll(footerSelector)).some((control) => control instanceof HTMLElement && !isInsidePremiumPostUi(control));
-    }) || null;
-  }
-  function isInsidePremiumPostUi(element) {
-    return Boolean(element.closest(".fc-premium-author-hover-card, .fc-premium-post-reply-actions, .fc-premium-quote-actions"));
-  }
-  function isPreservedHiddenPostMenuNode(node) {
-    return node instanceof HTMLElement && (node.classList.contains("vbmenu_popup") || /_menu$/.test(node.id));
-  }
-  function isSpacerImage(image) {
-    const src = image.getAttribute("src") || "";
-    return /nada\.gif|clear\.gif|spacer/i.test(src);
-  }
-  function isEmptyPostSeparatorTable(element) {
-    if (!(element instanceof HTMLTableElement) || !element.classList.contains("cajasprin") || normalizeText(element.textContent)) {
-      return false;
-    }
-    if (element.querySelector("a, button, input, select, textarea")) {
-      return false;
-    }
-    return Array.from(element.querySelectorAll("img")).every((image) => image instanceof HTMLImageElement && isSpacerImage(image));
-  }
-  function isRemovableTrailingPostLayoutNode(node) {
-    if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE) {
-      return true;
-    }
-    if (node instanceof HTMLBRElement) {
-      return true;
-    }
-    return node instanceof HTMLElement && isEmptyPostSeparatorTable(node);
-  }
-
-  // src/ui/postAuthorDom.ts
-  function createHeaderAuthorMeta(post, authorCell, wrapper) {
-    const meta = document.createElement("span");
-    meta.className = "fc-premium-header-author";
-    const authorLink = authorCell?.querySelector(".bigusername");
-    if (authorLink instanceof HTMLAnchorElement) {
-      const link = document.createElement("a");
-      link.href = authorLink.href;
-      link.textContent = post.author || normalizeText(authorLink.textContent);
-      meta.append(link);
-    } else {
-      meta.textContent = post.author;
-    }
-    if (authorCell instanceof HTMLElement) {
-      const card = document.createElement("span");
-      card.className = "fc-premium-author-hover-card";
-      const avatar = getAuthorProfileImage(authorCell);
-      if (avatar) {
-        card.append(avatar);
-      }
-      const title = document.createElement("strong");
-      title.textContent = post.author || "Usuario";
-      card.append(title);
-      for (const line of getAuthorHoverLines(authorCell)) {
-        const detail = document.createElement("span");
-        detail.textContent = line;
-        card.append(detail);
-      }
-      appendAuthorFooterControls(card, wrapper);
-      meta.append(card);
-    }
-    return meta;
-  }
-  function getAuthorHoverLines(authorCell) {
-    const lines = [];
-    const seen = new Set;
-    const addLine = (text) => {
-      const line = normalizeText(text).replace(/\s+filtrar$/, "");
-      if (!line || seen.has(line)) {
+  // src/app/core/threadGraphViewController.ts
+  function createThreadGraphViewController(options) {
+    function setActiveGraphView(type, rootPostId, relatedPostId = null, viewOptions = {}) {
+      const threadGraph = options.getThreadGraph();
+      if (!threadGraph.postById.has(rootPostId)) {
         return;
       }
-      seen.add(line);
-      lines.push(line);
-    };
-    for (const block of authorCell.querySelectorAll(".smallfont")) {
-      const childDivs = Array.from(block.children).filter((child) => child instanceof HTMLDivElement);
-      if (childDivs.length === 0) {
-        addLine(block.textContent);
-        continue;
+      const activeGraphView = {
+        type,
+        rootPostId,
+        relatedPostId
+      };
+      options.setActiveGraphViewState(activeGraphView);
+      options.setPendingGraphView(null);
+      options.setActivePageFilter(null);
+      options.syncThreadStateUrl({ history: viewOptions.history || "push" });
+      options.renderThreadPosts();
+      options.renderThreadSummaryMenu();
+      if (viewOptions.scrollToFirstPost || viewOptions.scrollToFirstReply) {
+        const viewPosts = getPostsForGraphView(activeGraphView, threadGraph, options.getLoadedThreadPosts());
+        const targetPost = viewOptions.scrollToFirstPost ? viewPosts[0] || null : viewPosts.find((post) => post.id !== rootPostId) || null;
+        if (targetPost) {
+          if (viewOptions.scrollToFirstReply && activeGraphView.type === "quoted-by") {
+            options.selectPostById(targetPost.id, { scroll: false, updateUrl: true });
+            options.selectPostById(rootPostId, { scroll: true, updateUrl: false });
+            options.selectPostById(targetPost.id, { scroll: false, updateUrl: false });
+            return;
+          }
+          options.selectPostById(targetPost.id, { scroll: true, updateUrl: true });
+        }
       }
-      for (const child of childDivs) {
-        addLine(child.textContent);
+    }
+    function activatePendingGraphView() {
+      const pendingGraphView = options.getPendingGraphView();
+      const threadGraph = options.getThreadGraph();
+      if (!pendingGraphView || options.getActiveGraphView() || !threadGraph.postById.has(pendingGraphView.rootPostId)) {
+        return;
+      }
+      options.setActiveGraphViewState(pendingGraphView);
+      options.setPendingGraphView(null);
+      options.setActivePageFilter(null);
+    }
+    function applyThreadUrlState(url = new URL(location.href)) {
+      if (!isThreadPage() || options.getLoadedThreadPosts().length === 0) {
+        return;
+      }
+      const queryState = readThreadQueryState(url);
+      const activeGraphView = getValidGraphView(queryState.graphView, options.getThreadGraph());
+      options.setActiveGraphViewState(activeGraphView);
+      options.setPendingGraphView(null);
+      options.setActivePageFilter(activeGraphView ? null : queryState.authorFilters.length > 0 || queryState.searchQuery ? null : queryState.pageFilter || getPageNumber(url));
+      options.setActiveAuthorFilters(new Set(queryState.authorFilters));
+      options.setActiveThreadSearchQuery(queryState.searchQuery);
+      options.updateOriginalThreadPageMenus();
+      options.renderThreadPosts();
+      options.renderThreadSummaryMenu();
+      const hashPostId = getLocationPostHashId(url);
+      if (hashPostId) {
+        options.selectPostById(hashPostId, { scroll: true, updateUrl: false });
+      } else {
+        window.scrollTo({ top: 0, behavior: "auto" });
       }
     }
-    return lines.slice(0, 8);
-  }
-  function getAuthorProfileImage(authorCell) {
-    const images = Array.from(authorCell.querySelectorAll("img")).filter((image) => {
-      if (!(image instanceof HTMLImageElement)) {
-        return false;
-      }
-      const src = image.getAttribute("src") || "";
-      return Boolean(src) && !/statusicon|clear\.gif|spacer|button/i.test(src);
-    });
-    const avatar = images.find((image) => /customavatar|avatar|profilepic|album/i.test(image.getAttribute("src") || "")) || images.find((image) => {
-      const width = Number(image.getAttribute("width") || image.width || 0);
-      const height = Number(image.getAttribute("height") || image.height || 0);
-      return width >= 40 || height >= 40;
-    });
-    if (!avatar) {
-      return null;
+    function installThreadHistoryNavigation() {
+      window.addEventListener("popstate", () => applyThreadUrlState());
     }
-    const clone = document.createElement("img");
-    clone.className = "fc-premium-author-avatar";
-    clone.src = avatar.src;
-    clone.alt = avatar.alt || "";
-    clone.loading = "lazy";
-    return clone;
-  }
-  function appendAuthorFooterControls(card, wrapper) {
-    const statusImage = getPostStatusImage(wrapper);
-    const reportLink = getPostReportLink(wrapper);
-    if (!statusImage && !reportLink) {
-      return;
+    function getThreadViewPosts2(posts) {
+      return getThreadViewPosts({
+        posts,
+        activeGraphView: options.getActiveGraphView(),
+        graph: options.getThreadGraph(),
+        shouldPromoteCitedPosts: !options.getActivePageFilter() && !options.hasActiveThreadPostFilters()
+      });
     }
-    const actions = document.createElement("span");
-    actions.className = "fc-premium-author-card-actions";
-    if (statusImage) {
-      const status = document.createElement("span");
-      status.className = "fc-premium-author-status";
-      const icon = statusImage.cloneNode(true);
-      const label = document.createElement("span");
-      label.textContent = statusImage.title || statusImage.alt || "Estado";
-      status.append(icon, label);
-      actions.append(status);
-    }
-    if (reportLink) {
-      const report = document.createElement("a");
-      const reportImage = reportLink.querySelector("img");
-      report.className = "fc-premium-author-report-link";
-      report.href = reportLink.href;
-      report.rel = reportLink.rel;
-      report.title = reportLink.title || reportImage?.title || reportImage?.alt || "Reportar mensaje";
-      if (reportImage instanceof HTMLImageElement) {
-        report.append(reportImage.cloneNode(true));
-      }
-      const label = document.createElement("span");
-      label.textContent = "Reportar";
-      report.append(label);
-      actions.append(report);
-    }
-    card.append(actions);
-  }
-
-  // src/ui/postHeaderDom.ts
-  function enhanceNativePostHeader(wrapper, post) {
-    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
-    const postCountLink = table?.querySelector(`a[id='postcount${post.id}']`);
-    const numberCell = postCountLink?.closest("td");
-    const headerRow = postCountLink?.closest("tr");
-    const dateCell = Array.from(headerRow?.children || []).find((cell) => cell instanceof HTMLTableCellElement && cell !== numberCell) || null;
-    const authorCellElement = table?.querySelector("td[width='175'][rowspan]");
-    const authorCell = authorCellElement instanceof HTMLElement ? authorCellElement : null;
-    if (authorCell) {
-      authorCell.classList.add("fc-premium-author-cell");
-    }
-    const messageCell = table?.querySelector(`#td_post_${post.id}`);
-    if (messageCell instanceof HTMLElement) {
-      messageCell.classList.add("fc-premium-message-cell");
-    }
-    if (dateCell instanceof HTMLTableCellElement && !dateCell.querySelector(".fc-premium-header-author")) {
-      dateCell.classList.add("fc-premium-post-date-cell");
-      dateCell.append(createHeaderAuthorMeta(post, authorCell, wrapper));
-    }
-    if (numberCell instanceof HTMLTableCellElement) {
-      numberCell.classList.add("fc-premium-post-number-cell");
+    function getReplyIndentDepth2(post, index) {
+      return getReplyIndentDepth({
+        post,
+        index,
+        activeGraphView: options.getActiveGraphView()
+      });
     }
     return {
-      dateCell: dateCell instanceof HTMLTableCellElement ? dateCell : null,
-      numberCell: numberCell instanceof HTMLTableCellElement ? numberCell : null
+      setActiveGraphView,
+      activatePendingGraphView,
+      applyThreadUrlState,
+      installThreadHistoryNavigation,
+      getThreadViewPosts: getThreadViewPosts2,
+      getReplyIndentDepth: getReplyIndentDepth2
     };
   }
 
-  // src/ui/postCompactLayoutDom.ts
-  function updatePostCompactLayout(wrapper, compact) {
-    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
-    if (!(table instanceof HTMLTableElement)) {
-      return;
-    }
-    const authorCell = table.querySelector(".fc-premium-author-cell");
-    const headerRow = table.rows[0] || null;
-    for (const row of Array.from(table.rows)) {
-      if (row === headerRow) {
-        continue;
-      }
-      const rowHasAuthorCell = Array.from(row.cells).some((cell) => cell.classList.contains("fc-premium-author-cell"));
-      const shouldExpandRow = rowHasAuthorCell || row.cells.length === 1;
-      for (const cell of Array.from(row.cells)) {
-        if (!(cell instanceof HTMLTableCellElement) || cell === authorCell || cell.classList.contains("fc-premium-author-cell")) {
-          continue;
-        }
-        if (compact && shouldExpandRow) {
-          applyCompactColSpan(cell);
-        } else {
-          restoreOriginalColSpan(cell);
-        }
-      }
-    }
-  }
-  function updateRenderedCompactPostLayouts(compact) {
-    for (const wrapper of document.querySelectorAll(".fc-premium-post-wrapper")) {
-      if (wrapper instanceof HTMLElement) {
-        updatePostCompactLayout(wrapper, compact);
-      }
-    }
-  }
-  function rememberCellColSpan(cell) {
-    if (!cell.dataset.fcPremiumOriginalColspan) {
-      cell.dataset.fcPremiumOriginalColspan = String(cell.colSpan || 1);
-    }
-  }
-  function applyCompactColSpan(cell) {
-    rememberCellColSpan(cell);
-    cell.colSpan = Math.max(cell.colSpan, 2);
-  }
-  function restoreOriginalColSpan(cell) {
-    const original = Number(cell.dataset.fcPremiumOriginalColspan || "1");
-    cell.colSpan = Number.isFinite(original) && original > 0 ? original : 1;
-  }
-
-  // src/ui/postQuoteDom.ts
-  function enhanceQuoteLinks(options) {
-    for (const link of options.wrapper.querySelectorAll("a[href*='showthread.php?p='][href*='#post']")) {
-      if (!(link instanceof HTMLAnchorElement)) {
-        continue;
-      }
-      const quotedPostId = options.getQuotedPostId(link.getAttribute("href") || link.href);
-      if (!quotedPostId) {
-        continue;
-      }
-      link.dataset.fcPremiumQuoteTarget = quotedPostId;
-      link.title = "Ir al mensaje citado";
-      markQuoteBlock({
-        link,
-        quotedPostId,
-        sourcePostId: options.sourcePostId,
-        onReadConversation: options.onReadConversation
-      });
-      link.addEventListener("click", (event) => {
-        const target = document.getElementById(`post${quotedPostId}`);
-        if (!target) {
-          return;
-        }
-        event.preventDefault();
-        options.onOpenQuotedPost(quotedPostId);
-      });
-    }
-  }
-  function markQuoteBlock(options) {
-    const quoteTable = options.link.closest("table");
-    const quoteWrapper = quoteTable?.parentElement;
-    if (!(quoteWrapper instanceof HTMLElement)) {
-      return;
-    }
-    if (!(quoteTable instanceof HTMLTableElement)) {
-      return;
-    }
-    quoteWrapper.dataset.fcPremiumQuoteBlock = options.quotedPostId;
-    renderQuoteBlockActions({
-      quoteWrapper,
-      quoteLink: options.link,
-      sourcePostId: options.sourcePostId,
-      quotedPostId: options.quotedPostId,
-      onReadConversation: options.onReadConversation
-    });
-    const quoteCell = quoteTable.querySelector("td");
-    const body = Array.from(quoteCell?.children || []).find((child) => child instanceof HTMLElement && child !== options.link.parentElement && child.textContent.trim().length > 0);
-    if (body instanceof HTMLElement) {
-      body.dataset.fcPremiumQuoteBody = "true";
-    }
-  }
-  function renderQuoteBlockActions(options) {
-    if (!options.sourcePostId) {
-      return;
-    }
-    options.quoteWrapper.querySelector(".fc-premium-quote-actions")?.remove();
-    const targetContainer = options.quoteLink.parentElement || options.quoteWrapper;
-    const actions = document.createElement("div");
-    actions.className = "fc-premium-quote-actions";
-    const conversationButton = document.createElement("button");
-    conversationButton.type = "button";
-    conversationButton.textContent = "Ver conversación";
-    conversationButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      options.onReadConversation(options.sourcePostId, options.quotedPostId);
-    });
-    actions.append(conversationButton);
-    targetContainer.append(actions);
-  }
-
-  // src/ui/postReplyBadgeDom.ts
-  function appendReplyBadge(options) {
-    if (options.post.replyCount <= 0 || !options.container) {
-      return;
-    }
-    const post = options.post;
-    const wrapper = options.container.closest(".fc-premium-post-wrapper");
-    if (wrapper instanceof HTMLElement) {
-      wrapper.dataset.fcPremiumReplyCount = String(post.replyCount);
-      wrapper.dataset.fcPremiumRank = String(options.rank);
-    }
-    const badge = document.createElement("span");
-    badge.className = "fc-premium-reply-badge";
-    badge.textContent = post.replyCount === 1 ? "1 cita" : `${post.replyCount} citas`;
-    appendReplyLinks({
-      badge,
-      post,
-      postById: options.postById,
-      onJumpToPost: options.onJumpToPost,
-      onShowQuotedBy: options.onShowQuotedBy
-    });
-    options.container.append(badge);
-  }
-  function appendReplyLinks(options) {
-    const maxLinks = 3;
-    const visibleReplyIds = options.post.replyingPostIds.slice(0, maxLinks);
-    if (visibleReplyIds.length === 0) {
-      return;
-    }
-    const label = document.createElement("span");
-    label.className = "fc-premium-original-position";
-    label.textContent = "·";
-    options.badge.append(label);
-    for (const replyingPostId of visibleReplyIds) {
-      const reply = options.postById.get(replyingPostId);
-      const link = document.createElement("a");
-      link.href = new URL(`showthread.php?p=${replyingPostId}#post${replyingPostId}`, location.href).href;
-      link.textContent = `#${reply?.postNumber || replyingPostId}`;
-      link.addEventListener("click", (event) => {
-        if (!document.getElementById(`post${replyingPostId}`)) {
-          return;
-        }
-        event.preventDefault();
-        options.onJumpToPost(replyingPostId);
-      });
-      options.badge.append(link);
-      options.badge.append(document.createTextNode(" "));
-    }
-    if (options.post.replyingPostIds.length > visibleReplyIds.length) {
-      const remaining = document.createElement("span");
-      remaining.className = "fc-premium-original-position";
-      remaining.textContent = ` +${options.post.replyingPostIds.length - visibleReplyIds.length}`;
-      options.badge.append(remaining);
-    }
-    if (options.post.replyingPostIds.length > 1) {
-      const quotedByButton = document.createElement("button");
-      quotedByButton.type = "button";
-      quotedByButton.textContent = "Ver todas";
-      quotedByButton.title = "Ver citadores";
-      quotedByButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        options.onShowQuotedBy(options.post.id);
-      });
-      options.badge.append(quotedByButton);
-    }
-  }
-
-  // src/ui/threadSummaryDom.ts
-  function ensureThreadSummary(posts) {
-    if (!posts) {
-      return null;
-    }
-    const existing = document.getElementById(THREAD_SUMMARY_ID);
-    if (existing instanceof HTMLElement) {
-      installStickySummaryShadow(existing);
-      return existing;
-    }
-    const summary = document.createElement("div");
-    summary.id = THREAD_SUMMARY_ID;
-    posts.before(summary);
-    installStickySummaryShadow(summary);
-    return summary;
-  }
-  function setThreadSummaryMessage(summary, message) {
-    if (!summary) {
-      return;
-    }
-    summary.innerHTML = message;
-  }
-  function renderThreadSummaryMenu(options) {
-    const summary = options.summary;
-    if (!(summary instanceof HTMLElement)) {
-      return;
-    }
-    summary.textContent = "";
-    summary.hidden = true;
-    const controlsTarget = renderThreadControls({
-      summary,
-      state: options.state,
-      onRefreshCache: options.onRefreshCache
-    });
-    if (controlsTarget === summary) {
-      summary.hidden = !options.state.isLoading;
-      renderThreadProgress(summary, options.state);
-    }
-  }
-  function renderThreadControls(options) {
-    document.getElementById(THREAD_CONTROLS_ID)?.remove();
-    const threadToolsCell = document.getElementById("threadtools");
-    const toolbarRow = threadToolsCell?.parentElement;
-    if (!options.summary && !(toolbarRow instanceof HTMLTableRowElement)) {
-      return null;
-    }
-    const controls = toolbarRow instanceof HTMLTableRowElement ? document.createElement("td") : document.createElement("div");
-    controls.id = THREAD_CONTROLS_ID;
-    if (controls instanceof HTMLTableCellElement) {
-      controls.className = "vbmenu_control fc-premium-thread-toolbar-controls";
-      controls.noWrap = true;
-    }
-    const cacheButton = document.createElement("button");
-    cacheButton.type = "button";
-    cacheButton.textContent = "Actualizar cache";
-    cacheButton.title = "Borrar la cache de este hilo y volver a cargar paginas";
-    cacheButton.addEventListener("click", () => {
-      options.onRefreshCache();
-    });
-    controls.append(cacheButton);
-    renderThreadProgress(controls, options.state);
-    if (toolbarRow instanceof HTMLTableRowElement && threadToolsCell instanceof HTMLTableCellElement) {
-      toolbarRow.insertBefore(controls, threadToolsCell);
-      return controls;
-    }
-    options.summary?.append(controls);
-    return options.summary || null;
-  }
-  function renderThreadProgress(summary, state) {
-    document.getElementById(THREAD_PROGRESS_ID)?.remove();
-    if (!(summary instanceof HTMLElement) || !state.isLoading) {
-      return;
-    }
-    const progress = document.createElement("span");
-    progress.id = THREAD_PROGRESS_ID;
-    const spinner = document.createElement("span");
-    spinner.className = "fc-premium-spinner";
-    spinner.setAttribute("aria-hidden", "true");
-    progress.append(spinner);
-    const text = document.createElement("span");
-    const pageLabel = `${state.loadedPages}/${state.targetPages}`;
-    text.textContent = `paginas ${pageLabel}`;
-    progress.append(text);
-    summary.append(progress);
-  }
-  function installStickySummaryShadow(summary) {
-    if (!summary || summary.dataset.fcPremiumStickyInstalled === "true") {
-      return;
-    }
-    summary.dataset.fcPremiumStickyInstalled = "true";
-    const updateShadow = () => {
-      summary.classList.toggle("fc-premium-summary-stuck", summary.getBoundingClientRect().top <= 0);
-    };
-    window.addEventListener("scroll", updateShadow, { passive: true });
-    window.addEventListener("resize", updateShadow);
-    updateShadow();
-  }
-
-  // src/adapters/forocoches/threadPageNavigation.ts
-  function updateOriginalThreadPageMenus(options) {
-    for (const table of getOriginalThreadPageNavTables()) {
-      const body = table.tBodies[0] || table.createTBody();
-      const row = document.createElement("tr");
-      const statusCell = document.createElement("td");
-      statusCell.className = "vbmenu_control";
-      statusCell.style.fontWeight = "normal";
-      statusCell.textContent = `Pág ${options.currentPage} de ${options.totalPages}`;
-      row.append(statusCell);
-      for (const pageNumber of options.visiblePages) {
-        row.append(createOriginalThreadPageCell(pageNumber, options.currentPage, options.hrefForPage));
-      }
-      if (options.currentPage < options.totalPages) {
-        row.append(createOriginalThreadPageActionCell(">", options.currentPage + 1, options.hrefForPage));
-      }
-      if (options.currentPage !== options.totalPages) {
-        row.append(createOriginalThreadPageActionCell("Último »", options.totalPages, options.hrefForPage));
-      }
-      body.textContent = "";
-      body.append(row);
-    }
-  }
-  function getOriginalThreadPageLinkNumber(link, currentThreadId) {
-    const table = link.closest("table.tborder");
-    if (!(table instanceof HTMLTableElement)) {
-      return null;
-    }
-    const status = normalizeText(table.querySelector("td.vbmenu_control")?.textContent);
-    if (!/^Pág \d+ de \d+$/.test(status)) {
-      return null;
-    }
-    const url = toUrl(link.getAttribute("href") || link.href);
-    if (!url || getThreadId(url) !== currentThreadId) {
-      return null;
-    }
-    return getPageNumber(url);
-  }
-  function getOriginalThreadPageNavTables() {
-    return Array.from(document.querySelectorAll("table.tborder")).filter((table) => {
-      if (!(table instanceof HTMLTableElement)) {
-        return false;
-      }
-      const status = normalizeText(table.querySelector("td.vbmenu_control")?.textContent);
-      return /^Pág \d+ de \d+$/.test(status);
-    });
-  }
-  function createOriginalThreadPageCell(pageNumber, currentPage, hrefForPage) {
-    const cell = document.createElement("td");
-    const isCurrent = pageNumber === currentPage;
-    cell.className = isCurrent ? "alt2" : "alt1";
-    if (isCurrent) {
-      const span = document.createElement("span");
-      span.className = "mfont";
-      span.title = `Pagina ${pageNumber}`;
-      const strong = document.createElement("strong");
-      strong.textContent = String(pageNumber);
-      span.append(strong);
-      cell.append(span);
-      return cell;
-    }
-    const link = document.createElement("a");
-    link.className = "mfont";
-    link.href = hrefForPage(pageNumber);
-    link.title = `Mostrar pagina ${pageNumber}`;
-    link.textContent = String(pageNumber);
-    cell.append(link);
-    return cell;
-  }
-  function createOriginalThreadPageActionCell(text, pageNumber, hrefForPage) {
-    const cell = document.createElement("td");
-    cell.className = "alt1";
-    const link = document.createElement("a");
-    link.className = "smallfont";
-    link.href = hrefForPage(pageNumber);
-    link.textContent = text;
-    cell.append(link);
-    return cell;
-  }
-
-  // src/app/core/threadPageKeyboardController.ts
-  function createThreadPageKeyboardController(handlers) {
-    function hasActiveGraphView() {
-      return Boolean(handlers.getActiveGraphView());
-    }
-    function hasActiveFiltersOrView() {
-      return handlers.hasActiveThreadPostFilters() || hasActiveGraphView();
-    }
-    function handleSelectedPostActionShortcut(event) {
-      if (!handlers.getSelectedPostWrapper) {
-        return false;
-      }
-      if (hasKeyboardModifier(event)) {
-        return false;
-      }
-      if (event.key === KEY_NEW_THREAD_REPLY) {
-        event.preventDefault();
-        return handlers.openThreadReplyWithoutQuote();
-      }
-      const selected = handlers.getSelectedPostWrapper();
-      if (!selected) {
-        return false;
-      }
-      if (event.key === KEY_QUOTE_SELECTED_POST) {
-        event.preventDefault();
-        return handlers.quoteSelectedPost(selected);
-      }
-      if (event.key === KEY_MULTIQUOTE_SELECTED_POST) {
-        event.preventDefault();
-        return handlers.toggleSelectedPostMultiquote(selected);
-      }
-      return false;
-    }
-    function handleNavigationKeyDown(event) {
-      if (isEditableTarget(event.target)) {
-        return false;
-      }
-      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && hasKeyboardModifier(event)) {
-        return false;
-      }
-      if (event.key === KEY_OPEN_SHORTCUT_HELP) {
-        event.preventDefault();
-        setShortcutHelpPopoverOpen(true);
-        return true;
-      }
-      if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
-        event.preventDefault();
-        closeShortcutHelpPopover();
-        return true;
-      }
-      if (event.key === KEY_NAV_NEXT_POST) {
-        event.preventDefault();
-        handlers.moveNavigation(1);
-        return true;
-      }
-      if (event.key === KEY_NAV_PREVIOUS_POST) {
-        event.preventDefault();
-        handlers.moveNavigation(-1);
-        return true;
-      }
-      if (event.key === KEY_NAV_FIRST_POST) {
-        event.preventDefault();
-        handlers.selectNavigationIndex(0);
-        return true;
-      }
-      if (event.key === KEY_NAV_LAST_POST) {
-        event.preventDefault();
-        if (handlers.getNavigationLength() === 0) {
-          handlers.refreshNavigation({ reset: true });
-        }
-        handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
-        return true;
-      }
-      if (handleSelectedPostActionShortcut(event)) {
-        return true;
-      }
-      if (event.key === KEY_CLEAR_ACTIVE_VIEW && hasActiveFiltersOrView()) {
-        event.preventDefault();
-        handlers.clearThreadFilters();
-        return true;
-      }
-      if (event.key === KEY_QUOTE_SELECTED_POST && !hasKeyboardModifier(event)) {
-        event.preventDefault();
-        const selected = handlers.getSelectedPostWrapper();
-        if (!selected) {
-          return false;
-        }
-        return handlers.quoteSelectedPost(selected);
-      }
-      return false;
-    }
-    return { handleNavigationKeyDown };
-  }
-
-  // src/app/core/threadPageController.ts
-  function createThreadPageController() {
-    const initialThreadQueryState = readThreadQueryState();
-    let loadedThreadPosts = [];
-    let threadPages = [];
-    let loadedThreadPageNumbers = new Set;
-    let threadLoadState = {
-      loadedPages: 0,
-      targetPages: 0,
-      totalPages: 0,
-      loadedPosts: 0,
-      isLoading: false
-    };
-    let threadGraph = createEmptyThreadGraph();
-    let activeGraphView = null;
-    let pendingGraphView = initialThreadQueryState.graphView;
-    const compactModeEnabled = true;
-    let activePageFilter = initialThreadQueryState.pageFilter;
-    let activeAuthorFilters = new Set(initialThreadQueryState.authorFilters);
-    let activeThreadSearchQuery = initialThreadQueryState.searchQuery;
-    let pendingInitialHashPostId = getLocationPostHashId();
-    let threadPostSearchTextById = new Map;
-    let parsedForumRowsCache = [];
-    function writeCurrentThreadStateQueryParams(url) {
-      clearThreadStateQueryParams(url);
-      const graphView = activeGraphView || pendingGraphView;
-      if (graphView) {
-        url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphType, graphView.type);
-        url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphRoot, graphView.rootPostId);
-        if (graphView.relatedPostId) {
-          url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphRelated, graphView.relatedPostId);
-        }
-      }
-      if (activeThreadSearchQuery) {
-        url.searchParams.set(THREAD_STATE_QUERY_PARAMS.searchQuery, activeThreadSearchQuery);
-      }
-      for (const author of activeAuthorFilters) {
-        url.searchParams.append(THREAD_STATE_QUERY_PARAMS.authorFilter, author);
-      }
-    }
-    function updateBrowserHistory(url, historyMode) {
-      if (historyMode === "push" && url.href !== location.href) {
-        window.history.pushState(window.history.state, "", url.href);
-        return;
-      }
-      window.history.replaceState(window.history.state, "", url.href);
-    }
-    function syncThreadStateUrl(options = {}) {
-      if (!isThreadPage()) {
-        return;
-      }
-      const url = new URL(location.href);
-      writeCurrentThreadStateQueryParams(url);
-      updateBrowserHistory(url, options.history || "replace");
-    }
-    function getPostsElement() {
-      const posts = document.querySelector(POSTS_SELECTOR);
-      return posts instanceof HTMLElement ? posts : null;
-    }
+  // src/app/core/threadPageHeaderController.ts
+  function createThreadPageHeaderController() {
     function ensureStyle() {
       const existing = document.getElementById(STYLE_ID);
       const style = existing instanceof HTMLStyleElement ? existing : document.createElement("style");
@@ -6396,134 +5689,6 @@ body table.tborder:has(.navbar) {
         document.head.appendChild(style);
       }
     }
-    function hideUnusedTopNavigationBars() {
-      return;
-    }
-    function collectNavigationItems() {
-      return isThreadPage() ? getPostNavigationItems(getPostsElement()) : [];
-    }
-    const navigationController = createNavigationController({
-      collectNavigationItems,
-      onRenderNavigationStatus: renderNavigationStatus,
-      onUpdateSelectedThreadUrl: updateSelectedPostUrl,
-      getPostsElement
-    });
-    function updateSelectedPostUrl(selected) {
-      const postId = getPostIdFromNavigationElement(selected.element);
-      if (!postId) {
-        return;
-      }
-      const threadId = getThreadId(new URL(location.href)) || threadPages.map((page) => getThreadId(new URL(page.url))).find(Boolean) || null;
-      if (!threadId) {
-        return;
-      }
-      const post = loadedThreadPosts.find((item) => item.id === postId);
-      const url = new URL(location.href);
-      url.search = "";
-      url.searchParams.set("t", threadId);
-      if (post && post.pageNumber > 1) {
-        url.searchParams.set("page", String(post.pageNumber));
-      }
-      writeCurrentThreadStateQueryParams(url);
-      url.hash = `post${postId}`;
-      window.history.replaceState(window.history.state, "", url.href);
-    }
-    function renderNavigationStatus(selected) {
-      document.getElementById(NAVIGATION_STATUS_ID)?.remove();
-    }
-    const refreshNavigation = navigationController.refreshNavigation;
-    const moveNavigation = navigationController.moveNavigation;
-    const selectNavigationIndex = navigationController.selectNavigationIndex;
-    const selectNavigationElement = navigationController.selectNavigationElement;
-    const getSelectedNavigationItem = navigationController.getSelectedNavigationItem;
-    const getSelectedPostWrapper2 = navigationController.getSelectedPostWrapper;
-    const getNavigationLength = navigationController.getNavigationLength;
-    function quoteSelectedPost(wrapper) {
-      return clickPostQuoteAction(wrapper);
-    }
-    function toggleSelectedPostMultiquote(wrapper) {
-      return togglePostMultiquote(wrapper, getPostIdFromNavigationElement(wrapper));
-    }
-    function openThreadReplyWithoutQuote2() {
-      return openThreadReplyWithoutQuote(getThreadId(new URL(location.href)));
-    }
-    function renderShortcutHelpButton2() {
-      renderShortcutHelpButton({
-        items: getShortcutHelpItems(),
-        formatKey: formatShortcutHelpKey
-      });
-    }
-    const threadPageKeyboard = createThreadPageKeyboardController({
-      moveNavigation,
-      selectNavigationIndex,
-      getNavigationLength,
-      refreshNavigation,
-      getActiveGraphView: () => activeGraphView,
-      hasActiveThreadPostFilters,
-      openThreadReplyWithoutQuote: openThreadReplyWithoutQuote2,
-      quoteSelectedPost: (wrapper) => quoteSelectedPost(wrapper),
-      toggleSelectedPostMultiquote: (wrapper) => toggleSelectedPostMultiquote(wrapper),
-      getSelectedPostWrapper: getSelectedPostWrapper2,
-      clearThreadFilters
-    });
-    function installKeyboardNavigation() {
-      window.addEventListener("keydown", threadPageKeyboard.handleNavigationKeyDown, true);
-    }
-    function getThreadPagesForTotal(totalPages) {
-      const pages = [];
-      for (let pageNumber = 1;pageNumber <= totalPages; pageNumber += 1) {
-        pages.push({ pageNumber, url: getThreadPageUrl(pageNumber).href });
-      }
-      return pages;
-    }
-    function resolveCurrentThreadId() {
-      return getThreadId(new URL(location.href)) || getThreadIdFromDocument(document) || threadPages.map((page) => getThreadId(new URL(page.url))).find(Boolean) || null;
-    }
-    function getThreadPageUrl(pageNumber, options = {}) {
-      const currentUrl = new URL(location.href);
-      const threadId = resolveCurrentThreadId() || "";
-      const url = new URL(currentUrl.origin + currentUrl.pathname);
-      if (threadId) {
-        url.searchParams.set("t", threadId);
-      }
-      if (pageNumber > 1) {
-        url.searchParams.set("page", String(pageNumber));
-      }
-      if (options.includeState) {
-        writeCurrentThreadStateQueryParams(url);
-      }
-      if (options.preserveHash) {
-        url.hash = location.hash;
-      }
-      return url;
-    }
-    function updateThreadPageUrl(pageNumber, options = {}) {
-      const url = getThreadPageUrl(pageNumber, {
-        includeState: true,
-        preserveHash: options.preserveHash
-      });
-      updateBrowserHistory(url, options.history || "replace");
-    }
-    function getThreadPages() {
-      const maxPage = getMaxThreadPage(document);
-      return getThreadPagesForTotal(maxPage);
-    }
-    function ensureThreadSummary2() {
-      return ensureThreadSummary(getPostsElement());
-    }
-    function setSummary(summary, message) {
-      setThreadSummaryMessage(summary, message);
-    }
-    function renderThreadSummaryMenu2(summary) {
-      renderThreadSummaryMenu({
-        summary,
-        state: threadLoadState,
-        onRefreshCache: async () => {
-          await clearCurrentThreadCache();
-          location.reload();
-        }
-      });
-    }
     function enhanceThreadHeader() {
       const titleTable = getThreadTitleTable();
       if (!(titleTable instanceof HTMLTableElement) || titleTable.dataset.fcPremiumThreadHeaderEnhanced === "true") {
@@ -6560,20 +5725,640 @@ body table.tborder:has(.navbar) {
         breadcrumbOuterTable.setAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE, "true");
       }
     }
-    function jumpToLoadedPost(postId) {
-      const post = loadedThreadPosts.find((item) => item.id === postId);
-      if (post) {
-        activePageFilter = post.pageNumber;
-        updateThreadPageUrl(post.pageNumber);
-        updateOriginalThreadPageMenus2();
-        renderThreadPosts(loadedThreadPosts);
-        renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
+    function prepareThreadPage() {
+      ensureStyle();
+      hideTopShortcutBarsBefore(getThreadTitleTable());
+      hideNativeThreadSearchMenu();
+      enhanceThreadHeader();
+      hideNativeThreadSearchMenu();
+    }
+    function renderShortcutHelpButton2() {
+      renderShortcutHelpButton({
+        items: getShortcutHelpItems(),
+        formatKey: formatShortcutHelpKey
+      });
+    }
+    return {
+      prepareThreadPage,
+      renderShortcutHelpButton: renderShortcutHelpButton2
+    };
+  }
+
+  // src/app/core/threadPageLoader.ts
+  async function enhanceThreadPage(options) {
+    options.prepareThreadPage();
+    const summary = options.ensureThreadSummary();
+    const queryState = readThreadQueryState();
+    const allPages = options.getThreadPages();
+    const currentPageNumber = getPageNumber(new URL(location.href));
+    const pages = [
+      ...allPages.filter((page) => page.pageNumber === currentPageNumber),
+      ...allPages.filter((page) => page.pageNumber !== currentPageNumber)
+    ];
+    const allPosts = [];
+    let pageOffset = 0;
+    options.setThreadPages(allPages);
+    options.setLoadedThreadPosts([]);
+    options.setLoadedThreadPageNumbers(new Set);
+    options.setThreadGraphEmpty();
+    options.setActiveGraphView(null);
+    options.setPendingGraphView(queryState.graphView);
+    options.setActivePageFilter(queryState.graphView ? null : queryState.authorFilters.length > 0 || queryState.searchQuery ? null : queryState.pageFilter || currentPageNumber);
+    options.setActiveAuthorFilters(new Set(queryState.authorFilters));
+    options.setActiveThreadSearchQuery(queryState.searchQuery);
+    const activePageFilter = queryState.graphView ? null : queryState.authorFilters.length > 0 || queryState.searchQuery ? null : queryState.pageFilter || currentPageNumber;
+    if (activePageFilter) {
+      options.updateThreadPageUrl(activePageFilter, {
+        preserveHash: Boolean(options.getPendingInitialHashPostId())
+      });
+    } else {
+      options.syncThreadStateUrl();
+    }
+    if (!options.getPendingInitialHashPostId()) {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+    options.setThreadLoadState({
+      loadedPages: 0,
+      targetPages: pages.length,
+      totalPages: allPages.length,
+      loadedPosts: 0,
+      isLoading: pages.length > 0
+    });
+    if (summary) {
+      summary.textContent = "";
+    }
+    options.renderThreadSummaryMenu(summary);
+    options.renderThreadSearchPanel();
+    const cachedThread = await readCurrentThreadCache();
+    if (cachedThread && isCompleteThreadCache(cachedThread)) {
+      const cachedPages = options.getThreadPagesForTotal(cachedThread.totalPages);
+      const cachedPageNumbers = new Set(cachedThread.cachedPageNumbers);
+      options.setThreadPages(cachedPages);
+      options.setLoadedThreadPageNumbers(cachedPageNumbers);
+      options.hydrateThreadPosts(cachedThread.posts);
+      options.setThreadLoadState({
+        loadedPages: cachedPageNumbers.size,
+        targetPages: cachedThread.totalPages,
+        totalPages: cachedThread.totalPages,
+        loadedPosts: cachedThread.posts.length,
+        isLoading: false
+      });
+      options.renderThreadPosts();
+      options.renderThreadSummaryMenu(summary);
+      return;
+    }
+    const currentPageDocument = parseHtml(document.documentElement.outerHTML);
+    const loadedPageNumbers = new Set;
+    for (const page of pages) {
+      const doc = page.pageNumber === currentPageNumber ? currentPageDocument : await fetchThreadDocument(page.url);
+      const pagePosts = collectPosts(doc, page.pageNumber, pageOffset);
+      allPosts.push(...pagePosts);
+      pageOffset += pagePosts.length;
+      loadedPageNumbers.add(page.pageNumber);
+      options.setLoadedThreadPageNumbers(new Set(loadedPageNumbers));
+      options.hydrateThreadPosts(allPosts);
+      options.setThreadLoadState({
+        ...options.getThreadLoadState(),
+        loadedPages: loadedPageNumbers.size,
+        loadedPosts: allPosts.length,
+        isLoading: true
+      });
+      options.renderThreadPosts();
+      options.renderThreadSummaryMenu(summary);
+      const lastPage = pages[pages.length - 1];
+      if (lastPage && page.pageNumber !== lastPage.pageNumber) {
+        await sleep(PAGE_LOAD_DELAY_MS);
       }
-      selectPostById(postId);
     }
-    function hasActiveThreadPostFilters() {
-      return Boolean(activeThreadSearchQuery) || activeAuthorFilters.size > 0;
+    options.setThreadLoadState({
+      ...options.getThreadLoadState(),
+      loadedPages: loadedPageNumbers.size,
+      loadedPosts: allPosts.length,
+      isLoading: false
+    });
+    options.renderThreadPosts();
+    options.renderThreadSummaryMenu(summary);
+    if (loadedPageNumbers.size >= pages.length) {
+      await writeCurrentThreadCache(allPosts, allPages.length, loadedPageNumbers);
     }
+  }
+
+  // src/app/core/threadPageKeyboardController.ts
+  function createThreadPageKeyboardController(handlers) {
+    function hasActiveGraphView() {
+      return Boolean(handlers.getActiveGraphView());
+    }
+    function hasActiveFiltersOrView() {
+      return handlers.hasActiveThreadPostFilters() || hasActiveGraphView();
+    }
+    function handleSelectedPostActionShortcut(event) {
+      if (!handlers.getSelectedPostWrapper) {
+        return false;
+      }
+      if (hasKeyboardModifier(event)) {
+        return false;
+      }
+      if (event.key === KEY_NEW_THREAD_REPLY) {
+        event.preventDefault();
+        return handlers.openThreadReplyWithoutQuote();
+      }
+      const selected = handlers.getSelectedPostWrapper();
+      if (!selected) {
+        return false;
+      }
+      if (event.key === KEY_QUOTE_SELECTED_POST) {
+        event.preventDefault();
+        return handlers.quoteSelectedPost(selected);
+      }
+      if (event.key === KEY_MULTIQUOTE_SELECTED_POST) {
+        event.preventDefault();
+        return handlers.toggleSelectedPostMultiquote(selected);
+      }
+      return false;
+    }
+    function handleNavigationKeyDown(event) {
+      if (isEditableTarget(event.target)) {
+        return false;
+      }
+      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && hasKeyboardModifier(event)) {
+        return false;
+      }
+      if (event.key === KEY_OPEN_SHORTCUT_HELP) {
+        event.preventDefault();
+        setShortcutHelpPopoverOpen(true);
+        return true;
+      }
+      if (event.key === KEY_CLEAR_ACTIVE_VIEW && isShortcutHelpPopoverOpen()) {
+        event.preventDefault();
+        closeShortcutHelpPopover();
+        return true;
+      }
+      if (event.key === KEY_NAV_NEXT_POST) {
+        event.preventDefault();
+        handlers.moveNavigation(1);
+        return true;
+      }
+      if (event.key === KEY_NAV_PREVIOUS_POST) {
+        event.preventDefault();
+        handlers.moveNavigation(-1);
+        return true;
+      }
+      if (event.key === KEY_NAV_FIRST_POST) {
+        event.preventDefault();
+        handlers.selectNavigationIndex(0);
+        return true;
+      }
+      if (event.key === KEY_NAV_LAST_POST) {
+        event.preventDefault();
+        if (handlers.getNavigationLength() === 0) {
+          handlers.refreshNavigation({ reset: true });
+        }
+        handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
+        return true;
+      }
+      if (handleSelectedPostActionShortcut(event)) {
+        return true;
+      }
+      if (event.key === KEY_CLEAR_ACTIVE_VIEW && hasActiveFiltersOrView()) {
+        event.preventDefault();
+        handlers.clearThreadFilters();
+        return true;
+      }
+      if (event.key === KEY_QUOTE_SELECTED_POST && !hasKeyboardModifier(event)) {
+        event.preventDefault();
+        const selected = handlers.getSelectedPostWrapper();
+        if (!selected) {
+          return false;
+        }
+        return handlers.quoteSelectedPost(selected);
+      }
+      return false;
+    }
+    return { handleNavigationKeyDown };
+  }
+
+  // src/ui/threadPostFiltersDom.ts
+  function applyPageFilterToRenderedPosts(posts, activePageFilter) {
+    let total = 0;
+    let visible = 0;
+    if (!posts) {
+      return { total, visible };
+    }
+    for (const wrapper of getRenderedPostWrappers(posts)) {
+      const pageNumber = Number(wrapper.dataset.fcPremiumOriginalPage || "0");
+      const matches = !activePageFilter || pageNumber === activePageFilter;
+      total += 1;
+      if (matches) {
+        visible += 1;
+        wrapper.removeAttribute(HIDDEN_POST_PAGE_ATTRIBUTE);
+      } else {
+        wrapper.setAttribute(HIDDEN_POST_PAGE_ATTRIBUTE, "true");
+      }
+    }
+    return { total, visible };
+  }
+  function applyThreadPostFiltersToRenderedPosts(options) {
+    let total = 0;
+    let visible = 0;
+    if (!options.posts) {
+      return { total, visible };
+    }
+    for (const wrapper of getRenderedPostWrappers(options.posts)) {
+      const authorKey = wrapper.dataset.fcPremiumAuthor || "";
+      const postId = getPostIdFromWrapper(wrapper);
+      const post = postId ? options.postById.get(postId) : null;
+      const matchesAuthor = options.activeAuthorFilters.size === 0 || options.activeAuthorFilters.has(authorKey);
+      const matchesText = !options.query || (post ? options.getPostSearchText(post).includes(options.query) : false);
+      const matches = matchesAuthor && matchesText;
+      total += 1;
+      if (matches) {
+        visible += 1;
+        wrapper.removeAttribute(HIDDEN_POST_FILTER_ATTRIBUTE);
+      } else {
+        wrapper.setAttribute(HIDDEN_POST_FILTER_ATTRIBUTE, "true");
+      }
+    }
+    return { total, visible };
+  }
+  function enhanceAuthorFilterButton(wrapper, author, onToggleAuthor) {
+    const authorKey = normalizeAuthorName(author);
+    if (!authorKey) {
+      return;
+    }
+    wrapper.dataset.fcPremiumAuthor = authorKey;
+    const username = wrapper.querySelector(".bigusername");
+    if (!(username instanceof HTMLElement)) {
+      return;
+    }
+    const existingButton = username.parentElement?.querySelector(".fc-premium-author-filter-button");
+    if (existingButton) {
+      return;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "fc-premium-author-filter-button";
+    button.textContent = "filtrar";
+    button.title = `Filtrar mensajes de ${author}`;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onToggleAuthor(author);
+    });
+    username.after(button);
+  }
+  function getRenderedPostWrappers(posts) {
+    return Array.from(posts.querySelectorAll(".fc-premium-post-wrapper")).filter((wrapper) => wrapper instanceof HTMLElement);
+  }
+  function getPostIdFromWrapper(wrapper) {
+    const postTable = wrapper.querySelector(POST_TABLE_SELECTOR);
+    const postId = postTable?.id.match(/^post(\d+)$/)?.[1];
+    return postId || null;
+  }
+
+  // src/adapters/forocoches/threadPageNavigation.ts
+  function updateOriginalThreadPageMenus(options) {
+    for (const table of getOriginalThreadPageNavTables()) {
+      const body = table.tBodies[0] || table.createTBody();
+      const row = document.createElement("tr");
+      const statusCell = document.createElement("td");
+      statusCell.className = "vbmenu_control";
+      statusCell.style.fontWeight = "normal";
+      statusCell.textContent = `Pág ${options.currentPage} de ${options.totalPages}`;
+      row.append(statusCell);
+      for (const pageNumber of options.visiblePages) {
+        row.append(createOriginalThreadPageCell(pageNumber, options.currentPage, options.hrefForPage));
+      }
+      if (options.currentPage < options.totalPages) {
+        row.append(createOriginalThreadPageActionCell(">", options.currentPage + 1, options.hrefForPage));
+      }
+      if (options.currentPage !== options.totalPages) {
+        row.append(createOriginalThreadPageActionCell("Último »", options.totalPages, options.hrefForPage));
+      }
+      body.textContent = "";
+      body.append(row);
+    }
+  }
+  function getOriginalThreadPageLinkNumber(link, currentThreadId) {
+    const table = link.closest("table.tborder");
+    if (!(table instanceof HTMLTableElement)) {
+      return null;
+    }
+    const status = normalizeText(table.querySelector("td.vbmenu_control")?.textContent);
+    if (!/^Pág \d+ de \d+$/.test(status)) {
+      return null;
+    }
+    const url = toUrl(link.getAttribute("href") || link.href);
+    if (!url || getThreadId(url) !== currentThreadId) {
+      return null;
+    }
+    return getPageNumber(url);
+  }
+  function getOriginalThreadPageNavTables() {
+    return Array.from(document.querySelectorAll("table.tborder")).filter((table) => {
+      if (!(table instanceof HTMLTableElement)) {
+        return false;
+      }
+      const status = normalizeText(table.querySelector("td.vbmenu_control")?.textContent);
+      return /^Pág \d+ de \d+$/.test(status);
+    });
+  }
+  function createOriginalThreadPageCell(pageNumber, currentPage, hrefForPage) {
+    const cell = document.createElement("td");
+    const isCurrent = pageNumber === currentPage;
+    cell.className = isCurrent ? "alt2" : "alt1";
+    if (isCurrent) {
+      const span = document.createElement("span");
+      span.className = "mfont";
+      span.title = `Pagina ${pageNumber}`;
+      const strong = document.createElement("strong");
+      strong.textContent = String(pageNumber);
+      span.append(strong);
+      cell.append(span);
+      return cell;
+    }
+    const link = document.createElement("a");
+    link.className = "mfont";
+    link.href = hrefForPage(pageNumber);
+    link.title = `Mostrar pagina ${pageNumber}`;
+    link.textContent = String(pageNumber);
+    cell.append(link);
+    return cell;
+  }
+  function createOriginalThreadPageActionCell(text, pageNumber, hrefForPage) {
+    const cell = document.createElement("td");
+    cell.className = "alt1";
+    const link = document.createElement("a");
+    link.className = "smallfont";
+    link.href = hrefForPage(pageNumber);
+    link.textContent = text;
+    cell.append(link);
+    return cell;
+  }
+
+  // src/app/core/threadPagePaginationController.ts
+  function createThreadPagePaginationController(options) {
+    function setPageFilter(pageNumber) {
+      if (!isThreadPage()) {
+        return;
+      }
+      options.setActivePageFilter(pageNumber);
+      options.clearGraphView();
+      options.updateThreadPageUrl(pageNumber, { history: "push" });
+      updateOriginalThreadPageMenus2();
+      options.renderThreadPosts();
+      options.renderThreadSummaryMenu();
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+    function applyPageFilter() {
+      return applyPageFilterToRenderedPosts(options.getPostsElement(), options.getActivePageFilter());
+    }
+    function updateOriginalThreadPageMenus2() {
+      const threadPages = options.getThreadPages();
+      if (!isThreadPage() || threadPages.length <= 1 || options.getActiveGraphView()) {
+        return;
+      }
+      const totalPages = threadPages.length;
+      const currentPage = options.getActivePageFilter() || getPageNumber(new URL(location.href));
+      updateOriginalThreadPageMenus({
+        totalPages,
+        currentPage,
+        visiblePages: getVisiblePageNumbers(totalPages, currentPage),
+        hrefForPage: (pageNumber) => options.getThreadPageUrl(pageNumber).href
+      });
+    }
+    function handleThreadPageNavigationClick(event) {
+      const link = event.target instanceof Element ? event.target.closest("a[href*='showthread.php']") : null;
+      if (!(link instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const pageNumber = getOriginalThreadPageLinkNumber(link, getThreadId(new URL(location.href)));
+      if (!pageNumber) {
+        return;
+      }
+      event.preventDefault();
+      setPageFilter(pageNumber);
+    }
+    function installThreadPageNavigation() {
+      document.addEventListener("click", handleThreadPageNavigationClick, true);
+    }
+    return {
+      setPageFilter,
+      applyPageFilter,
+      updateOriginalThreadPageMenus: updateOriginalThreadPageMenus2,
+      installThreadPageNavigation
+    };
+  }
+
+  // src/ui/components/ThreadSearchPanel.tsx
+  function ThreadSearchPanel(props) {
+    return /* @__PURE__ */ createElement("table", {
+      id: THREAD_SEARCH_PANEL_ID,
+      className: "tborder",
+      cellPadding: "4",
+      cellSpacing: "1",
+      border: "0"
+    }, /* @__PURE__ */ createElement("tbody", null, /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
+      className: "thead"
+    }, "Buscar mensajes")), /* @__PURE__ */ createElement("tr", null, /* @__PURE__ */ createElement("td", {
+      className: "alt1 fc-premium-thread-search-cell"
+    }, /* @__PURE__ */ createElement("div", {
+      className: "fc-premium-thread-search-layout"
+    }, /* @__PURE__ */ createElement("label", {
+      className: "fc-premium-thread-search-field"
+    }, "Texto", /* @__PURE__ */ createElement("input", {
+      id: THREAD_SEARCH_TEXT_INPUT_ID,
+      type: "search",
+      className: "bginput",
+      placeholder: "Buscar en mensajes",
+      value: props.searchQuery,
+      onInput: (event) => {
+        const input = event.currentTarget;
+        if (input instanceof HTMLInputElement) {
+          props.onSearchInput(input.value);
+        }
+      }
+    })), /* @__PURE__ */ createElement("label", {
+      className: "fc-premium-thread-search-field"
+    }, "Usuario", /* @__PURE__ */ createElement("input", {
+      id: THREAD_SEARCH_AUTHOR_INPUT_ID,
+      type: "text",
+      className: "bginput",
+      placeholder: "Escribe un usuario",
+      list: THREAD_SEARCH_AUTHOR_DATALIST_ID,
+      autocomplete: "off",
+      onKeyDown: (event) => {
+        if (event.key !== "Enter") {
+          return;
+        }
+        event.preventDefault();
+        props.onAddAuthor();
+      }
+    })), /* @__PURE__ */ createElement("button", {
+      type: "button",
+      className: "fc-premium-thread-search-button",
+      onClick: props.onAddAuthor
+    }, "Añadir"), /* @__PURE__ */ createElement("button", {
+      type: "button",
+      className: "fc-premium-thread-search-button",
+      onClick: props.onClearFilters
+    }, "Limpiar"), /* @__PURE__ */ createElement("span", {
+      id: THREAD_SEARCH_STATUS_ID
+    })), /* @__PURE__ */ createElement("datalist", {
+      id: THREAD_SEARCH_AUTHOR_DATALIST_ID
+    }), /* @__PURE__ */ createElement("div", {
+      id: THREAD_SEARCH_SELECTED_AUTHORS_ID
+    }), /* @__PURE__ */ createElement("div", {
+      id: THREAD_SEARCH_EMPTY_ID
+    })))));
+  }
+
+  // src/domain/threadAuthors.ts
+  function getThreadOriginalPosterName(posts) {
+    return sortPostsChronologically(posts)[0]?.author || "";
+  }
+  function getThreadAuthorOptions(posts, currentUsername) {
+    const optionsByKey = new Map;
+    const originalPosterKey = normalizeAuthorName(getThreadOriginalPosterName(posts));
+    const currentUserKey = normalizeAuthorName(currentUsername);
+    for (const post of posts) {
+      const key = normalizeAuthorName(post.author);
+      if (!key) {
+        continue;
+      }
+      const option = optionsByKey.get(key) || {
+        key,
+        name: post.author,
+        count: 0,
+        isOriginalPoster: key === originalPosterKey,
+        isCurrentUser: key === currentUserKey
+      };
+      option.count += 1;
+      option.isOriginalPoster = option.isOriginalPoster || key === originalPosterKey;
+      option.isCurrentUser = option.isCurrentUser || key === currentUserKey;
+      optionsByKey.set(key, option);
+    }
+    if (currentUserKey && !optionsByKey.has(currentUserKey)) {
+      optionsByKey.set(currentUserKey, {
+        key: currentUserKey,
+        name: currentUsername,
+        count: 0,
+        isOriginalPoster: currentUserKey === originalPosterKey,
+        isCurrentUser: true
+      });
+    }
+    return Array.from(optionsByKey.values()).sort((left, right) => {
+      if (left.isOriginalPoster !== right.isOriginalPoster) {
+        return left.isOriginalPoster ? -1 : 1;
+      }
+      if (left.isCurrentUser !== right.isCurrentUser) {
+        return left.isCurrentUser ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name, "es", {
+        sensitivity: "base"
+      });
+    });
+  }
+  function getThreadAuthorOptionLabel(option) {
+    const markers = [];
+    if (option.isOriginalPoster) {
+      markers.push("autor");
+    }
+    if (option.isCurrentUser) {
+      markers.push("tú");
+    }
+    return markers.length > 0 ? `${option.name} (${markers.join(", ")})` : option.name;
+  }
+  function resolveThreadAuthorInputValue(value, options) {
+    const input = normalizeText(value);
+    const inputKey = normalizeAuthorName(input);
+    if (!inputKey) {
+      return null;
+    }
+    for (const option of options) {
+      const labelKey = normalizeAuthorName(getThreadAuthorOptionLabel(option));
+      if (option.key === inputKey || normalizeAuthorName(option.name) === inputKey || labelKey === inputKey) {
+        return option.key;
+      }
+    }
+    return null;
+  }
+
+  // src/ui/threadSearchPanelDom.ts
+  function syncThreadSearchTextInput(searchQuery) {
+    const textInput = document.getElementById(THREAD_SEARCH_TEXT_INPUT_ID);
+    if (textInput instanceof HTMLInputElement && document.activeElement !== textInput) {
+      textInput.value = searchQuery;
+    }
+  }
+  function refreshThreadAuthorDatalist(options, activeAuthorFilters) {
+    const datalist = document.getElementById(THREAD_SEARCH_AUTHOR_DATALIST_ID);
+    if (!(datalist instanceof HTMLDataListElement)) {
+      return;
+    }
+    datalist.textContent = "";
+    for (const option of options) {
+      if (activeAuthorFilters.has(option.key)) {
+        continue;
+      }
+      const element = document.createElement("option");
+      element.value = getThreadAuthorOptionLabel(option);
+      element.label = `${option.count} mensajes`;
+      datalist.append(element);
+    }
+  }
+  function refreshSelectedThreadAuthors(authorKeys, authorOptions, onRemoveAuthor) {
+    const container = document.getElementById(THREAD_SEARCH_SELECTED_AUTHORS_ID);
+    if (!(container instanceof HTMLElement)) {
+      return;
+    }
+    container.textContent = "";
+    for (const authorKey of authorKeys) {
+      const option = authorOptions.find((candidate) => candidate.key === authorKey) || null;
+      const chip = document.createElement("span");
+      chip.className = "fc-premium-thread-author-chip";
+      chip.textContent = option ? getThreadAuthorOptionLabel(option) : authorKey;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "x";
+      remove.title = "Quitar usuario";
+      remove.addEventListener("click", () => {
+        onRemoveAuthor(authorKey);
+      });
+      chip.append(remove);
+      container.append(chip);
+    }
+  }
+  function renderThreadSearchStatus(options) {
+    const status = document.getElementById(THREAD_SEARCH_STATUS_ID);
+    if (!(status instanceof HTMLElement)) {
+      return;
+    }
+    const total = options.counts?.total ?? options.totalPosts;
+    const visible = options.counts?.visible ?? getVisibleThreadSearchPostWrapperCount();
+    const loading = options.threadLoadState.isLoading ? ` · cargando ${options.threadLoadState.loadedPages}/${options.threadLoadState.targetPages}` : "";
+    status.textContent = options.hasActiveFilters ? `${visible}/${total} mensajes${loading}` : `${total} mensajes${loading}`;
+  }
+  function renderThreadSearchEmptyState(options) {
+    const posts = options.posts;
+    if (!posts) {
+      return;
+    }
+    let empty = document.getElementById(THREAD_SEARCH_EMPTY_ID);
+    if (!empty) {
+      empty = document.createElement("div");
+      empty.id = THREAD_SEARCH_EMPTY_ID;
+      posts.before(empty);
+    }
+    empty.textContent = options.isLoading ? "No hay mensajes cargados que coincidan con estos filtros." : "No hay mensajes que coincidan con estos filtros.";
+    empty.hidden = !(options.hasActiveFilters && (options.counts?.visible ?? 0) === 0);
+  }
+  function getVisibleThreadSearchPostWrapperCount() {
+    return Array.from(document.querySelectorAll(".fc-premium-post-wrapper")).filter((wrapper) => wrapper instanceof HTMLElement && isVisible(wrapper)).length;
+  }
+
+  // src/app/core/threadPostFilterController.ts
+  function createThreadPostFilterController(options) {
+    const threadPostSearchTextById = new Map;
     function getAuthenticatedUsername() {
       const profileLink = Array.from(document.querySelectorAll("a[href*='member.php?u=']")).find((link) => link instanceof HTMLAnchorElement && normalizeText(link.textContent) === "Tu Perfil");
       const profileUserId = profileLink instanceof HTMLAnchorElement ? toUrl(profileLink.href)?.searchParams.get("u") || "" : "";
@@ -6591,7 +6376,7 @@ body table.tborder:has(.navbar) {
       }
       return normalizeText(document.querySelector("#navbar_username")?.textContent);
     }
-    function getThreadAuthorOptions2(posts = loadedThreadPosts) {
+    function getThreadAuthorOptions2(posts = options.getLoadedThreadPosts()) {
       return getThreadAuthorOptions(posts, getAuthenticatedUsername());
     }
     function resolveThreadAuthorInputValue2(value) {
@@ -6608,17 +6393,20 @@ body table.tborder:has(.navbar) {
       threadPostSearchTextById.set(post.id, text);
       return text;
     }
+    function hasActiveThreadPostFilters() {
+      return Boolean(options.getActiveThreadSearchQuery()) || options.getActiveAuthorFilters().size > 0;
+    }
     function ensureThreadSearchPanel() {
       const existing = document.getElementById(THREAD_SEARCH_PANEL_ID);
       if (existing instanceof HTMLTableElement) {
         return existing;
       }
-      const posts = getPostsElement();
+      const posts = options.getPostsElement();
       if (!posts) {
         return null;
       }
       const panel = ThreadSearchPanel({
-        searchQuery: activeThreadSearchQuery,
+        searchQuery: options.getActiveThreadSearchQuery(),
         onSearchInput: setThreadSearchQuery,
         onAddAuthor: addThreadAuthorFilterFromInput,
         onClearFilters: clearThreadPostFilters
@@ -6627,56 +6415,51 @@ body table.tborder:has(.navbar) {
       return panel;
     }
     function refreshThreadAuthorDatalist2() {
-      refreshThreadAuthorDatalist(getThreadAuthorOptions2(), activeAuthorFilters);
+      refreshThreadAuthorDatalist(getThreadAuthorOptions2(), options.getActiveAuthorFilters());
     }
     function refreshSelectedThreadAuthors2() {
-      refreshSelectedThreadAuthors(activeAuthorFilters, getThreadAuthorOptions2(), removeThreadAuthorFilter);
+      refreshSelectedThreadAuthors(options.getActiveAuthorFilters(), getThreadAuthorOptions2(), removeThreadAuthorFilter);
     }
     function renderThreadSearchStatus2(counts) {
       renderThreadSearchStatus({
         counts,
-        totalPosts: loadedThreadPosts.length,
-        threadLoadState,
+        totalPosts: options.getLoadedThreadPosts().length,
+        threadLoadState: options.getThreadLoadState(),
         hasActiveFilters: hasActiveThreadPostFilters()
       });
     }
     function renderThreadSearchEmptyState2(counts) {
       renderThreadSearchEmptyState({
-        posts: getPostsElement(),
+        posts: options.getPostsElement(),
         counts,
-        isLoading: threadLoadState.isLoading,
+        isLoading: options.getThreadLoadState().isLoading,
         hasActiveFilters: hasActiveThreadPostFilters()
       });
     }
-    function refreshThreadSearchPanel(counts) {
-      if (!isThreadPage()) {
-        return;
-      }
+    function renderThreadSearchPanel(counts) {
       const panel = ensureThreadSearchPanel();
       if (!panel) {
         return;
       }
-      syncThreadSearchTextInput(activeThreadSearchQuery);
+      syncThreadSearchTextInput(options.getActiveThreadSearchQuery());
       refreshThreadAuthorDatalist2();
       refreshSelectedThreadAuthors2();
       renderThreadSearchStatus2(counts);
       renderThreadSearchEmptyState2(counts);
     }
-    function renderThreadSearchPanel(counts) {
-      refreshThreadSearchPanel(counts);
-    }
     function setThreadSearchQuery(query2) {
       const hadFilters = hasActiveThreadPostFilters();
       const nextQuery = normalizeText(query2);
-      if (activeThreadSearchQuery === nextQuery) {
+      if (options.getActiveThreadSearchQuery() === nextQuery) {
         return;
       }
-      activeThreadSearchQuery = nextQuery;
+      options.setActiveThreadSearchQuery(nextQuery);
       updateThreadPostFilters({
         render: hadFilters !== hasActiveThreadPostFilters()
       });
     }
     function addThreadAuthorFilter(authorKey) {
+      const activeAuthorFilters = options.getActiveAuthorFilters();
       if (!authorKey || activeAuthorFilters.has(authorKey)) {
         return;
       }
@@ -6699,7 +6482,7 @@ body table.tborder:has(.navbar) {
       addThreadAuthorFilter(authorKey);
     }
     function removeThreadAuthorFilter(authorKey) {
-      if (!activeAuthorFilters.delete(authorKey)) {
+      if (!options.getActiveAuthorFilters().delete(authorKey)) {
         return;
       }
       updateThreadPostFilters({
@@ -6710,110 +6493,49 @@ body table.tborder:has(.navbar) {
       if (!hasActiveThreadPostFilters()) {
         return;
       }
-      activeThreadSearchQuery = "";
-      activeAuthorFilters.clear();
+      options.setActiveThreadSearchQuery("");
+      options.clearActiveAuthorFilters();
       updateThreadPostFilters({ render: true });
     }
-    function updateThreadPostFilters(options = {}) {
-      const hadGraphView = Boolean(activeGraphView || pendingGraphView);
+    function updateThreadPostFilters(optionsOverride = {}) {
+      const hadGraphView = options.hasGraphViewOrPendingGraphView();
       if (hasActiveThreadPostFilters()) {
-        activeGraphView = null;
-        pendingGraphView = null;
-        activePageFilter = null;
-      } else if (!activePageFilter) {
-        activePageFilter = getPageNumber(new URL(location.href));
+        options.clearGraphViewAndPageFilter();
+      } else if (!options.hasPageFilter()) {
+        options.setPageFilterToCurrentPage();
       }
-      syncThreadStateUrl();
-      if (hadGraphView || options.render) {
-        renderThreadPosts(loadedThreadPosts);
-        renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
+      options.syncThreadStateUrl();
+      if (hadGraphView || optionsOverride.render) {
+        threadPostSearchTextById.clear();
+        options.renderThreadPosts();
+        options.renderThreadSummaryMenu();
         return;
       }
       const counts = applyThreadPostFilters();
-      applyPageFilter();
-      updateOriginalThreadPageMenus2();
-      refreshThreadSearchPanel(counts);
-      refreshNavigation({ reset: true });
-    }
-    function setPageFilter(pageNumber) {
-      if (!isThreadPage()) {
-        return;
-      }
-      activePageFilter = pageNumber;
-      activeGraphView = null;
-      pendingGraphView = null;
-      updateThreadPageUrl(pageNumber, { history: "push" });
-      updateOriginalThreadPageMenus2();
-      renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
-      window.scrollTo({ top: 0, behavior: "auto" });
-    }
-    function togglePageFilter(pageNumber) {
-      if (!isThreadPage()) {
-        return;
-      }
-      if (activePageFilter === pageNumber) {
-        clearPageFilter();
-        return;
-      }
-      setPageFilter(pageNumber);
-    }
-    function clearPageFilter() {
-      setPageFilter(getPageNumber(new URL(location.href)));
-    }
-    function applyPageFilter() {
-      return applyPageFilterToRenderedPosts(getPostsElement(), activePageFilter);
-    }
-    function updateOriginalThreadPageMenus2() {
-      if (!isThreadPage() || threadPages.length <= 1 || activeGraphView) {
-        return;
-      }
-      const totalPages = threadPages.length;
-      const currentPage = activePageFilter || getPageNumber(new URL(location.href));
-      updateOriginalThreadPageMenus({
-        totalPages,
-        currentPage,
-        visiblePages: getVisiblePageNumbers(totalPages, currentPage),
-        hrefForPage: (pageNumber) => getThreadPageUrl(pageNumber).href
-      });
-    }
-    function handleThreadPageNavigationClick(event) {
-      const link = event.target instanceof Element ? event.target.closest("a[href*='showthread.php']") : null;
-      if (!(link instanceof HTMLAnchorElement)) {
-        return;
-      }
-      const pageNumber = getOriginalThreadPageLinkNumber(link, getThreadId(new URL(location.href)));
-      if (!pageNumber) {
-        return;
-      }
-      event.preventDefault();
-      setPageFilter(pageNumber);
-    }
-    function installThreadPageNavigation() {
-      document.addEventListener("click", handleThreadPageNavigationClick, true);
+      options.applyPageFilter();
+      options.updateOriginalThreadPageMenus();
+      renderThreadSearchPanel(counts);
+      options.refreshNavigation({ reset: true });
     }
     function clearThreadFilters() {
-      if (!hasActiveThreadPostFilters() && !activeGraphView) {
+      if (!hasActiveThreadPostFilters() && !options.hasGraphViewOrPendingGraphView()) {
         return;
       }
-      activeThreadSearchQuery = "";
-      activeAuthorFilters.clear();
-      activeGraphView = null;
-      pendingGraphView = null;
-      activePageFilter = getPageNumber(new URL(location.href));
-      updateThreadPageUrl(activePageFilter);
-      updateOriginalThreadPageMenus2();
-      renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
+      options.setActiveThreadSearchQuery("");
+      options.clearActiveAuthorFilters();
+      options.setPageFilterToCurrentPage();
+      options.clearGraphViewAndPageFilter();
+      options.syncThreadStateUrl();
+      options.updateOriginalThreadPageMenus();
+      options.renderThreadPosts();
+      options.renderThreadSummaryMenu();
     }
     function toggleAuthorFilter(author) {
-      if (!isThreadPage()) {
-        return;
-      }
       const authorKey = normalizeAuthorName(author);
       if (!authorKey) {
         return;
       }
+      const activeAuthorFilters = options.getActiveAuthorFilters();
       const hadFilters = hasActiveThreadPostFilters();
       if (activeAuthorFilters.has(authorKey)) {
         activeAuthorFilters.delete(authorKey);
@@ -6824,20 +6546,14 @@ body table.tborder:has(.navbar) {
         render: hadFilters !== hasActiveThreadPostFilters()
       });
     }
-    function clearAuthorFilter() {
-      if (activeAuthorFilters.size === 0) {
-        return;
-      }
-      activeAuthorFilters.clear();
-      updateThreadPostFilters({ render: true });
-    }
     function applyThreadPostFilters() {
-      const query2 = normalizeLayoutText(activeThreadSearchQuery);
+      const query2 = normalizeLayoutText(options.getActiveThreadSearchQuery());
+      const loadedThreadPosts = options.getLoadedThreadPosts();
       const postById = new Map(loadedThreadPosts.map((post) => [post.id, post]));
       return applyThreadPostFiltersToRenderedPosts({
-        posts: getPostsElement(),
+        posts: options.getPostsElement(),
         query: query2,
-        activeAuthorFilters,
+        activeAuthorFilters: options.getActiveAuthorFilters(),
         postById,
         getPostSearchText: getThreadPostSearchText
       });
@@ -6845,121 +6561,454 @@ body table.tborder:has(.navbar) {
     function enhanceAuthorFilterButton2(wrapper, author) {
       enhanceAuthorFilterButton(wrapper, author, toggleAuthorFilter);
     }
-    function setActiveGraphView(type, rootPostId, relatedPostId = null, options = {}) {
-      if (!threadGraph.postById.has(rootPostId)) {
+    return {
+      hasActiveThreadPostFilters,
+      renderThreadSearchPanel,
+      clearThreadPostFilters,
+      clearThreadFilters,
+      applyThreadPostFilters,
+      enhanceAuthorFilterButton: enhanceAuthorFilterButton2
+    };
+  }
+
+  // src/ui/postQuoteDom.ts
+  function enhanceQuoteLinks(options) {
+    for (const link of options.wrapper.querySelectorAll("a[href*='showthread.php?p='][href*='#post']")) {
+      if (!(link instanceof HTMLAnchorElement)) {
+        continue;
+      }
+      const quotedPostId = options.getQuotedPostId(link.getAttribute("href") || link.href);
+      if (!quotedPostId) {
+        continue;
+      }
+      link.dataset.fcPremiumQuoteTarget = quotedPostId;
+      link.title = "Ir al mensaje citado";
+      markQuoteBlock({
+        link,
+        quotedPostId,
+        sourcePostId: options.sourcePostId,
+        onReadConversation: options.onReadConversation
+      });
+      link.addEventListener("click", (event) => {
+        const target = document.getElementById(`post${quotedPostId}`);
+        if (!target) {
+          return;
+        }
+        event.preventDefault();
+        options.onOpenQuotedPost(quotedPostId);
+      });
+    }
+  }
+  function markQuoteBlock(options) {
+    const quoteTable = options.link.closest("table");
+    const quoteWrapper = quoteTable?.parentElement;
+    if (!(quoteWrapper instanceof HTMLElement)) {
+      return;
+    }
+    if (!(quoteTable instanceof HTMLTableElement)) {
+      return;
+    }
+    quoteWrapper.dataset.fcPremiumQuoteBlock = options.quotedPostId;
+    renderQuoteBlockActions({
+      quoteWrapper,
+      quoteLink: options.link,
+      sourcePostId: options.sourcePostId,
+      quotedPostId: options.quotedPostId,
+      onReadConversation: options.onReadConversation
+    });
+    const quoteCell = quoteTable.querySelector("td");
+    const body = Array.from(quoteCell?.children || []).find((child) => child instanceof HTMLElement && child !== options.link.parentElement && child.textContent.trim().length > 0);
+    if (body instanceof HTMLElement) {
+      body.dataset.fcPremiumQuoteBody = "true";
+    }
+  }
+  function renderQuoteBlockActions(options) {
+    if (!options.sourcePostId) {
+      return;
+    }
+    options.quoteWrapper.querySelector(".fc-premium-quote-actions")?.remove();
+    const targetContainer = options.quoteLink.parentElement || options.quoteWrapper;
+    const actions = document.createElement("div");
+    actions.className = "fc-premium-quote-actions";
+    const conversationButton = document.createElement("button");
+    conversationButton.type = "button";
+    conversationButton.textContent = "Ver conversación";
+    conversationButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      options.onReadConversation(options.sourcePostId, options.quotedPostId);
+    });
+    actions.append(conversationButton);
+    targetContainer.append(actions);
+  }
+
+  // src/ui/postNativeDom.ts
+  function getPostStatusImage(wrapper) {
+    const footerRow = getPostFooterRow(wrapper);
+    const image = footerRow?.querySelector("img[src*='statusicon/user_']");
+    return image instanceof HTMLImageElement ? image : null;
+  }
+  function getPostReportLink(wrapper) {
+    const footerRow = getPostFooterRow(wrapper);
+    const link = footerRow?.querySelector("a[href*='report.php?p=']");
+    return link instanceof HTMLAnchorElement ? link : null;
+  }
+  function relocatePostFooterControls(wrapper) {
+    const footerRow = getPostFooterRow(wrapper);
+    const existingActions = wrapper.querySelector(".fc-premium-post-reply-actions");
+    const existingReplyLinks = Array.from(existingActions?.querySelectorAll("a[href*='newreply.php?do=newreply']") || []).filter((link) => link instanceof HTMLAnchorElement);
+    existingActions?.remove();
+    const footerReplyLinks = Array.from(footerRow?.querySelectorAll("a[href*='newreply.php?do=newreply']") || []).filter((link) => link instanceof HTMLAnchorElement);
+    const replyLinks = [...footerReplyLinks, ...existingReplyLinks].filter((link) => !isQuickReplyLink(link) && isQuoteReplyLink(link));
+    for (const link of footerReplyLinks) {
+      if (isQuickReplyLink(link)) {
+        link.remove();
+      }
+    }
+    if (replyLinks.length > 0) {
+      const actions = document.createElement("div");
+      actions.className = "fc-premium-post-reply-actions";
+      for (const link of replyLinks) {
+        actions.append(link);
+      }
+      wrapper.append(actions);
+    }
+    if (footerRow) {
+      footerRow.classList.add("fc-premium-post-footer-row");
+    }
+  }
+  function removeTrailingPostLayoutArtifacts(wrapper) {
+    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
+    const postContainer = table?.closest("div[id^='edit']");
+    if (!(table instanceof HTMLElement) || !postContainer) {
+      return;
+    }
+    let node = table.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      if (isPreservedHiddenPostMenuNode(node)) {
+        node = next;
+        continue;
+      }
+      if (!isRemovableTrailingPostLayoutNode(node)) {
+        break;
+      }
+      node.remove();
+      node = next;
+    }
+  }
+  function getPostFooterRow(wrapper) {
+    const footerSelector = "a[href*='report.php?p='], a[href*='newreply.php?do=newreply'], img[src*='statusicon/user_']";
+    const rows = Array.from(wrapper.querySelectorAll("tr"));
+    return rows.find((row) => {
+      if (!(row instanceof HTMLTableRowElement)) {
+        return false;
+      }
+      return Array.from(row.querySelectorAll(footerSelector)).some((control) => control instanceof HTMLElement && !isInsidePremiumPostUi(control));
+    }) || null;
+  }
+  function isInsidePremiumPostUi(element) {
+    return Boolean(element.closest(".fc-premium-author-hover-card, .fc-premium-post-reply-actions, .fc-premium-quote-actions"));
+  }
+  function isPreservedHiddenPostMenuNode(node) {
+    return node instanceof HTMLElement && (node.classList.contains("vbmenu_popup") || /_menu$/.test(node.id));
+  }
+  function isSpacerImage(image) {
+    const src = image.getAttribute("src") || "";
+    return /nada\.gif|clear\.gif|spacer/i.test(src);
+  }
+  function isEmptyPostSeparatorTable(element) {
+    if (!(element instanceof HTMLTableElement) || !element.classList.contains("cajasprin") || normalizeText(element.textContent)) {
+      return false;
+    }
+    if (element.querySelector("a, button, input, select, textarea")) {
+      return false;
+    }
+    return Array.from(element.querySelectorAll("img")).every((image) => image instanceof HTMLImageElement && isSpacerImage(image));
+  }
+  function isRemovableTrailingPostLayoutNode(node) {
+    if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE) {
+      return true;
+    }
+    if (node instanceof HTMLBRElement) {
+      return true;
+    }
+    return node instanceof HTMLElement && isEmptyPostSeparatorTable(node);
+  }
+
+  // src/ui/postAuthorDom.ts
+  function createHeaderAuthorMeta(post, authorCell, wrapper) {
+    const meta = document.createElement("span");
+    meta.className = "fc-premium-header-author";
+    const authorLink = authorCell?.querySelector(".bigusername");
+    if (authorLink instanceof HTMLAnchorElement) {
+      const link = document.createElement("a");
+      link.href = authorLink.href;
+      link.textContent = post.author || normalizeText(authorLink.textContent);
+      meta.append(link);
+    } else {
+      meta.textContent = post.author;
+    }
+    if (authorCell instanceof HTMLElement) {
+      const card = document.createElement("span");
+      card.className = "fc-premium-author-hover-card";
+      const avatar = getAuthorProfileImage(authorCell);
+      if (avatar) {
+        card.append(avatar);
+      }
+      const title = document.createElement("strong");
+      title.textContent = post.author || "Usuario";
+      card.append(title);
+      for (const line of getAuthorHoverLines(authorCell)) {
+        const detail = document.createElement("span");
+        detail.textContent = line;
+        card.append(detail);
+      }
+      appendAuthorFooterControls(card, wrapper);
+      meta.append(card);
+    }
+    return meta;
+  }
+  function getAuthorHoverLines(authorCell) {
+    const lines = [];
+    const seen = new Set;
+    const addLine = (text) => {
+      const line = normalizeText(text).replace(/\s+filtrar$/, "");
+      if (!line || seen.has(line)) {
         return;
       }
-      activeGraphView = {
-        type,
-        rootPostId,
-        relatedPostId
-      };
-      pendingGraphView = null;
-      activePageFilter = null;
-      syncThreadStateUrl({ history: options.history || "push" });
-      renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
-      if (options.scrollToFirstPost || options.scrollToFirstReply) {
-        const viewPosts = getPostsForGraphView(activeGraphView, threadGraph, loadedThreadPosts);
-        const targetPost = options.scrollToFirstPost ? viewPosts[0] || null : viewPosts.find((post) => post.id !== rootPostId) || null;
-        if (targetPost) {
-          if (options.scrollToFirstReply && activeGraphView.type === "quoted-by") {
-            selectPostById(targetPost.id, { scroll: false, updateUrl: true });
-            selectPostById(rootPostId, { scroll: true, updateUrl: false });
-            selectPostById(targetPost.id, { scroll: false, updateUrl: false });
-            return;
-          }
-          selectPostById(targetPost.id, { scroll: true, updateUrl: true });
+      seen.add(line);
+      lines.push(line);
+    };
+    for (const block of authorCell.querySelectorAll(".smallfont")) {
+      const childDivs = Array.from(block.children).filter((child) => child instanceof HTMLDivElement);
+      if (childDivs.length === 0) {
+        addLine(block.textContent);
+        continue;
+      }
+      for (const child of childDivs) {
+        addLine(child.textContent);
+      }
+    }
+    return lines.slice(0, 8);
+  }
+  function getAuthorProfileImage(authorCell) {
+    const images = Array.from(authorCell.querySelectorAll("img")).filter((image) => {
+      if (!(image instanceof HTMLImageElement)) {
+        return false;
+      }
+      const src = image.getAttribute("src") || "";
+      return Boolean(src) && !/statusicon|clear\.gif|spacer|button/i.test(src);
+    });
+    const avatar = images.find((image) => /customavatar|avatar|profilepic|album/i.test(image.getAttribute("src") || "")) || images.find((image) => {
+      const width = Number(image.getAttribute("width") || image.width || 0);
+      const height = Number(image.getAttribute("height") || image.height || 0);
+      return width >= 40 || height >= 40;
+    });
+    if (!avatar) {
+      return null;
+    }
+    const clone = document.createElement("img");
+    clone.className = "fc-premium-author-avatar";
+    clone.src = avatar.src;
+    clone.alt = avatar.alt || "";
+    clone.loading = "lazy";
+    return clone;
+  }
+  function appendAuthorFooterControls(card, wrapper) {
+    const statusImage = getPostStatusImage(wrapper);
+    const reportLink = getPostReportLink(wrapper);
+    if (!statusImage && !reportLink) {
+      return;
+    }
+    const actions = document.createElement("span");
+    actions.className = "fc-premium-author-card-actions";
+    if (statusImage) {
+      const status = document.createElement("span");
+      status.className = "fc-premium-author-status";
+      const icon = statusImage.cloneNode(true);
+      const label = document.createElement("span");
+      label.textContent = statusImage.title || statusImage.alt || "Estado";
+      status.append(icon, label);
+      actions.append(status);
+    }
+    if (reportLink) {
+      const report = document.createElement("a");
+      const reportImage = reportLink.querySelector("img");
+      report.className = "fc-premium-author-report-link";
+      report.href = reportLink.href;
+      report.rel = reportLink.rel;
+      report.title = reportLink.title || reportImage?.title || reportImage?.alt || "Reportar mensaje";
+      if (reportImage instanceof HTMLImageElement) {
+        report.append(reportImage.cloneNode(true));
+      }
+      const label = document.createElement("span");
+      label.textContent = "Reportar";
+      report.append(label);
+      actions.append(report);
+    }
+    card.append(actions);
+  }
+
+  // src/ui/postHeaderDom.ts
+  function enhanceNativePostHeader(wrapper, post) {
+    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
+    const postCountLink = table?.querySelector(`a[id='postcount${post.id}']`);
+    const numberCell = postCountLink?.closest("td");
+    const headerRow = postCountLink?.closest("tr");
+    const dateCell = Array.from(headerRow?.children || []).find((cell) => cell instanceof HTMLTableCellElement && cell !== numberCell) || null;
+    const authorCellElement = table?.querySelector("td[width='175'][rowspan]");
+    const authorCell = authorCellElement instanceof HTMLElement ? authorCellElement : null;
+    if (authorCell) {
+      authorCell.classList.add("fc-premium-author-cell");
+    }
+    const messageCell = table?.querySelector(`#td_post_${post.id}`);
+    if (messageCell instanceof HTMLElement) {
+      messageCell.classList.add("fc-premium-message-cell");
+    }
+    if (dateCell instanceof HTMLTableCellElement && !dateCell.querySelector(".fc-premium-header-author")) {
+      dateCell.classList.add("fc-premium-post-date-cell");
+      dateCell.append(createHeaderAuthorMeta(post, authorCell, wrapper));
+    }
+    if (numberCell instanceof HTMLTableCellElement) {
+      numberCell.classList.add("fc-premium-post-number-cell");
+    }
+    return {
+      dateCell: dateCell instanceof HTMLTableCellElement ? dateCell : null,
+      numberCell: numberCell instanceof HTMLTableCellElement ? numberCell : null
+    };
+  }
+
+  // src/ui/postCompactLayoutDom.ts
+  function updatePostCompactLayout(wrapper, compact) {
+    const table = wrapper.querySelector(POST_TABLE_SELECTOR);
+    if (!(table instanceof HTMLTableElement)) {
+      return;
+    }
+    const authorCell = table.querySelector(".fc-premium-author-cell");
+    const headerRow = table.rows[0] || null;
+    for (const row of Array.from(table.rows)) {
+      if (row === headerRow) {
+        continue;
+      }
+      const rowHasAuthorCell = Array.from(row.cells).some((cell) => cell.classList.contains("fc-premium-author-cell"));
+      const shouldExpandRow = rowHasAuthorCell || row.cells.length === 1;
+      for (const cell of Array.from(row.cells)) {
+        if (!(cell instanceof HTMLTableCellElement) || cell === authorCell || cell.classList.contains("fc-premium-author-cell")) {
+          continue;
+        }
+        if (compact && shouldExpandRow) {
+          applyCompactColSpan(cell);
+        } else {
+          restoreOriginalColSpan(cell);
         }
       }
     }
-    function activatePendingGraphView() {
-      if (!pendingGraphView || activeGraphView || !threadGraph.postById.has(pendingGraphView.rootPostId)) {
-        return;
-      }
-      activeGraphView = pendingGraphView;
-      pendingGraphView = null;
-      activePageFilter = null;
+  }
+  function rememberCellColSpan(cell) {
+    if (!cell.dataset.fcPremiumOriginalColspan) {
+      cell.dataset.fcPremiumOriginalColspan = String(cell.colSpan || 1);
     }
-    function clearActiveGraphView() {
-      if (!activeGraphView) {
-        return;
-      }
-      activeGraphView = null;
-      pendingGraphView = null;
-      activePageFilter = getPageNumber(new URL(location.href));
-      updateThreadPageUrl(activePageFilter);
-      updateOriginalThreadPageMenus2();
-      renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
+  }
+  function applyCompactColSpan(cell) {
+    rememberCellColSpan(cell);
+    cell.colSpan = Math.max(cell.colSpan, 2);
+  }
+  function restoreOriginalColSpan(cell) {
+    const original = Number(cell.dataset.fcPremiumOriginalColspan || "1");
+    cell.colSpan = Number.isFinite(original) && original > 0 ? original : 1;
+  }
+
+  // src/ui/postReplyBadgeDom.ts
+  function appendReplyBadge(options) {
+    if (options.post.replyCount <= 0 || !options.container) {
+      return;
     }
-    function getValidGraphViewFromQueryState(queryState) {
-      return getValidGraphView(queryState.graphView, threadGraph);
+    const post = options.post;
+    const wrapper = options.container.closest(".fc-premium-post-wrapper");
+    if (wrapper instanceof HTMLElement) {
+      wrapper.dataset.fcPremiumReplyCount = String(post.replyCount);
+      wrapper.dataset.fcPremiumRank = String(options.rank);
     }
-    function applyThreadUrlState(url = new URL(location.href)) {
-      if (!isThreadPage() || loadedThreadPosts.length === 0) {
-        return;
-      }
-      const queryState = readThreadQueryState(url);
-      activeGraphView = getValidGraphViewFromQueryState(queryState);
-      pendingGraphView = null;
-      activePageFilter = activeGraphView ? null : queryState.authorFilters.length > 0 || queryState.searchQuery ? null : queryState.pageFilter || getPageNumber(url);
-      activeAuthorFilters = new Set(queryState.authorFilters);
-      activeThreadSearchQuery = queryState.searchQuery;
-      updateOriginalThreadPageMenus2();
-      renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
-      const hashPostId = getLocationPostHashId(url);
-      if (hashPostId) {
-        selectPostById(hashPostId, { scroll: true, updateUrl: false });
-      } else {
-        window.scrollTo({ top: 0, behavior: "auto" });
-      }
+    const badge = document.createElement("span");
+    badge.className = "fc-premium-reply-badge";
+    badge.textContent = post.replyCount === 1 ? "1 cita" : `${post.replyCount} citas`;
+    appendReplyLinks({
+      badge,
+      post,
+      postById: options.postById,
+      onJumpToPost: options.onJumpToPost,
+      onShowQuotedBy: options.onShowQuotedBy
+    });
+    options.container.append(badge);
+  }
+  function appendReplyLinks(options) {
+    const maxLinks = 3;
+    const visibleReplyIds = options.post.replyingPostIds.slice(0, maxLinks);
+    if (visibleReplyIds.length === 0) {
+      return;
     }
-    function onThreadHistoryPopState() {
-      applyThreadUrlState();
-    }
-    function installThreadHistoryNavigation() {
-      window.addEventListener("popstate", onThreadHistoryPopState);
-    }
-    function getThreadViewPosts2(posts) {
-      return getThreadViewPosts({
-        posts,
-        activeGraphView,
-        graph: threadGraph,
-        shouldPromoteCitedPosts: !activePageFilter && !hasActiveThreadPostFilters()
+    const label = document.createElement("span");
+    label.className = "fc-premium-original-position";
+    label.textContent = "·";
+    options.badge.append(label);
+    for (const replyingPostId of visibleReplyIds) {
+      const reply = options.postById.get(replyingPostId);
+      const link = document.createElement("a");
+      link.href = new URL(`showthread.php?p=${replyingPostId}#post${replyingPostId}`, location.href).href;
+      link.textContent = `#${reply?.postNumber || replyingPostId}`;
+      link.addEventListener("click", (event) => {
+        if (!document.getElementById(`post${replyingPostId}`)) {
+          return;
+        }
+        event.preventDefault();
+        options.onJumpToPost(replyingPostId);
       });
+      options.badge.append(link);
+      options.badge.append(document.createTextNode(" "));
     }
-    function getReplyIndentDepth2(post, index) {
-      return getReplyIndentDepth({
-        post,
-        index,
-        activeGraphView
+    if (options.post.replyingPostIds.length > visibleReplyIds.length) {
+      const remaining = document.createElement("span");
+      remaining.className = "fc-premium-original-position";
+      remaining.textContent = ` +${options.post.replyingPostIds.length - visibleReplyIds.length}`;
+      options.badge.append(remaining);
+    }
+    if (options.post.replyingPostIds.length > 1) {
+      const quotedByButton = document.createElement("button");
+      quotedByButton.type = "button";
+      quotedByButton.textContent = "Ver todas";
+      quotedByButton.title = "Ver citadores";
+      quotedByButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        options.onShowQuotedBy(options.post.id);
       });
+      options.badge.append(quotedByButton);
     }
-    function selectPostById(postId, options = {}) {
+  }
+
+  // src/app/core/threadPostRenderer.ts
+  function createThreadPostRenderer(options) {
+    function selectPostById(postId, selectOptions = {}) {
       const table = document.getElementById(`post${postId}`);
       const wrapper = table?.closest(".fc-premium-post-wrapper");
       if (!(wrapper instanceof HTMLElement)) {
         return;
       }
-      selectNavigationElement(wrapper, options);
+      options.selectNavigationElement(wrapper, selectOptions);
     }
     function enhanceQuoteLinks2(wrapper) {
       enhanceQuoteLinks({
         wrapper,
         sourcePostId: getPostIdFromNavigationElement(wrapper),
         getQuotedPostId,
-        onOpenQuotedPost: jumpToLoadedPost,
+        onOpenQuotedPost: options.jumpToLoadedPost,
         onReadConversation: (sourcePostId, quotedPostId) => {
-          setActiveGraphView("conversation", sourcePostId, quotedPostId, {
+          options.setActiveGraphView("conversation", sourcePostId, quotedPostId, {
             scrollToFirstPost: true
           });
         }
       });
-    }
-    function updateRenderedCompactPostLayouts2() {
-      updateRenderedCompactPostLayouts(compactModeEnabled);
     }
     function renderPost(post, rank, postById, replyIndentDepth) {
       const template = document.createElement("template");
@@ -6974,7 +7023,7 @@ body table.tborder:has(.navbar) {
         wrapper.dataset.fcPremiumReplyIndent = String(replyIndentDepth);
       }
       enhanceQuoteLinks2(wrapper);
-      enhanceAuthorFilterButton2(wrapper, post.author);
+      options.enhanceAuthorFilterButton(wrapper, post.author);
       const header = enhanceNativePostHeader(wrapper, post);
       removeTrailingPostLayoutArtifacts(wrapper);
       relocatePostFooterControls(wrapper);
@@ -6986,37 +7035,38 @@ body table.tborder:has(.navbar) {
         post,
         rank,
         postById,
-        onJumpToPost: jumpToLoadedPost,
+        onJumpToPost: options.jumpToLoadedPost,
         onShowQuotedBy: (postId) => {
-          setActiveGraphView("quoted-by", postId, null, {
+          options.setActiveGraphView("quoted-by", postId, null, {
             scrollToFirstReply: true
           });
         }
       });
-      updatePostCompactLayout(wrapper, compactModeEnabled);
+      updatePostCompactLayout(wrapper, options.compactModeEnabled);
       return wrapper;
     }
     function renderThreadPosts(posts) {
-      const postsElement = getPostsElement();
+      const postsElement = options.getPostsElement();
       if (!postsElement) {
         return;
       }
-      const selectedPostId = pendingInitialHashPostId || getPostIdFromNavigationElement(getSelectedNavigationItem()?.element || undefined);
+      const pendingInitialHashPostId = options.getPendingInitialHashPostId();
+      const selectedPostId = pendingInitialHashPostId || getPostIdFromNavigationElement(options.getSelectedNavigationItem()?.element || undefined);
       postsElement.textContent = "";
-      postsElement.dataset.fcPremiumGraphView = activeGraphView?.type || "";
+      postsElement.dataset.fcPremiumGraphView = options.getActiveGraphView()?.type || "";
       const fragment = document.createDocumentFragment();
       const postById = new Map(posts.map((post) => [post.id, post]));
       const rankByPostId = getReplyRankByPostId(posts);
-      const viewPosts = getThreadViewPosts2(posts);
+      const viewPosts = options.getThreadViewPosts(posts);
       for (const [index, post] of viewPosts.entries()) {
-        fragment.append(renderPost(post, rankByPostId.get(post.id) || 0, postById, getReplyIndentDepth2(post, index)));
+        fragment.append(renderPost(post, rankByPostId.get(post.id) || 0, postById, options.getReplyIndentDepth(post, index)));
       }
       postsElement.append(fragment);
-      const filterCounts = applyThreadPostFilters();
-      applyPageFilter();
-      updateOriginalThreadPageMenus2();
-      renderThreadSearchPanel(filterCounts);
-      refreshNavigation({ reset: true });
+      const filterCounts = options.applyThreadPostFilters();
+      options.applyPageFilter();
+      options.updateOriginalThreadPageMenus();
+      options.renderThreadSearchPanel(filterCounts);
+      options.refreshNavigation({ reset: true });
       if (selectedPostId) {
         const selectedTable = document.getElementById(`post${selectedPostId}`);
         const selectedWrapper = selectedTable?.closest(".fc-premium-post-wrapper");
@@ -7026,116 +7076,400 @@ body table.tborder:has(.navbar) {
             updateUrl: false
           });
           if (selectedPostId === pendingInitialHashPostId) {
-            pendingInitialHashPostId = null;
+            options.clearPendingInitialHashPostId();
           }
         }
       }
     }
+    return {
+      renderThreadPosts,
+      selectPostById
+    };
+  }
+
+  // src/app/core/threadUrlController.ts
+  function createThreadUrlController(options) {
+    function writeCurrentThreadStateQueryParams(url) {
+      clearThreadStateQueryParams(url);
+      const graphView = options.getActiveGraphView() || options.getPendingGraphView();
+      if (graphView) {
+        url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphType, graphView.type);
+        url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphRoot, graphView.rootPostId);
+        if (graphView.relatedPostId) {
+          url.searchParams.set(THREAD_STATE_QUERY_PARAMS.graphRelated, graphView.relatedPostId);
+        }
+      }
+      const searchQuery = options.getActiveThreadSearchQuery();
+      if (searchQuery) {
+        url.searchParams.set(THREAD_STATE_QUERY_PARAMS.searchQuery, searchQuery);
+      }
+      for (const author of options.getActiveAuthorFilters()) {
+        url.searchParams.append(THREAD_STATE_QUERY_PARAMS.authorFilter, author);
+      }
+    }
+    function updateBrowserHistory(url, historyMode) {
+      if (historyMode === "push" && url.href !== location.href) {
+        window.history.pushState(window.history.state, "", url.href);
+        return;
+      }
+      window.history.replaceState(window.history.state, "", url.href);
+    }
+    function syncThreadStateUrl(syncOptions = {}) {
+      if (!isThreadPage()) {
+        return;
+      }
+      const url = new URL(location.href);
+      writeCurrentThreadStateQueryParams(url);
+      updateBrowserHistory(url, syncOptions.history || "replace");
+    }
+    function resolveCurrentThreadId() {
+      return getThreadId(new URL(location.href)) || getThreadIdFromDocument(document) || options.getThreadPages().map((page) => getThreadId(new URL(page.url))).find(Boolean) || null;
+    }
+    function getThreadPageUrl(pageNumber, urlOptions = {}) {
+      const currentUrl = new URL(location.href);
+      const threadId = resolveCurrentThreadId() || "";
+      const url = new URL(currentUrl.origin + currentUrl.pathname);
+      if (threadId) {
+        url.searchParams.set("t", threadId);
+      }
+      if (pageNumber > 1) {
+        url.searchParams.set("page", String(pageNumber));
+      }
+      if (urlOptions.includeState) {
+        writeCurrentThreadStateQueryParams(url);
+      }
+      if (urlOptions.preserveHash) {
+        url.hash = location.hash;
+      }
+      return url;
+    }
+    function updateThreadPageUrl(pageNumber, updateOptions = {}) {
+      const url = getThreadPageUrl(pageNumber, {
+        includeState: true,
+        preserveHash: updateOptions.preserveHash
+      });
+      updateBrowserHistory(url, updateOptions.history || "replace");
+    }
+    function updateSelectedPostUrl(selected) {
+      const postId = getPostIdFromNavigationElement(selected.element);
+      if (!postId) {
+        return;
+      }
+      const threadId = resolveCurrentThreadId();
+      if (!threadId) {
+        return;
+      }
+      const post = options.getLoadedThreadPosts().find((item) => item.id === postId);
+      const url = new URL(location.href);
+      url.search = "";
+      url.searchParams.set("t", threadId);
+      if (post && post.pageNumber > 1) {
+        url.searchParams.set("page", String(post.pageNumber));
+      }
+      writeCurrentThreadStateQueryParams(url);
+      url.hash = `post${postId}`;
+      window.history.replaceState(window.history.state, "", url.href);
+    }
+    function getThreadPagesForTotal(totalPages) {
+      const pages = [];
+      for (let pageNumber = 1;pageNumber <= totalPages; pageNumber += 1) {
+        pages.push({ pageNumber, url: getThreadPageUrl(pageNumber).href });
+      }
+      return pages;
+    }
+    return {
+      writeCurrentThreadStateQueryParams,
+      syncThreadStateUrl,
+      updateSelectedPostUrl,
+      getThreadPagesForTotal,
+      getThreadPageUrl,
+      updateThreadPageUrl
+    };
+  }
+
+  // src/app/core/threadPageController.ts
+  function createThreadPageController() {
+    const initialThreadQueryState = readThreadQueryState();
+    let loadedThreadPosts = [];
+    let threadPages = [];
+    let loadedThreadPageNumbers = new Set;
+    let threadLoadState = {
+      loadedPages: 0,
+      targetPages: 0,
+      totalPages: 0,
+      loadedPosts: 0,
+      isLoading: false
+    };
+    let threadGraph = createEmptyThreadGraph();
+    let activeGraphView = null;
+    let pendingGraphView = initialThreadQueryState.graphView;
+    const compactModeEnabled = true;
+    let activePageFilter = initialThreadQueryState.pageFilter;
+    let activeAuthorFilters = new Set(initialThreadQueryState.authorFilters);
+    let activeThreadSearchQuery = initialThreadQueryState.searchQuery;
+    let pendingInitialHashPostId = getLocationPostHashId();
+    const threadUrlController = createThreadUrlController({
+      getThreadPages: () => threadPages,
+      getLoadedThreadPosts: () => loadedThreadPosts,
+      getActiveGraphView: () => activeGraphView,
+      getPendingGraphView: () => pendingGraphView,
+      getActiveThreadSearchQuery: () => activeThreadSearchQuery,
+      getActiveAuthorFilters: () => activeAuthorFilters
+    });
+    const syncThreadStateUrl = threadUrlController.syncThreadStateUrl;
+    const getThreadPagesForTotal = threadUrlController.getThreadPagesForTotal;
+    const getThreadPageUrl = threadUrlController.getThreadPageUrl;
+    const updateThreadPageUrl = threadUrlController.updateThreadPageUrl;
+    function getPostsElement() {
+      const posts = document.querySelector(POSTS_SELECTOR);
+      return posts instanceof HTMLElement ? posts : null;
+    }
+    const threadPageHeaderController = createThreadPageHeaderController();
+    const prepareThreadPage = threadPageHeaderController.prepareThreadPage;
+    const renderShortcutHelpButton2 = threadPageHeaderController.renderShortcutHelpButton;
+    function collectNavigationItems() {
+      return isThreadPage() ? getPostNavigationItems(getPostsElement()) : [];
+    }
+    const navigationController = createNavigationController({
+      collectNavigationItems,
+      onRenderNavigationStatus: renderNavigationStatus,
+      onUpdateSelectedThreadUrl: threadUrlController.updateSelectedPostUrl,
+      getPostsElement
+    });
+    function renderNavigationStatus(selected) {
+      document.getElementById(NAVIGATION_STATUS_ID)?.remove();
+    }
+    const refreshNavigation = navigationController.refreshNavigation;
+    const moveNavigation = navigationController.moveNavigation;
+    const selectNavigationIndex = navigationController.selectNavigationIndex;
+    const selectNavigationElement = navigationController.selectNavigationElement;
+    const getSelectedNavigationItem = navigationController.getSelectedNavigationItem;
+    const getSelectedPostWrapper2 = navigationController.getSelectedPostWrapper;
+    const getNavigationLength = navigationController.getNavigationLength;
+    function quoteSelectedPost(wrapper) {
+      return clickPostQuoteAction(wrapper);
+    }
+    function toggleSelectedPostMultiquote(wrapper) {
+      return togglePostMultiquote(wrapper, getPostIdFromNavigationElement(wrapper));
+    }
+    function openThreadReplyWithoutQuote2() {
+      return openThreadReplyWithoutQuote(getThreadId(new URL(location.href)));
+    }
+    const threadPageKeyboard = createThreadPageKeyboardController({
+      moveNavigation,
+      selectNavigationIndex,
+      getNavigationLength,
+      refreshNavigation,
+      getActiveGraphView: () => activeGraphView,
+      hasActiveThreadPostFilters: () => hasActiveThreadPostFilters(),
+      openThreadReplyWithoutQuote: openThreadReplyWithoutQuote2,
+      quoteSelectedPost: (wrapper) => quoteSelectedPost(wrapper),
+      toggleSelectedPostMultiquote: (wrapper) => toggleSelectedPostMultiquote(wrapper),
+      getSelectedPostWrapper: getSelectedPostWrapper2,
+      clearThreadFilters: () => clearThreadFilters()
+    });
+    function installKeyboardNavigation() {
+      window.addEventListener("keydown", threadPageKeyboard.handleNavigationKeyDown, true);
+    }
+    function getThreadPages() {
+      const maxPage = getMaxThreadPage(document);
+      return getThreadPagesForTotal(maxPage);
+    }
+    function ensureThreadSummary2() {
+      return ensureThreadSummary(getPostsElement());
+    }
+    function renderThreadSummaryMenu2(summary) {
+      renderThreadSummaryMenu({
+        summary,
+        state: threadLoadState,
+        onRefreshCache: async () => {
+          await clearCurrentThreadCache();
+          location.reload();
+        }
+      });
+    }
+    function jumpToLoadedPost(postId) {
+      const post = loadedThreadPosts.find((item) => item.id === postId);
+      if (post) {
+        activePageFilter = post.pageNumber;
+        updateThreadPageUrl(post.pageNumber);
+        updateOriginalThreadPageMenus2();
+        renderThreadPosts(loadedThreadPosts);
+        renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
+      }
+      selectPostById(postId);
+    }
+    const threadPagePaginationController = createThreadPagePaginationController({
+      getPostsElement,
+      getThreadPages: () => threadPages,
+      getActivePageFilter: () => activePageFilter,
+      setActivePageFilter: (pageNumber) => {
+        activePageFilter = pageNumber;
+      },
+      getActiveGraphView: () => activeGraphView,
+      clearGraphView: () => {
+        activeGraphView = null;
+        pendingGraphView = null;
+      },
+      getThreadPageUrl,
+      updateThreadPageUrl,
+      renderThreadPosts: () => renderThreadPosts(loadedThreadPosts),
+      renderThreadSummaryMenu: () => {
+        renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
+      }
+    });
+    const applyPageFilter = threadPagePaginationController.applyPageFilter;
+    const updateOriginalThreadPageMenus2 = threadPagePaginationController.updateOriginalThreadPageMenus;
+    const installThreadPageNavigation = threadPagePaginationController.installThreadPageNavigation;
+    const threadPostFilterController = createThreadPostFilterController({
+      getPostsElement,
+      getLoadedThreadPosts: () => loadedThreadPosts,
+      getThreadLoadState: () => threadLoadState,
+      getActiveThreadSearchQuery: () => activeThreadSearchQuery,
+      setActiveThreadSearchQuery: (query2) => {
+        activeThreadSearchQuery = query2;
+      },
+      getActiveAuthorFilters: () => activeAuthorFilters,
+      clearActiveAuthorFilters: () => {
+        activeAuthorFilters.clear();
+      },
+      setPageFilterToCurrentPage: () => {
+        activePageFilter = getPageNumber(new URL(location.href));
+      },
+      hasPageFilter: () => Boolean(activePageFilter),
+      hasGraphViewOrPendingGraphView: () => Boolean(activeGraphView || pendingGraphView),
+      clearGraphViewAndPageFilter: () => {
+        activeGraphView = null;
+        pendingGraphView = null;
+        activePageFilter = null;
+      },
+      syncThreadStateUrl,
+      renderThreadPosts: () => renderThreadPosts(loadedThreadPosts),
+      renderThreadSummaryMenu: () => {
+        renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
+      },
+      applyPageFilter,
+      updateOriginalThreadPageMenus: updateOriginalThreadPageMenus2,
+      refreshNavigation
+    });
+    const hasActiveThreadPostFilters = threadPostFilterController.hasActiveThreadPostFilters;
+    const renderThreadSearchPanel = threadPostFilterController.renderThreadSearchPanel;
+    const clearThreadPostFilters = threadPostFilterController.clearThreadPostFilters;
+    const clearThreadFilters = threadPostFilterController.clearThreadFilters;
+    const applyThreadPostFilters = threadPostFilterController.applyThreadPostFilters;
+    const enhanceAuthorFilterButton2 = threadPostFilterController.enhanceAuthorFilterButton;
+    const threadGraphViewController = createThreadGraphViewController({
+      getThreadGraph: () => threadGraph,
+      getLoadedThreadPosts: () => loadedThreadPosts,
+      getActiveGraphView: () => activeGraphView,
+      setActiveGraphViewState: (view) => {
+        activeGraphView = view;
+      },
+      getPendingGraphView: () => pendingGraphView,
+      setPendingGraphView: (view) => {
+        pendingGraphView = view;
+      },
+      getActivePageFilter: () => activePageFilter,
+      setActivePageFilter: (pageNumber) => {
+        activePageFilter = pageNumber;
+      },
+      setActiveAuthorFilters: (authors) => {
+        activeAuthorFilters = authors;
+      },
+      setActiveThreadSearchQuery: (query2) => {
+        activeThreadSearchQuery = query2;
+      },
+      hasActiveThreadPostFilters,
+      syncThreadStateUrl,
+      updateThreadPageUrl,
+      updateOriginalThreadPageMenus: updateOriginalThreadPageMenus2,
+      renderThreadPosts: () => renderThreadPosts(loadedThreadPosts),
+      renderThreadSummaryMenu: () => {
+        renderThreadSummaryMenu2(document.getElementById(THREAD_SUMMARY_ID));
+      },
+      selectPostById: (postId, options) => selectPostById(postId, options)
+    });
+    const setActiveGraphView = threadGraphViewController.setActiveGraphView;
+    const activatePendingGraphView = threadGraphViewController.activatePendingGraphView;
+    const applyThreadUrlState = threadGraphViewController.applyThreadUrlState;
+    const installThreadHistoryNavigation = threadGraphViewController.installThreadHistoryNavigation;
+    const getThreadViewPosts2 = threadGraphViewController.getThreadViewPosts;
+    const getReplyIndentDepth2 = threadGraphViewController.getReplyIndentDepth;
+    const threadPostRenderer = createThreadPostRenderer({
+      compactModeEnabled,
+      getPostsElement,
+      getActiveGraphView: () => activeGraphView,
+      getPendingInitialHashPostId: () => pendingInitialHashPostId,
+      clearPendingInitialHashPostId: () => {
+        pendingInitialHashPostId = null;
+      },
+      getSelectedNavigationItem,
+      getThreadViewPosts: getThreadViewPosts2,
+      getReplyIndentDepth: getReplyIndentDepth2,
+      applyThreadPostFilters,
+      applyPageFilter,
+      updateOriginalThreadPageMenus: updateOriginalThreadPageMenus2,
+      renderThreadSearchPanel,
+      refreshNavigation,
+      selectNavigationElement,
+      enhanceAuthorFilterButton: enhanceAuthorFilterButton2,
+      setActiveGraphView,
+      jumpToLoadedPost
+    });
+    const renderThreadPosts = threadPostRenderer.renderThreadPosts;
+    const selectPostById = threadPostRenderer.selectPostById;
     function hydrateThreadPosts(posts) {
       applyReplyCounts(posts);
       applyOriginalPosterFlags(posts);
       loadedThreadPosts = posts.slice();
       threadGraph = buildThreadGraph(loadedThreadPosts);
-      threadPostSearchTextById.clear();
       activatePendingGraphView();
     }
-    async function enhanceThreadPage() {
-      ensureStyle();
-      hideUnusedTopNavigationBars();
-      hideNativeThreadSearchMenu();
-      enhanceThreadHeader();
-      hideNativeThreadSearchMenu();
-      hideUnusedTopNavigationBars();
-      const summary = ensureThreadSummary2();
-      const queryState = readThreadQueryState();
-      const allPages = getThreadPages();
-      const currentPageNumber = getPageNumber(new URL(location.href));
-      const pages = [
-        ...allPages.filter((page) => page.pageNumber === currentPageNumber),
-        ...allPages.filter((page) => page.pageNumber !== currentPageNumber)
-      ];
-      const allPosts = [];
-      let pageOffset = 0;
-      threadPages = allPages;
-      loadedThreadPosts = [];
-      loadedThreadPageNumbers = new Set;
-      threadGraph = createEmptyThreadGraph();
-      activeGraphView = null;
-      pendingGraphView = queryState.graphView;
-      activePageFilter = queryState.graphView ? null : queryState.authorFilters.length > 0 || queryState.searchQuery ? null : queryState.pageFilter || currentPageNumber;
-      activeAuthorFilters = new Set(queryState.authorFilters);
-      activeThreadSearchQuery = queryState.searchQuery;
-      if (activePageFilter) {
-        updateThreadPageUrl(activePageFilter, {
-          preserveHash: Boolean(pendingInitialHashPostId)
-        });
-      } else {
-        syncThreadStateUrl();
-      }
-      if (!pendingInitialHashPostId) {
-        window.scrollTo({ top: 0, behavior: "auto" });
-      }
-      threadLoadState = {
-        loadedPages: 0,
-        targetPages: pages.length,
-        totalPages: allPages.length,
-        loadedPosts: 0,
-        isLoading: pages.length > 0
-      };
-      if (summary) {
-        summary.textContent = "";
-      }
-      renderThreadSummaryMenu2(summary);
-      renderThreadSearchPanel();
-      const cachedThread = await readCurrentThreadCache();
-      if (cachedThread && isCompleteThreadCache(cachedThread)) {
-        const cachedPages = getThreadPagesForTotal(cachedThread.totalPages);
-        threadPages = cachedPages;
-        loadedThreadPageNumbers = new Set(cachedThread.cachedPageNumbers);
-        hydrateThreadPosts(cachedThread.posts);
-        threadLoadState = {
-          loadedPages: loadedThreadPageNumbers.size,
-          targetPages: cachedThread.totalPages,
-          totalPages: cachedThread.totalPages,
-          loadedPosts: loadedThreadPosts.length,
-          isLoading: false
-        };
-        renderThreadPosts(loadedThreadPosts);
-        renderThreadSummaryMenu2(summary);
-        return;
-      }
-      const currentPageDocument = parseHtml(document.documentElement.outerHTML);
-      for (const page of pages) {
-        const doc = page.pageNumber === currentPageNumber ? currentPageDocument : await fetchThreadDocument(page.url);
-        const pagePosts = collectPosts(doc, page.pageNumber, pageOffset);
-        allPosts.push(...pagePosts);
-        pageOffset += pagePosts.length;
-        loadedThreadPageNumbers.add(page.pageNumber);
-        hydrateThreadPosts(allPosts);
-        threadLoadState = {
-          ...threadLoadState,
-          loadedPages: loadedThreadPageNumbers.size,
-          loadedPosts: loadedThreadPosts.length,
-          isLoading: true
-        };
-        renderThreadPosts(loadedThreadPosts);
-        renderThreadSummaryMenu2(summary);
-        const lastPage = pages[pages.length - 1];
-        if (lastPage && page.pageNumber !== lastPage.pageNumber) {
-          await sleep(PAGE_LOAD_DELAY_MS);
-        }
-      }
-      threadLoadState = {
-        ...threadLoadState,
-        loadedPages: loadedThreadPageNumbers.size,
-        loadedPosts: loadedThreadPosts.length,
-        isLoading: false
-      };
-      renderThreadPosts(loadedThreadPosts);
-      renderThreadSummaryMenu2(summary);
-      if (loadedThreadPageNumbers.size >= pages.length) {
-        await writeCurrentThreadCache(loadedThreadPosts, allPages.length, loadedThreadPageNumbers);
-      }
+    async function enhanceThreadPage2() {
+      await enhanceThreadPage({
+        prepareThreadPage,
+        ensureThreadSummary: ensureThreadSummary2,
+        getThreadPages,
+        getThreadPagesForTotal,
+        getPendingInitialHashPostId: () => pendingInitialHashPostId,
+        setThreadPages: (pages) => {
+          threadPages = pages;
+        },
+        setLoadedThreadPosts: (posts) => {
+          loadedThreadPosts = posts;
+        },
+        setLoadedThreadPageNumbers: (pageNumbers) => {
+          loadedThreadPageNumbers = pageNumbers;
+        },
+        setThreadGraphEmpty: () => {
+          threadGraph = createEmptyThreadGraph();
+        },
+        setActiveGraphView: (view) => {
+          activeGraphView = view;
+        },
+        setPendingGraphView: (view) => {
+          pendingGraphView = view;
+        },
+        setActivePageFilter: (pageNumber) => {
+          activePageFilter = pageNumber;
+        },
+        setActiveAuthorFilters: (authors) => {
+          activeAuthorFilters = authors;
+        },
+        setActiveThreadSearchQuery: (query2) => {
+          activeThreadSearchQuery = query2;
+        },
+        setThreadLoadState: (state) => {
+          threadLoadState = state;
+        },
+        getThreadLoadState: () => threadLoadState,
+        hydrateThreadPosts,
+        renderThreadPosts: () => renderThreadPosts(loadedThreadPosts),
+        renderThreadSummaryMenu: renderThreadSummaryMenu2,
+        renderThreadSearchPanel: () => renderThreadSearchPanel(),
+        updateThreadPageUrl,
+        syncThreadStateUrl
+      });
     }
     async function initialize() {
       if (!isThreadPage()) {
@@ -7143,7 +7477,7 @@ body table.tborder:has(.navbar) {
         return;
       }
       installKeyboardNavigation();
-      await enhanceThreadPage();
+      await enhanceThreadPage2();
       installThreadPageNavigation();
       installThreadHistoryNavigation();
     }

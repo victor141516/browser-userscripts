@@ -9,47 +9,16 @@ import {
   getShortcutHelpItems,
 } from "../../ui/shortcutHelpItems";
 import {
-  ForumLoadingStatus,
-  ForumSidebarToggleButton,
-} from "../../ui/components/ForumControls";
-import {
-  closeHiddenThreadsModal as closeHiddenThreadsModalInDom,
-  ensureHiddenThreadsModal as ensureHiddenThreadsModalInDom,
-  isHiddenThreadsModalOpen as isHiddenThreadsModalOpenInDom,
-  openHiddenThreadsModal as openHiddenThreadsModalInDom,
-  renderHiddenThreadsModalBody as renderHiddenThreadsModalBodyInDom,
-  renderHiddenThreadsToolbarButton as renderHiddenThreadsToolbarButtonInDom,
-} from "../../ui/hiddenThreadsModalDom";
-import { ForumPager } from "../../ui/components/ForumPager";
-import {
-  TagChip,
-  TopTagBar,
-  type TopTagSummary,
-} from "../../ui/components/Tags";
-import {
   STYLE_ID,
   KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB,
-  TOP_TAGS_ID,
-  FORUM_SIDEBAR_TOGGLE_BAR_ID,
-  FORUM_SIDEBAR_TOGGLE_ID,
-  FORUM_CONTROLS_ROW_ID,
-  FORUM_SEARCH_SLOT_ID,
-  FORUM_LOADING_STATUS_ID,
   NAVIGATION_STATUS_ID,
-  FORUM_SIDEBAR_HIDDEN_CLASS,
-  FORUM_SIDEBAR_STORAGE_KEY,
   FORUM_THREAD_CACHE_RECENT_PAGES,
-  FORUM_THREAD_FALLBACK_PAGE_SIZE,
   FORUM_LIVE_SEARCH_DEBOUNCE_MS,
   FORUM_STATE_QUERY_PARAMS,
-  FORUM_LAYOUT_HIDDEN_ATTRIBUTE,
   POSTS_SELECTOR,
-  THREAD_TITLE_SELECTOR,
-  PAGE_LOAD_DELAY_MS,
 } from "../../config/constants";
 import {
   normalizeText,
-  sleep,
   toUrl,
   getThreadId,
   getPageNumber,
@@ -57,69 +26,22 @@ import {
   isForumDisplayPage,
   getForumId,
 } from "../../shared/dom";
-import { findTagsInText, splitTextByTags } from "../../domain/tags";
 import type {
   ForumThreadLoadState,
   ForumThreadRecord,
   NavigationItem,
 } from "../../domain/types";
 import {
-  filterForumThreadRecords,
-  getHiddenForumThreadRecords,
-  getVisibleForumThreadRecords,
-  sortForumThreadRecords,
-} from "../../domain/forumThreads";
-import { getVisiblePageNumbers } from "../../domain/pagination";
-import {
-  clampForumThreadListPage,
-  getForumThreadListPage,
-  getForumThreadListTotalPages,
-  getForumThreadRowsSignature,
-} from "../../domain/forumThreadList";
-import {
-  fetchThreadDocument,
-  parseHtml,
-} from "../../adapters/forocoches/threadParser";
-import {
-  collectForumThreadRecords,
-  getTitleTags,
-} from "../../adapters/forocoches/forumThreadParser";
-import {
-  getForumMainCell,
-  getForumSidebarCell,
-  getForumSidebarSpacerCell,
-  getForumThreadListHeaderTable,
-  getForumThreadsTable,
-  getRelatedForumsPanel,
-  hideElementAndAdjacentSpacers,
-  isForumTopShortcutBar,
-  removeForumTitleTables,
-  setForumLayoutElementHidden,
-  setForumMainCellExpanded,
-  shouldIgnoreTopNavigationTable,
-} from "../../adapters/forocoches/forumLayout";
-import {
-  getThreadTitleTable,
-  moveForumHeaderSearchForm,
-} from "../../adapters/forocoches/threadHeader";
-import {
-  applyHiddenForumThreadRows as applyHiddenForumThreadRowsInDom,
-  renderForumThreadRowsFromHtml,
-  renderVisibleForumThreadTitleTags as renderVisibleForumThreadTitleTagsInDom,
-  restoreForumThreadRowsFromHtml,
-} from "../../adapters/forocoches/forumThreadListDom";
-import {
   clearForumStateQueryParams,
   readForumQueryState,
 } from "../../services/queryState";
-import {
-  cleanupForumThreadCache,
-  readForumThreadCacheRecords,
-  writeForumThreadCacheRecords,
-} from "../../services/threadCache";
 import { isOpenInNewTabKeyboardShortcut } from "../../services/keyboard";
 import { createNavigationController } from "./navigationController";
+import { createForumLayoutController } from "./forumLayoutController";
 import { createForumPageKeyboardController } from "./forumPageKeyboardController";
+import { createForumTagsController } from "./forumTagsController";
+import { createForumThreadCacheController } from "./forumThreadCacheController";
+import { createForumThreadListRenderer } from "./forumThreadListRenderer";
 
 declare const __FC_PREMIUM_CSS__: string;
 
@@ -141,31 +63,11 @@ export function createForumPageController(): ForumPageController {
   let activeForumTagPage = initialForumQueryState.page;
   let activeForumSearchQuery = "";
   let forumLiveSearchTimer = 0;
-  let renderedForumThreadListSignature: string | null = null;
-  let forumThreadsPerPage = FORUM_THREAD_FALLBACK_PAGE_SIZE;
-  let forumThreadScrapeStarted = false;
   let forumThreadLoadState: ForumThreadLoadState = {
     loadedPages: 0,
     targetPages: FORUM_THREAD_CACHE_RECENT_PAGES,
     isLoading: false,
   };
-  let cachedForumThreads: ForumThreadRecord[] = [];
-  let nativeForumThreadRowHtml: string[] = [];
-  let nativeForumThreadHeaderRowHtml: string[] = [];
-  let forumSidebarHidden = getSavedForumSidebarHidden();
-
-  function getSavedForumSidebarHidden(): boolean {
-    const saved = localStorage.getItem(FORUM_SIDEBAR_STORAGE_KEY);
-
-    return saved === null ? true : saved === "true";
-  }
-
-  function setSavedForumSidebarHidden(hidden: boolean) {
-    forumSidebarHidden = hidden;
-    localStorage.setItem(FORUM_SIDEBAR_STORAGE_KEY, String(hidden));
-    applyForumSidebarVisibility();
-  }
-
   function getPostsElement(): HTMLElement | null {
     const posts = document.querySelector(POSTS_SELECTOR);
     return posts instanceof HTMLElement ? posts : null;
@@ -226,8 +128,7 @@ export function createForumPageController(): ForumPageController {
   const moveNavigation = navigationController.moveNavigation;
   const selectNavigationIndex = navigationController.selectNavigationIndex;
   const selectNavigationElement = navigationController.selectNavigationElement;
-  const getSelectedNavigationItem =
-    navigationController.getSelectedNavigationItem;
+  const getSelectedNavigationItem = navigationController.getSelectedNavigationItem;
   const getNavigationLength = navigationController.getNavigationLength;
   const getNavigationItems = navigationController.getNavigationItems;
 
@@ -268,10 +169,7 @@ export function createForumPageController(): ForumPageController {
   }
 
   function renderShortcutHelpButton() {
-    renderShortcutHelpButtonInDom({
-      items: getShortcutHelpItems(),
-      formatKey: formatShortcutHelpKey,
-    });
+    renderShortcutHelpButtonInDom({ items: getShortcutHelpItems(), formatKey: formatShortcutHelpKey });
   }
 
   function installForumKeyboardNavigation(): void {
@@ -296,228 +194,43 @@ export function createForumPageController(): ForumPageController {
     }
   }
 
-  function createTagChip(tag: string): HTMLElement {
-    return TagChip({
-      tag,
-      onToggle: toggleTagFilter,
-    });
-  }
+  const forumTagsController = createForumTagsController({
+    ensureStyle,
+    getActiveTagFilter: () => activeTagFilter,
+    setActiveTagFilter: (tag) => {
+      activeTagFilter = tag;
+    },
+    setActiveForumTagPage: (page) => {
+      activeForumTagPage = page;
+    },
+    syncForumTagUrl,
+    refreshForumTagUi: () => refreshForumTagUi(),
+    getVisibleCachedForumThreadsForCurrentForum,
+  });
 
-  function renderTaggedTitle(title: HTMLAnchorElement) {
-    if (title.dataset.fcPremiumTagsRendered === "true") {
-      return;
-    }
+  const renderTaggedTitle = forumTagsController.renderTaggedTitle;
+  const enhanceThreadTitleTags = forumTagsController.enhanceThreadTitleTags;
+  const renderVisibleForumThreadTitleTags = forumTagsController.renderVisibleForumThreadTitleTags;
+  const clearTagFilter = forumTagsController.clearTagFilter;
+  const renderTopTagBar = forumTagsController.renderTopTagBar;
 
-    const originalTitle = normalizeText(title.textContent);
+  const forumLayoutController = createForumLayoutController({
+    ensureStyle,
+    getPostsElement,
+    getForumThreadLoadState: () => forumThreadLoadState,
+    scheduleForumLiveSearch,
+    getHiddenForumThreadRecordsForCurrentForum,
+    setForumThreadHiddenState: (threadId, hidden) =>
+      setForumThreadHiddenState(threadId, hidden),
+  });
 
-    if (findTagsInText(originalTitle).length === 0) {
-      return;
-    }
-
-    title.dataset.fcPremiumTagsRendered = "true";
-    title.title = originalTitle;
-    title.textContent = "";
-
-    for (const part of splitTextByTags(originalTitle)) {
-      if (part.type === "text") {
-        title.append(document.createTextNode(part.text));
-      } else if (part.tag) {
-        title.append(createTagChip(part.tag));
-      }
-    }
-  }
-
-  function enhanceThreadTitleTags() {
-    ensureStyle();
-
-    for (const title of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
-      if (title instanceof HTMLAnchorElement) {
-        renderTaggedTitle(title);
-      }
-    }
-
-    if (isForumDisplayPage()) {
-      renderTopTagBar();
-    }
-  }
-
-  function getMainContentAnchor(): HTMLElement | null {
-    return getForumThreadsTable() || getPostsElement() || getThreadTitleTable();
-  }
-
-  function isBeforeMainContent(element: HTMLElement): boolean {
-    const anchor = getMainContentAnchor();
-
-    if (anchor && element.contains(anchor)) {
-      return false;
-    }
-
-    return (
-      !anchor ||
-      Boolean(
-        element.compareDocumentPosition(anchor) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      )
-    );
-  }
-
-  function hideUnusedTopNavigationBars() {
-    if (!isForumDisplayPage() && !isThreadPage()) {
-      return;
-    }
-
-    for (const table of document.querySelectorAll("table")) {
-      if (!(table instanceof HTMLTableElement)) {
-        continue;
-      }
-
-      if (shouldIgnoreTopNavigationTable(table)) {
-        continue;
-      }
-
-      if (isBeforeMainContent(table) && isForumTopShortcutBar(table)) {
-        hideElementAndAdjacentSpacers(table);
-      }
-    }
-  }
-
-  function getOrCreateForumSidebarToggleButton(): HTMLButtonElement {
-    const existing = document.getElementById(FORUM_SIDEBAR_TOGGLE_ID);
-    const button = ForumSidebarToggleButton({
-      hidden: forumSidebarHidden,
-      onToggle: () => {
-        setSavedForumSidebarHidden(!forumSidebarHidden);
-      },
-    });
-
-    if (existing instanceof HTMLButtonElement) {
-      existing.replaceWith(button);
-    }
-
-    return button;
-  }
-
-  function getForumToolbarRow(): HTMLTableRowElement | null {
-    const toolsCell = document.getElementById("forumtools");
-    const row = toolsCell?.parentElement;
-
-    return row instanceof HTMLTableRowElement ? row : null;
-  }
-
-  function renderHiddenThreadsToolbarButton() {
-    if (!isForumDisplayPage()) {
-      return;
-    }
-
-    renderHiddenThreadsToolbarButtonInDom({
-      toolbarRow: getForumToolbarRow(),
-      toolsCell: document.getElementById("forumtools"),
-      onOpen: openHiddenThreadsModal,
-    });
-  }
-
-  function ensureHiddenThreadsModal(): HTMLElement {
-    return ensureHiddenThreadsModalInDom({
-      records: getHiddenForumThreadRecordsForCurrentForum(),
-      onClose: closeHiddenThreadsModal,
-      onRestore: (threadId) => {
-        void setForumThreadHiddenState(threadId, false);
-      },
-    });
-  }
-
-  function isHiddenThreadsModalOpen(): boolean {
-    return isHiddenThreadsModalOpenInDom();
-  }
-
-  function closeHiddenThreadsModal() {
-    closeHiddenThreadsModalInDom();
-  }
-
-  function renderHiddenThreadsModalBody() {
-    renderHiddenThreadsModalBodyInDom({
-      modal: ensureHiddenThreadsModal(),
-      records: getHiddenForumThreadRecordsForCurrentForum(),
-      onRestore: (threadId) => {
-        void setForumThreadHiddenState(threadId, false);
-      },
-    });
-  }
-
-  function openHiddenThreadsModal() {
-    openHiddenThreadsModalInDom({
-      modal: ensureHiddenThreadsModal(),
-      records: getHiddenForumThreadRecordsForCurrentForum(),
-      onRestore: (threadId) => {
-        void setForumThreadHiddenState(threadId, false);
-      },
-    });
-  }
-
-  function isNativeForumControlsTable(table: HTMLTableElement): boolean {
-    return Boolean(
-      table.querySelector("a[href*='newthread.php'][href*='do=newthread']") &&
-      table.querySelector(".pagenav"),
-    );
-  }
-
-  function getNativeForumControlsTable(): HTMLTableElement | null {
-    const existing = document.getElementById(FORUM_CONTROLS_ROW_ID);
-
-    if (existing instanceof HTMLTableElement) {
-      return existing;
-    }
-
-    const threadsTable = getForumThreadsTable();
-    const candidates = Array.from(document.querySelectorAll("table")).filter(
-      (table) => {
-        if (!(table instanceof HTMLTableElement)) {
-          return false;
-        }
-
-        if (!isNativeForumControlsTable(table)) {
-          return false;
-        }
-
-        return (
-          !threadsTable ||
-          Boolean(
-            table.compareDocumentPosition(threadsTable) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
-          )
-        );
-      },
-    );
-
-    return candidates[candidates.length - 1] || null;
-  }
-
-  function createForumLoadingStatus(): HTMLElement {
-    return ForumLoadingStatus();
-  }
-
-  function renderForumLoadingStatus() {
-    const status = document.getElementById(FORUM_LOADING_STATUS_ID);
-
-    if (!(status instanceof HTMLElement)) {
-      return;
-    }
-
-    const visible = forumThreadLoadState.isLoading;
-    const loadedPages = Math.min(
-      forumThreadLoadState.loadedPages,
-      forumThreadLoadState.targetPages,
-    );
-    const text = status.querySelector("[data-fc-premium-loading-text]");
-
-    status.dataset.fcPremiumLoading = String(visible);
-    status.setAttribute("aria-hidden", String(!visible));
-    status.title = visible ? "Cargando paginas del foro" : "";
-
-    if (text instanceof HTMLElement) {
-      text.textContent = `Cargando paginas ${loadedPages}/${forumThreadLoadState.targetPages}`;
-    }
-  }
+  const renderForumControlsRow = forumLayoutController.renderForumControlsRow;
+  const renderForumLoadingStatus = forumLayoutController.renderForumLoadingStatus;
+  const enhanceForumDisplayPage = forumLayoutController.enhanceForumDisplayPage;
+  const renderHiddenThreadsToolbarButton = forumLayoutController.renderHiddenThreadsToolbarButton;
+  const isHiddenThreadsModalOpen = forumLayoutController.isHiddenThreadsModalOpen;
+  const closeHiddenThreadsModal = forumLayoutController.closeHiddenThreadsModal;
+  const renderHiddenThreadsModalBody = forumLayoutController.renderHiddenThreadsModalBody;
 
   function setForumThreadLoadState(state: Partial<ForumThreadLoadState>) {
     forumThreadLoadState = {
@@ -546,273 +259,22 @@ export function createForumPageController(): ForumPageController {
     }, FORUM_LIVE_SEARCH_DEBOUNCE_MS);
   }
 
-  function installForumLiveSearch(root: HTMLFormElement | HTMLElement | null) {
-    const input = root?.querySelector("input[name='query']");
-
-    if (!(input instanceof HTMLInputElement)) {
-      return;
-    }
-
-    if (input.dataset.fcPremiumLiveSearchInstalled === "true") {
-      return;
-    }
-
-    input.dataset.fcPremiumLiveSearchInstalled = "true";
-    input.addEventListener("input", () => {
-      scheduleForumLiveSearch(input.value);
-    });
-  }
-
-  function detachMovedForumSearchForm(
-    controlsTable: HTMLTableElement,
-  ): HTMLFormElement | null {
-    const form = document.querySelector(
-      "form[name='busca'][action*='forocoches_search']",
-    );
-
-    if (form instanceof HTMLFormElement && controlsTable.contains(form)) {
-      form.remove();
-      return form;
-    }
-
-    return null;
-  }
-
-  function refreshExistingForumControlsRow(table: HTMLTableElement) {
-    table.classList.add("fc-premium-forum-controls-table");
-    table.removeAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE);
-
-    const toggleCell = table.querySelector(
-      ".fc-premium-forum-sidebar-toggle-cell",
-    );
-
-    if (toggleCell instanceof HTMLTableCellElement) {
-      const button = getOrCreateForumSidebarToggleButton();
-
-      if (!toggleCell.contains(button)) {
-        toggleCell.textContent = "";
-        toggleCell.append(button);
-      }
-    }
-
-    installForumLiveSearch(table);
-
-    if (!document.getElementById(FORUM_LOADING_STATUS_ID)) {
-      const searchCell = table.querySelector(`#${FORUM_SEARCH_SLOT_ID}`);
-
-      if (searchCell instanceof HTMLElement) {
-        searchCell.append(createForumLoadingStatus());
-      }
-    }
-
-    renderForumLoadingStatus();
-  }
-
-  function renderForumControlsRow(): HTMLTableElement | null {
-    const existing = document.getElementById(FORUM_CONTROLS_ROW_ID);
-
-    if (existing instanceof HTMLTableElement) {
-      refreshExistingForumControlsRow(existing);
-      return existing;
-    }
-
-    const table = getNativeForumControlsTable();
-
-    if (!(table instanceof HTMLTableElement)) {
-      renderForumLoadingStatus();
-      return null;
-    }
-
-    const newThreadLink = table.querySelector(
-      "a[href*='newthread.php'][href*='do=newthread']",
-    );
-    const pager = table.querySelector(".pagenav");
-    const searchForm = detachMovedForumSearchForm(table);
-    const button = getOrCreateForumSidebarToggleButton();
-
-    newThreadLink?.remove();
-    pager?.remove();
-    button.remove();
-    table.id = FORUM_CONTROLS_ROW_ID;
-    table.classList.add("fc-premium-forum-controls-table");
-    table.removeAttribute(FORUM_LAYOUT_HIDDEN_ATTRIBUTE);
-
-    const body = table.tBodies[0] || table.createTBody();
-    body.textContent = "";
-
-    const row = body.insertRow();
-
-    const toggleCell = row.insertCell();
-    toggleCell.className = "smallfont fc-premium-forum-sidebar-toggle-cell";
-    toggleCell.append(button);
-
-    const newThreadCell = row.insertCell();
-    newThreadCell.className = "smallfont fc-premium-forum-new-thread-cell";
-
-    if (newThreadLink) {
-      newThreadCell.append(newThreadLink);
-    }
-
-    const searchCell = row.insertCell();
-    searchCell.id = FORUM_SEARCH_SLOT_ID;
-    searchCell.className = "smallfont fc-premium-forum-search-cell";
-
-    if (searchForm) {
-      searchCell.append(searchForm);
-    } else {
-      moveForumHeaderSearchForm(searchCell);
-    }
-
-    installForumLiveSearch(searchCell);
-    searchCell.append(createForumLoadingStatus());
-
-    const pagerCell = row.insertCell();
-    pagerCell.className = "smallfont fc-premium-forum-pager-cell";
-    pagerCell.align = "right";
-
-    if (pager) {
-      pagerCell.append(pager);
-    }
-
-    renderForumLoadingStatus();
-    return table;
-  }
-
-  function renderForumSidebarToggle(mainCell: HTMLTableCellElement) {
-    if (renderForumControlsRow()) {
-      document.getElementById(FORUM_SIDEBAR_TOGGLE_BAR_ID)?.remove();
-      return;
-    }
-
-    let bar = document.getElementById(FORUM_SIDEBAR_TOGGLE_BAR_ID);
-
-    if (!(bar instanceof HTMLElement)) {
-      bar = document.createElement("div");
-      bar.id = FORUM_SIDEBAR_TOGGLE_BAR_ID;
-    }
-
-    bar.textContent = "";
-    bar.append(getOrCreateForumSidebarToggleButton());
-
-    const anchor = getForumThreadListHeaderTable() || getForumThreadsTable();
-
-    if (anchor?.parentElement === mainCell) {
-      mainCell.insertBefore(bar, anchor);
-    } else if (bar.parentElement !== mainCell) {
-      mainCell.prepend(bar);
-    }
-  }
-
-  function applyForumSidebarVisibility() {
-    const panel = getRelatedForumsPanel();
-
-    if (!panel) {
-      return;
-    }
-
-    const sidebarCell = getForumSidebarCell(panel);
-
-    if (!sidebarCell) {
-      return;
-    }
-
-    const mainCell = getForumMainCell(sidebarCell);
-
-    if (!mainCell) {
-      return;
-    }
-
-    document.body.classList.toggle(
-      FORUM_SIDEBAR_HIDDEN_CLASS,
-      forumSidebarHidden,
-    );
-    setForumLayoutElementHidden(sidebarCell, forumSidebarHidden);
-
-    const spacerCell = getForumSidebarSpacerCell(sidebarCell);
-
-    if (spacerCell) {
-      setForumLayoutElementHidden(spacerCell, forumSidebarHidden);
-    }
-
-    setForumMainCellExpanded(mainCell, forumSidebarHidden);
-    renderForumSidebarToggle(mainCell);
-  }
-
-  function enhanceForumDisplayPage() {
-    ensureStyle();
-    hideUnusedTopNavigationBars();
-    removeForumTitleTables();
-    applyForumSidebarVisibility();
-    renderForumControlsRow();
-    renderHiddenThreadsToolbarButton();
-    hideUnusedTopNavigationBars();
-  }
-
-  function getForumThreadRows(): HTMLTableRowElement[] {
-    const table = getForumThreadsTable();
-
-    return table ? Array.from(table.rows) : [];
-  }
-
-  function captureNativeForumThreadRows() {
-    if (nativeForumThreadRowHtml.length > 0) {
-      return;
-    }
-
-    const table = getForumThreadsTable();
-
-    if (!table) {
-      return;
-    }
-
-    const rows = Array.from(table.rows);
-    const firstThreadIndex = rows.findIndex((row) =>
-      row.querySelector(THREAD_TITLE_SELECTOR),
-    );
-
-    const threadRows =
-      firstThreadIndex >= 0 ? rows.slice(firstThreadIndex) : rows;
-    nativeForumThreadHeaderRowHtml =
-      firstThreadIndex > 0
-        ? rows.slice(0, firstThreadIndex).map((row) => row.outerHTML)
-        : [];
-    nativeForumThreadRowHtml = threadRows.map((row) => row.outerHTML);
-    forumThreadsPerPage =
-      threadRows.filter((row) => row.querySelector(THREAD_TITLE_SELECTOR))
-        .length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-    renderedForumThreadListSignature = getForumThreadRowsSignature(
-      nativeForumThreadRowHtml,
-      "native",
-    );
-  }
-
-  function renderVisibleForumThreadTitleTags(
-    root: HTMLElement | Document = document,
-  ) {
-    renderVisibleForumThreadTitleTagsInDom(root, renderTaggedTitle);
-  }
-
   function getCachedForumThreadsForCurrentForum(): ForumThreadRecord[] {
-    const forumId = getForumId();
-
-    return cachedForumThreads.filter((record) => record.forumId === forumId);
+    return forumThreadCacheController.getCachedForumThreadsForCurrentForum();
   }
 
   function getVisibleCachedForumThreadsForCurrentForum(): ForumThreadRecord[] {
-    return getVisibleForumThreadRecords(getCachedForumThreadsForCurrentForum());
+    return forumThreadCacheController.getVisibleCachedForumThreadsForCurrentForum();
   }
 
   function getHiddenForumThreadRecordsForCurrentForum(): ForumThreadRecord[] {
-    return getHiddenForumThreadRecords(getCachedForumThreadsForCurrentForum());
+    return forumThreadCacheController.getHiddenForumThreadRecordsForCurrentForum();
   }
 
   function getForumThreadRecordsForTag(
     tag: string | null,
   ): ForumThreadRecord[] {
-    return filterForumThreadRecords(getCachedForumThreadsForCurrentForum(), {
-      tag,
-      searchQuery: activeForumSearchQuery,
-    });
+    return forumThreadCacheController.getForumThreadRecordsForTag(tag);
   }
 
   function syncForumTagUrl(options: { history?: "push" | "replace" } = {}) {
@@ -852,38 +314,6 @@ export function createForumPageController(): ForumPageController {
     return url;
   }
 
-  function renderNativeForumPagers(total: number) {
-    const pageSize = forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-    const totalPages = getForumThreadListTotalPages(total, pageSize);
-    activeForumTagPage = clampForumThreadListPage(
-      activeForumTagPage,
-      totalPages,
-    );
-
-    for (const pager of document.querySelectorAll(".pagenav")) {
-      if (!(pager instanceof HTMLElement)) {
-        continue;
-      }
-
-      const container = pager.closest("table[width='100%']") || pager;
-
-      if (container instanceof HTMLElement) {
-        setForumLayoutElementHidden(container, false);
-      }
-
-      pager.textContent = "";
-      pager.append(
-        ForumPager({
-          currentPage: activeForumTagPage,
-          totalPages,
-          visiblePages: getVisiblePageNumbers(totalPages, activeForumTagPage),
-          hrefForPage: (pageNumber) => getForumDynamicPageUrl(pageNumber).href,
-          onPageClick: setForumTagPage,
-        }),
-      );
-    }
-  }
-
   function setForumTagPage(pageNumber: number) {
     activeForumTagPage = pageNumber;
     if (!activeForumSearchQuery) {
@@ -893,333 +323,61 @@ export function createForumPageController(): ForumPageController {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
-  function renderForumThreadRows(
-    rowHtmlList: string[],
-    signature: string,
-  ): boolean {
-    const changed = renderForumThreadRowsFromHtml({
-      headerRowHtml: nativeForumThreadHeaderRowHtml,
-      rowHtmlList,
-      signature,
-      currentSignature: renderedForumThreadListSignature,
-      renderTaggedTitle,
-    });
+  const forumThreadCacheController = createForumThreadCacheController({
+    getActiveForumSearchQuery: () => activeForumSearchQuery,
+    setActiveForumSearchQuery: (query) => {
+      activeForumSearchQuery = query;
+    },
+    setActiveTagFilter: (tag) => {
+      activeTagFilter = tag;
+    },
+    setActiveForumTagPage: (page) => {
+      activeForumTagPage = page;
+    },
+    getForumThreadsPerPage: () => getForumThreadsPerPage(),
+    getForumThreadLoadState: () => forumThreadLoadState,
+    setForumThreadLoadState,
+    setNativeForumThreadRows: (rows, pageSize, signatureKey) =>
+      setNativeForumThreadRows(rows, pageSize, signatureKey),
+    applyHiddenForumThreadRows: () => applyHiddenForumThreadRows(),
+    refreshForumTagUi: () => refreshForumTagUi(),
+    renderTopTagBar: () => renderTopTagBar(),
+    updateBrowserHistory,
+    refreshNavigation,
+    getSelectedNavigationItem,
+    getNavigationItems,
+    getNavigationLength,
+    selectNavigationIndex,
+    isHiddenThreadsModalOpen,
+    renderHiddenThreadsModalBody,
+  });
 
-    if (!changed) {
-      return false;
-    }
+  const loadForumDisplayPageWithJavascript = forumThreadCacheController.loadForumDisplayPageWithJavascript;
+  const initializeForumThreadCache = forumThreadCacheController.initializeForumThreadCache;
+  const setForumThreadHiddenState = forumThreadCacheController.setForumThreadHiddenState;
+  const hideSelectedForumThread = forumThreadCacheController.hideSelectedForumThread;
 
-    renderedForumThreadListSignature = signature;
-    return true;
-  }
+  const forumThreadListRenderer = createForumThreadListRenderer({
+    getActiveTagFilter: () => activeTagFilter,
+    getActiveForumTagPage: () => activeForumTagPage,
+    setActiveForumTagPage: (page) => {
+      activeForumTagPage = page;
+    },
+    getActiveForumSearchQuery: () => activeForumSearchQuery,
+    getCachedForumThreadsForCurrentForum,
+    getHiddenForumThreadRecordsForCurrentForum,
+    getForumThreadRecordsForTag,
+    getForumDynamicPageUrl,
+    setForumTagPage,
+    renderTaggedTitle,
+    renderVisibleForumThreadTitleTags: () => renderVisibleForumThreadTitleTags(),
+  });
 
-  function restoreNativeForumThreadRows(): boolean {
-    const nativeSignature = getForumThreadRowsSignature(
-      nativeForumThreadRowHtml,
-      "native",
-    );
-    const changed = restoreForumThreadRowsFromHtml({
-      headerRowHtml: nativeForumThreadHeaderRowHtml,
-      nativeRowHtml: nativeForumThreadRowHtml,
-      nativeSignature,
-      currentSignature: renderedForumThreadListSignature,
-      renderTaggedTitle,
-    });
-
-    if (changed) {
-      renderedForumThreadListSignature = nativeSignature;
-    }
-
-    renderVisibleForumThreadTitleTags();
-    return changed;
-  }
-
-  function applyHiddenForumThreadRows(): void {
-    const hiddenThreadIds = new Set(
-      getHiddenForumThreadRecordsForCurrentForum().map((record) => record.id),
-    );
-    applyHiddenForumThreadRowsInDom(hiddenThreadIds);
-  }
-
-  function renderForumThreadList(): boolean {
-    if (!isForumDisplayPage()) {
-      return false;
-    }
-
-    captureNativeForumThreadRows();
-
-    const cachedForumRecords = getCachedForumThreadsForCurrentForum();
-    const records = getForumThreadRecordsForTag(activeTagFilter);
-
-    if (!activeTagFilter && !activeForumSearchQuery) {
-      const changed = restoreNativeForumThreadRows();
-      applyHiddenForumThreadRows();
-      return changed;
-    }
-
-    if (cachedForumRecords.length === 0) {
-      const changed = restoreNativeForumThreadRows();
-      applyHiddenForumThreadRows();
-      return changed;
-    }
-
-    const page = getForumThreadListPage(
-      records,
-      activeForumTagPage,
-      forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE,
-    );
-    activeForumTagPage = page.currentPage;
-    const signature = getForumThreadRowsSignature(
-      page.rowHtmlList,
-      [
-        "dynamic",
-        activeTagFilter || "",
-        activeForumSearchQuery,
-        page.currentPage,
-        page.pageSize,
-      ].join(":"),
-    );
-    const changed = renderForumThreadRows(page.rowHtmlList, signature);
-
-    renderNativeForumPagers(records.length);
-    return changed;
-  }
-
-  function collectCurrentForumThreadRecords(): ForumThreadRecord[] {
-    const forumId = getForumId();
-
-    if (!forumId) {
-      return [];
-    }
-
-    return collectForumThreadRecords(
-      document,
-      location.href,
-      forumId,
-      getPageNumber(new URL(location.href)),
-      forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE,
-      Date.now(),
-    );
-  }
-
-  function getCurrentForumThreadRecord(
-    threadId: string,
-  ): ForumThreadRecord | null {
-    return (
-      collectCurrentForumThreadRecords().find(
-        (record) => record.id === threadId,
-      ) || null
-    );
-  }
-
-  async function cacheCurrentForumThreadRows(): Promise<void> {
-    const records = collectCurrentForumThreadRecords();
-
-    if (records.length === 0) {
-      return;
-    }
-
-    mergeCachedForumThreadRecords(records);
-    await writeForumThreadCacheRecords(
-      records
-        .map((record) =>
-          cachedForumThreads.find(
-            (cachedRecord) => cachedRecord.id === record.id,
-          ),
-        )
-        .filter((record) => record !== undefined),
-    );
-  }
-
-  async function setForumThreadHiddenState(
-    threadId: string,
-    hidden: boolean,
-  ): Promise<boolean> {
-    if (!isForumDisplayPage() || !threadId) {
-      return false;
-    }
-
-    const now = Date.now();
-    let existing =
-      cachedForumThreads.find((record) => record.id === threadId) ||
-      getCurrentForumThreadRecord(threadId);
-
-    if (hidden && getCachedForumThreadsForCurrentForum().length === 0) {
-      await cacheCurrentForumThreadRows();
-      existing =
-        cachedForumThreads.find((record) => record.id === threadId) || existing;
-    }
-
-    if (!existing) {
-      return false;
-    }
-
-    const record = {
-      ...existing,
-      isHidden: hidden,
-      hiddenAt: hidden ? now : 0,
-      updatedAt: now,
-    };
-
-    cachedForumThreads = cachedForumThreads
-      .filter((cachedRecord) => cachedRecord.id !== threadId)
-      .concat(record);
-
-    await writeForumThreadCacheRecords([record]);
-    cachedForumThreads = await readForumThreadCacheRecords();
-    refreshForumTagUi();
-
-    if (isHiddenThreadsModalOpen()) {
-      renderHiddenThreadsModalBody();
-    }
-
-    return true;
-  }
-
-  async function hideSelectedForumThread(): Promise<boolean> {
-    if (!isForumDisplayPage()) {
-      return false;
-    }
-
-    const selected = getSelectedNavigationItem();
-    const link = selected?.link;
-    const threadId = link ? getThreadId(new URL(link.href)) : null;
-
-    if (!threadId) {
-      return false;
-    }
-
-    const previousIndex = Math.max(
-      getNavigationItems().findIndex((item) => item === selected),
-      0,
-    );
-    const hidden = await setForumThreadHiddenState(threadId, true);
-
-    if (hidden && getNavigationLength() > 0) {
-      selectNavigationIndex(Math.min(previousIndex, getNavigationLength() - 1));
-    }
-
-    return hidden;
-  }
-
-  function mergeCachedForumThreadRecords(records: ForumThreadRecord[]) {
-    if (records.length === 0) {
-      return;
-    }
-
-    const byId = new Map(
-      cachedForumThreads.map((record) => [record.id, record]),
-    );
-
-    for (const record of records) {
-      const previous = byId.get(record.id);
-      byId.set(record.id, {
-        ...record,
-        isHidden: Boolean(previous?.isHidden || record.isHidden),
-        hiddenAt: previous?.hiddenAt || record.hiddenAt || 0,
-      });
-    }
-
-    cachedForumThreads = Array.from(byId.values());
-  }
-
-  function getForumRecentPageUrl(pageNumber: number): URL {
-    const url = new URL(location.href);
-    clearForumStateQueryParams(url);
-    url.hash = "";
-    url.searchParams.delete("page");
-
-    if (pageNumber > 1) {
-      url.searchParams.set("page", String(pageNumber));
-    }
-
-    return url;
-  }
-
-  function replaceForumPagersFromDocument(doc: Document): void {
-    const currentPagers = Array.from(document.querySelectorAll(".pagenav"));
-    const nextPagers = Array.from(doc.querySelectorAll(".pagenav"));
-
-    currentPagers.forEach((pager, index) => {
-      const nextPager = nextPagers[index];
-
-      if (pager instanceof HTMLElement && nextPager instanceof HTMLElement) {
-        pager.innerHTML = nextPager.innerHTML;
-      }
-    });
-  }
-
-  async function loadForumDisplayPageWithJavascript(url: URL): Promise<void> {
-    const forumId = getForumId(url);
-
-    if (!forumId) {
-      location.href = url.href;
-      return;
-    }
-
-    setForumThreadLoadState({ isLoading: true });
-
-    try {
-      const pageNumber = getPageNumber(url);
-      const doc =
-        pageNumber === getPageNumber(new URL(location.href)) &&
-        url.pathname === location.pathname
-          ? parseHtml(document.documentElement.outerHTML)
-          : await fetchThreadDocument(url.href);
-      const records = collectForumThreadRecords(
-        doc,
-        url.href,
-        forumId,
-        pageNumber,
-        forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE,
-        Date.now(),
-      );
-
-      if (records.length === 0) {
-        location.href = url.href;
-        return;
-      }
-
-      replaceForumPagersFromDocument(doc);
-      activeTagFilter = null;
-      activeForumSearchQuery = "";
-      activeForumTagPage = pageNumber;
-      nativeForumThreadRowHtml = records.map((record) => record.html);
-      forumThreadsPerPage = records.length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
-      renderedForumThreadListSignature = null;
-      renderForumThreadRows(
-        nativeForumThreadRowHtml,
-        getForumThreadRowsSignature(
-          nativeForumThreadRowHtml,
-          `native-page-${pageNumber}`,
-        ),
-      );
-      applyHiddenForumThreadRows();
-      updateBrowserHistory(url, "push");
-      mergeCachedForumThreadRecords(records);
-      await writeForumThreadCacheRecords(
-        records
-          .map((record) =>
-            cachedForumThreads.find(
-              (cachedRecord) => cachedRecord.id === record.id,
-            ),
-          )
-          .filter((record) => record !== undefined),
-      );
-      cachedForumThreads = await readForumThreadCacheRecords();
-      renderTopTagBar();
-      refreshNavigation({ reset: true });
-      window.scrollTo({ top: 0, behavior: "auto" });
-    } catch (error) {
-      console.warn(
-        "Forocoches Premium: no se pudo cargar la pagina del foro con JavaScript",
-        error,
-      );
-      location.href = url.href;
-    } finally {
-      setForumThreadLoadState({ isLoading: false });
-    }
-  }
+  const captureNativeForumThreadRows = forumThreadListRenderer.captureNativeForumThreadRows;
+  const getForumThreadsPerPage = forumThreadListRenderer.getForumThreadsPerPage;
+  const setNativeForumThreadRows = forumThreadListRenderer.setNativeForumThreadRows;
+  const applyHiddenForumThreadRows = forumThreadListRenderer.applyHiddenForumThreadRows;
+  const renderForumThreadList = forumThreadListRenderer.renderForumThreadList;
 
   function handleForumPageNavigationClick(event: MouseEvent): void {
     if (
@@ -1283,125 +441,6 @@ export function createForumPageController(): ForumPageController {
     refreshNavigation({ reset: threadListChanged });
   }
 
-  async function scrapeForumThreadPage(
-    pageNumber: number,
-    scrapeStartedAt: number,
-  ): Promise<ForumThreadRecord[]> {
-    const forumId = getForumId();
-
-    if (!forumId) {
-      return [];
-    }
-
-    const url = getForumRecentPageUrl(pageNumber);
-    const doc =
-      pageNumber === 1 && getPageNumber(new URL(location.href)) === 1
-        ? document
-        : await fetchThreadDocument(url.href);
-
-    return collectForumThreadRecords(
-      doc,
-      url.href,
-      forumId,
-      pageNumber,
-      forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE,
-      scrapeStartedAt,
-    );
-  }
-
-  async function saveScrapedForumThreadRecords(
-    records: ForumThreadRecord[],
-  ): Promise<void> {
-    mergeCachedForumThreadRecords(records);
-    await writeForumThreadCacheRecords(
-      records
-        .map((record) =>
-          cachedForumThreads.find(
-            (cachedRecord) => cachedRecord.id === record.id,
-          ),
-        )
-        .filter((record) => record !== undefined),
-    );
-    cachedForumThreads = await readForumThreadCacheRecords();
-    refreshForumTagUi();
-  }
-
-  async function scrapeRecentForumThreadPages(
-    startPage: number,
-    scrapeStartedAt: number,
-  ): Promise<void> {
-    if (forumThreadScrapeStarted || !isForumDisplayPage()) {
-      return;
-    }
-
-    forumThreadScrapeStarted = true;
-    setForumThreadLoadState({ isLoading: true });
-
-    for (
-      let pageNumber = startPage;
-      pageNumber <= FORUM_THREAD_CACHE_RECENT_PAGES;
-      pageNumber += 1
-    ) {
-      try {
-        const records = await scrapeForumThreadPage(
-          pageNumber,
-          scrapeStartedAt,
-        );
-        await saveScrapedForumThreadRecords(records);
-      } catch (error) {
-        console.warn(
-          `Forocoches Premium: no se pudo cachear la pagina ${pageNumber} del foro`,
-          error,
-        );
-      } finally {
-        setForumThreadLoadState({
-          loadedPages: Math.max(forumThreadLoadState.loadedPages, pageNumber),
-        });
-      }
-
-      if (pageNumber < FORUM_THREAD_CACHE_RECENT_PAGES) {
-        await sleep(PAGE_LOAD_DELAY_MS);
-      }
-    }
-
-    await cleanupForumThreadCache();
-    cachedForumThreads = await readForumThreadCacheRecords();
-    setForumThreadLoadState({
-      loadedPages: FORUM_THREAD_CACHE_RECENT_PAGES,
-      isLoading: false,
-    });
-    refreshForumTagUi();
-  }
-
-  async function initializeForumThreadCache(): Promise<void> {
-    captureNativeForumThreadRows();
-    cachedForumThreads = await readForumThreadCacheRecords();
-    setForumThreadLoadState({
-      loadedPages: 0,
-      targetPages: FORUM_THREAD_CACHE_RECENT_PAGES,
-      isLoading: true,
-    });
-
-    const scrapeStartedAt = Date.now();
-
-    try {
-      const firstPageRecords = await scrapeForumThreadPage(1, scrapeStartedAt);
-      await saveScrapedForumThreadRecords(firstPageRecords);
-    } catch (error) {
-      console.warn(
-        "Forocoches Premium: no se pudo cachear la primera pagina del foro",
-        error,
-      );
-      refreshForumTagUi();
-    } finally {
-      setForumThreadLoadState({
-        loadedPages: Math.max(forumThreadLoadState.loadedPages, 1),
-      });
-    }
-
-    void scrapeRecentForumThreadPages(2, scrapeStartedAt);
-  }
-
   function applyForumUrlState() {
     if (!isForumDisplayPage()) {
       return;
@@ -1415,120 +454,6 @@ export function createForumPageController(): ForumPageController {
 
   function installForumHistoryNavigation() {
     window.addEventListener("popstate", applyForumUrlState);
-  }
-
-  function toggleTagFilter(tag: string) {
-    if (!isForumDisplayPage()) {
-      return;
-    }
-
-    activeTagFilter = activeTagFilter === tag ? null : tag;
-    activeForumTagPage = 1;
-    syncForumTagUrl({ history: "push" });
-    refreshForumTagUi();
-  }
-
-  function clearTagFilter() {
-    if (!activeTagFilter) {
-      return;
-    }
-
-    activeTagFilter = null;
-    activeForumTagPage = 1;
-    syncForumTagUrl({ history: "push" });
-    refreshForumTagUi();
-  }
-
-  function getTopTitleTags(): TopTagSummary[] {
-    const tagsByName = new Map<string, TopTagSummary>();
-    let titleIndex = 0;
-    const forumRecords = getVisibleCachedForumThreadsForCurrentForum();
-
-    if (forumRecords.length > 0) {
-      for (const record of sortForumThreadRecords(forumRecords)) {
-        for (const tag of record.tags) {
-          const summary = tagsByName.get(tag);
-
-          if (summary) {
-            summary.count += 1;
-          } else {
-            tagsByName.set(tag, {
-              tag,
-              count: 1,
-              firstIndex: titleIndex,
-            });
-          }
-        }
-
-        titleIndex += 1;
-      }
-
-      return Array.from(tagsByName.values())
-        .sort((left, right) => {
-          if (left.count !== right.count) {
-            return right.count - left.count;
-          }
-
-          return left.firstIndex - right.firstIndex;
-        })
-        .slice(0, 12);
-    }
-
-    for (const title of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
-      if (!(title instanceof HTMLAnchorElement)) {
-        continue;
-      }
-
-      for (const tag of getTitleTags(title)) {
-        const summary = tagsByName.get(tag);
-
-        if (summary) {
-          summary.count += 1;
-        } else {
-          tagsByName.set(tag, { tag, count: 1, firstIndex: titleIndex });
-        }
-      }
-
-      titleIndex += 1;
-    }
-
-    return Array.from(tagsByName.values())
-      .sort((left, right) => {
-        if (left.count !== right.count) {
-          return right.count - left.count;
-        }
-
-        return left.firstIndex - right.firstIndex;
-      })
-      .slice(0, 12);
-  }
-
-  function renderTopTagBar() {
-    document.getElementById(TOP_TAGS_ID)?.remove();
-
-    if (!isForumDisplayPage()) {
-      return;
-    }
-
-    const topTags = getTopTitleTags();
-
-    if (topTags.length === 0) {
-      return;
-    }
-
-    const table = getForumThreadsTable();
-
-    if (!table?.parentElement) {
-      return;
-    }
-
-    table.before(
-      TopTagBar({
-        tags: topTags,
-        activeTag: activeTagFilter,
-        onToggle: toggleTagFilter,
-      }),
-    );
   }
 
   function initForumPage(): void {

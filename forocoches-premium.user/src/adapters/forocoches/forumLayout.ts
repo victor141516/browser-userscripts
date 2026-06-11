@@ -173,6 +173,38 @@ export function shouldIgnoreTopNavigationTable(
   );
 }
 
+export function hideTopShortcutBarsBefore(anchor: HTMLElement | null): void {
+  for (const table of document.querySelectorAll("table")) {
+    if (!(table instanceof HTMLTableElement)) {
+      continue;
+    }
+
+    if (shouldIgnoreTopNavigationTable(table)) {
+      continue;
+    }
+
+    if (isBeforeMainContent(table, anchor) && isForumTopShortcutBar(table)) {
+      hideElementAndAdjacentSpacers(table);
+    }
+  }
+}
+
+function isBeforeMainContent(
+  element: HTMLElement,
+  anchor: HTMLElement | null,
+): boolean {
+  if (anchor && element.contains(anchor)) {
+    return false;
+  }
+
+  return (
+    !anchor ||
+    Boolean(
+      element.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  );
+}
+
 export function setForumMainCellExpanded(
   mainCell: HTMLTableCellElement,
   expanded: boolean,
