@@ -2302,6 +2302,7 @@
     }
   }
   // src/adapters/forocoches/threadParser.ts
+  var FETCH_THREAD_DOCUMENT_TIMEOUT_MS = 1e4;
   function getMaxThreadPage(doc) {
     const currentUrl = new URL(location.href);
     const currentThreadId = getThreadId(currentUrl) || getThreadIdFromDocument(doc);
@@ -2407,14 +2408,39 @@
     return new DOMParser().parseFromString(html, "text/html");
   }
   async function fetchThreadDocument(url) {
-    const response = await fetch(url, {
-      cache: "no-cache",
-      credentials: "same-origin"
-    });
-    if (!response.ok) {
-      throw new Error(`Could not load ${url}: ${response.status}`);
+    const controller = new AbortController;
+    const timeoutId = window.setTimeout(() => controller.abort(), FETCH_THREAD_DOCUMENT_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        cache: "no-cache",
+        credentials: "same-origin",
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        throw new Error(`Could not load ${url}: ${response.status}`);
+      }
+      return parseHtml(await response.text());
+    } finally {
+      window.clearTimeout(timeoutId);
     }
-    return parseHtml(await response.text());
+  }
+
+  // src/app/core/cacheOperation.ts
+  async function runCacheOperation(operation, fallback, label, timeoutMs = 3000) {
+    let timeoutId = 0;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise((resolve) => {
+          timeoutId = window.setTimeout(() => resolve(fallback), timeoutMs);
+        })
+      ]);
+    } catch (error) {
+      console.warn(`Forocoches Premium: fallo en cache (${label})`, error);
+      return fallback;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
   }
 
   // src/app/core/forumThreadCacheController.ts
@@ -2468,7 +2494,7 @@
         return;
       }
       mergeCachedForumThreadRecords(records);
-      await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
+      await runCacheOperation(writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined)), undefined, "guardar pagina actual");
     }
     async function setForumThreadHiddenState(threadId, hidden) {
       if (!threadId) {
@@ -2490,8 +2516,7 @@
         updatedAt: now
       };
       cachedForumThreads = cachedForumThreads.filter((cachedRecord) => cachedRecord.id !== threadId).concat(record);
-      await writeForumThreadCacheRecords([record]);
-      cachedForumThreads = await readForumThreadCacheRecords();
+      await runCacheOperation(writeForumThreadCacheRecords([record]), undefined, "guardar hilo oculto");
       options.refreshForumTagUi();
       if (options.isHiddenThreadsModalOpen()) {
         options.renderHiddenThreadsModalBody();
@@ -2555,8 +2580,7 @@
         options.applyHiddenForumThreadRows();
         options.updateBrowserHistory(url, "push");
         mergeCachedForumThreadRecords(records);
-        await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
-        cachedForumThreads = await readForumThreadCacheRecords();
+        await runCacheOperation(writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined)), undefined, "guardar pagina navegada");
         options.renderTopTagBar();
         options.refreshNavigation({ reset: true });
         window.scrollTo({ top: 0, behavior: "auto" });
@@ -2578,8 +2602,7 @@
     }
     async function saveScrapedForumThreadRecords(records) {
       mergeCachedForumThreadRecords(records);
-      await writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined));
-      cachedForumThreads = await readForumThreadCacheRecords();
+      runCacheOperation(writeForumThreadCacheRecords(records.map((record) => cachedForumThreads.find((cachedRecord) => cachedRecord.id === record.id)).filter((record) => record !== undefined)), undefined, "guardar scrape");
       options.refreshForumTagUi();
     }
     async function scrapeRecentForumThreadPages(startPage, scrapeStartedAt) {
@@ -2591,6 +2614,9 @@
       for (let pageNumber = startPage;pageNumber <= FORUM_THREAD_CACHE_RECENT_PAGES; pageNumber += 1) {
         try {
           const records = await scrapeForumThreadPage(pageNumber, scrapeStartedAt);
+          options.setForumThreadLoadState({
+            loadedPages: Math.max(options.getForumThreadLoadState().loadedPages, pageNumber)
+          });
           await saveScrapedForumThreadRecords(records);
         } catch (error) {
           console.warn(`Forocoches Premium: no se pudo cachear la pagina ${pageNumber} del foro`, error);
@@ -2603,16 +2629,19 @@
           await sleep(PAGE_LOAD_DELAY_MS);
         }
       }
-      await cleanupForumThreadCache();
-      cachedForumThreads = await readForumThreadCacheRecords();
-      options.setForumThreadLoadState({
-        loadedPages: FORUM_THREAD_CACHE_RECENT_PAGES,
-        isLoading: false
-      });
-      options.refreshForumTagUi();
+      try {
+        await runCacheOperation(cleanupForumThreadCache(), undefined, "limpiar cache");
+        cachedForumThreads = await runCacheOperation(readForumThreadCacheRecords(), cachedForumThreads, "leer cache final");
+      } finally {
+        options.setForumThreadLoadState({
+          loadedPages: FORUM_THREAD_CACHE_RECENT_PAGES,
+          isLoading: false
+        });
+        options.refreshForumTagUi();
+      }
     }
     async function initializeForumThreadCache() {
-      cachedForumThreads = await readForumThreadCacheRecords();
+      cachedForumThreads = await runCacheOperation(readForumThreadCacheRecords(), [], "leer cache inicial");
       options.setForumThreadLoadState({
         loadedPages: 0,
         targetPages: FORUM_THREAD_CACHE_RECENT_PAGES,
@@ -2731,6 +2760,7 @@
     let forumThreadsPerPage = FORUM_THREAD_FALLBACK_PAGE_SIZE;
     let nativeForumThreadRowHtml = [];
     let nativeForumThreadHeaderRowHtml = [];
+    let nativeForumPagerHtml = [];
     function captureNativeForumThreadRows() {
       if (nativeForumThreadRowHtml.length > 0) {
         return;
@@ -2746,6 +2776,28 @@
       nativeForumThreadRowHtml = threadRows.map((row) => row.outerHTML);
       forumThreadsPerPage = threadRows.filter((row) => row.querySelector(THREAD_TITLE_SELECTOR)).length || FORUM_THREAD_FALLBACK_PAGE_SIZE;
       renderedForumThreadListSignature = getForumThreadRowsSignature(nativeForumThreadRowHtml, "native");
+      captureNativeForumPagers();
+    }
+    function captureNativeForumPagers() {
+      if (nativeForumPagerHtml.length > 0) {
+        return;
+      }
+      nativeForumPagerHtml = Array.from(document.querySelectorAll(".pagenav")).filter((pager) => pager instanceof HTMLElement).map((pager) => pager.innerHTML);
+    }
+    function replaceNativeForumPagers() {
+      nativeForumPagerHtml = Array.from(document.querySelectorAll(".pagenav")).filter((pager) => pager instanceof HTMLElement).map((pager) => pager.innerHTML);
+    }
+    function restoreNativeForumPagers() {
+      for (const [index, pager] of Array.from(document.querySelectorAll(".pagenav")).entries()) {
+        if (!(pager instanceof HTMLElement) || !nativeForumPagerHtml[index]) {
+          continue;
+        }
+        const container = pager.closest("table[width='100%']") || pager;
+        if (container instanceof HTMLElement) {
+          setForumLayoutElementHidden(container, false);
+        }
+        pager.innerHTML = nativeForumPagerHtml[index];
+      }
     }
     function getForumThreadsPerPage() {
       return forumThreadsPerPage || FORUM_THREAD_FALLBACK_PAGE_SIZE;
@@ -2794,6 +2846,7 @@
       nativeForumThreadRowHtml = rowHtmlList;
       forumThreadsPerPage = pageSize || FORUM_THREAD_FALLBACK_PAGE_SIZE;
       renderedForumThreadListSignature = null;
+      replaceNativeForumPagers();
       return renderForumThreadRows(nativeForumThreadRowHtml, getForumThreadRowsSignature(nativeForumThreadRowHtml, signatureKey));
     }
     function restoreNativeForumThreadRows() {
@@ -2808,6 +2861,7 @@
       if (changed) {
         renderedForumThreadListSignature = nativeSignature;
       }
+      restoreNativeForumPagers();
       options.renderVisibleForumThreadTitleTags();
       return changed;
     }

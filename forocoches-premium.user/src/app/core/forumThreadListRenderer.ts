@@ -55,6 +55,7 @@ export function createForumThreadListRenderer(
   let forumThreadsPerPage = FORUM_THREAD_FALLBACK_PAGE_SIZE;
   let nativeForumThreadRowHtml: string[] = [];
   let nativeForumThreadHeaderRowHtml: string[] = [];
+  let nativeForumPagerHtml: string[] = [];
 
   function captureNativeForumThreadRows() {
     if (nativeForumThreadRowHtml.length > 0) {
@@ -86,6 +87,41 @@ export function createForumThreadListRenderer(
       nativeForumThreadRowHtml,
       "native",
     );
+    captureNativeForumPagers();
+  }
+
+  function captureNativeForumPagers(): void {
+    if (nativeForumPagerHtml.length > 0) {
+      return;
+    }
+
+    nativeForumPagerHtml = Array.from(document.querySelectorAll(".pagenav"))
+      .filter((pager) => pager instanceof HTMLElement)
+      .map((pager) => pager.innerHTML);
+  }
+
+  function replaceNativeForumPagers(): void {
+    nativeForumPagerHtml = Array.from(document.querySelectorAll(".pagenav"))
+      .filter((pager) => pager instanceof HTMLElement)
+      .map((pager) => pager.innerHTML);
+  }
+
+  function restoreNativeForumPagers(): void {
+    for (const [index, pager] of Array.from(
+      document.querySelectorAll(".pagenav"),
+    ).entries()) {
+      if (!(pager instanceof HTMLElement) || !nativeForumPagerHtml[index]) {
+        continue;
+      }
+
+      const container = pager.closest("table[width='100%']") || pager;
+
+      if (container instanceof HTMLElement) {
+        setForumLayoutElementHidden(container, false);
+      }
+
+      pager.innerHTML = nativeForumPagerHtml[index];
+    }
   }
 
   function getForumThreadsPerPage(): number {
@@ -157,6 +193,7 @@ export function createForumThreadListRenderer(
     nativeForumThreadRowHtml = rowHtmlList;
     forumThreadsPerPage = pageSize || FORUM_THREAD_FALLBACK_PAGE_SIZE;
     renderedForumThreadListSignature = null;
+    replaceNativeForumPagers();
 
     return renderForumThreadRows(
       nativeForumThreadRowHtml,
@@ -181,6 +218,7 @@ export function createForumThreadListRenderer(
       renderedForumThreadListSignature = nativeSignature;
     }
 
+    restoreNativeForumPagers();
     options.renderVisibleForumThreadTitleTags();
     return changed;
   }

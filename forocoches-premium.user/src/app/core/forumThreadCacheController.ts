@@ -20,6 +20,7 @@ import {
 } from "../../adapters/forocoches/threadParser";
 import { collectForumThreadRecords } from "../../adapters/forocoches/forumThreadParser";
 import { clearForumStateQueryParams } from "../../services/queryState";
+import { runCacheOperation } from "./cacheOperation";
 
 export interface ForumThreadCacheControllerOptions {
   getActiveForumSearchQuery: () => string;
@@ -147,14 +148,18 @@ export function createForumThreadCacheController(
     }
 
     mergeCachedForumThreadRecords(records);
-    await writeForumThreadCacheRecords(
-      records
-        .map((record) =>
-          cachedForumThreads.find(
-            (cachedRecord) => cachedRecord.id === record.id,
-          ),
-        )
-        .filter((record) => record !== undefined),
+    await runCacheOperation(
+      writeForumThreadCacheRecords(
+        records
+          .map((record) =>
+            cachedForumThreads.find(
+              (cachedRecord) => cachedRecord.id === record.id,
+            ),
+          )
+          .filter((record) => record !== undefined),
+      ),
+      undefined,
+      "guardar pagina actual",
     );
   }
 
@@ -192,8 +197,11 @@ export function createForumThreadCacheController(
       .filter((cachedRecord) => cachedRecord.id !== threadId)
       .concat(record);
 
-    await writeForumThreadCacheRecords([record]);
-    cachedForumThreads = await readForumThreadCacheRecords();
+    await runCacheOperation(
+      writeForumThreadCacheRecords([record]),
+      undefined,
+      "guardar hilo oculto",
+    );
     options.refreshForumTagUi();
 
     if (options.isHiddenThreadsModalOpen()) {
@@ -296,16 +304,19 @@ export function createForumThreadCacheController(
       options.applyHiddenForumThreadRows();
       options.updateBrowserHistory(url, "push");
       mergeCachedForumThreadRecords(records);
-      await writeForumThreadCacheRecords(
-        records
-          .map((record) =>
-            cachedForumThreads.find(
-              (cachedRecord) => cachedRecord.id === record.id,
-            ),
-          )
-          .filter((record) => record !== undefined),
+      await runCacheOperation(
+        writeForumThreadCacheRecords(
+          records
+            .map((record) =>
+              cachedForumThreads.find(
+                (cachedRecord) => cachedRecord.id === record.id,
+              ),
+            )
+            .filter((record) => record !== undefined),
+        ),
+        undefined,
+        "guardar pagina navegada",
       );
-      cachedForumThreads = await readForumThreadCacheRecords();
       options.renderTopTagBar();
       options.refreshNavigation({ reset: true });
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -350,16 +361,19 @@ export function createForumThreadCacheController(
     records: ForumThreadRecord[],
   ): Promise<void> {
     mergeCachedForumThreadRecords(records);
-    await writeForumThreadCacheRecords(
-      records
-        .map((record) =>
-          cachedForumThreads.find(
-            (cachedRecord) => cachedRecord.id === record.id,
-          ),
-        )
-        .filter((record) => record !== undefined),
+    void runCacheOperation(
+      writeForumThreadCacheRecords(
+        records
+          .map((record) =>
+            cachedForumThreads.find(
+              (cachedRecord) => cachedRecord.id === record.id,
+            ),
+          )
+          .filter((record) => record !== undefined),
+      ),
+      undefined,
+      "guardar scrape",
     );
-    cachedForumThreads = await readForumThreadCacheRecords();
     options.refreshForumTagUi();
   }
 
@@ -384,6 +398,12 @@ export function createForumThreadCacheController(
           pageNumber,
           scrapeStartedAt,
         );
+        options.setForumThreadLoadState({
+          loadedPages: Math.max(
+            options.getForumThreadLoadState().loadedPages,
+            pageNumber,
+          ),
+        });
         await saveScrapedForumThreadRecords(records);
       } catch (error) {
         console.warn(
@@ -404,17 +424,32 @@ export function createForumThreadCacheController(
       }
     }
 
-    await cleanupForumThreadCache();
-    cachedForumThreads = await readForumThreadCacheRecords();
-    options.setForumThreadLoadState({
-      loadedPages: FORUM_THREAD_CACHE_RECENT_PAGES,
-      isLoading: false,
-    });
-    options.refreshForumTagUi();
+    try {
+      await runCacheOperation(
+        cleanupForumThreadCache(),
+        undefined,
+        "limpiar cache",
+      );
+      cachedForumThreads = await runCacheOperation(
+        readForumThreadCacheRecords(),
+        cachedForumThreads,
+        "leer cache final",
+      );
+    } finally {
+      options.setForumThreadLoadState({
+        loadedPages: FORUM_THREAD_CACHE_RECENT_PAGES,
+        isLoading: false,
+      });
+      options.refreshForumTagUi();
+    }
   }
 
   async function initializeForumThreadCache(): Promise<void> {
-    cachedForumThreads = await readForumThreadCacheRecords();
+    cachedForumThreads = await runCacheOperation(
+      readForumThreadCacheRecords(),
+      [],
+      "leer cache inicial",
+    );
     options.setForumThreadLoadState({
       loadedPages: 0,
       targetPages: FORUM_THREAD_CACHE_RECENT_PAGES,

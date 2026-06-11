@@ -7,6 +7,8 @@ import {
   toUrl,
 } from "../../shared/dom";
 
+const FETCH_THREAD_DOCUMENT_TIMEOUT_MS = 10000;
+
 export function getMaxThreadPage(doc: Document): number {
   const currentUrl = new URL(location.href);
   const currentThreadId = getThreadId(currentUrl) || getThreadIdFromDocument(doc);
@@ -164,14 +166,25 @@ export function parseHtml(html: string): Document {
 }
 
 export async function fetchThreadDocument(url: string): Promise<Document> {
-  const response = await fetch(url, {
-    cache: "no-cache",
-    credentials: "same-origin",
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    FETCH_THREAD_DOCUMENT_TIMEOUT_MS,
+  );
 
-  if (!response.ok) {
-    throw new Error(`Could not load ${url}: ${response.status}`);
+  try {
+    const response = await fetch(url, {
+      cache: "no-cache",
+      credentials: "same-origin",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Could not load ${url}: ${response.status}`);
+    }
+
+    return parseHtml(await response.text());
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  return parseHtml(await response.text());
 }
