@@ -148,6 +148,7 @@
   }
 
   // src/ui/navigationDom.ts
+  var THREAD_NAVIGATION_TOP_OFFSET_RATIO = 0.15;
   function getThreadTitleNavigationItems() {
     const items = [];
     for (const link of document.querySelectorAll(THREAD_TITLE_SELECTOR)) {
@@ -188,9 +189,20 @@
     item.element.setAttribute(SELECTED_ATTRIBUTE, "true");
   }
   function scrollNavigationElementIntoView(element, block) {
+    if (block === "start") {
+      scrollElementToViewportOffset(element, THREAD_NAVIGATION_TOP_OFFSET_RATIO);
+      return;
+    }
     element.scrollIntoView({
       behavior: "smooth",
       block
+    });
+  }
+  function scrollElementToViewportOffset(element, offsetRatio) {
+    const targetTop = element.getBoundingClientRect().top + window.scrollY - window.innerHeight * offsetRatio;
+    window.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: "smooth"
     });
   }
   function getPostIdFromNavigationElement(element) {

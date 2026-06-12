@@ -6,6 +6,8 @@ import {
 import type { NavigationItem } from "../domain/types";
 import { isVisible } from "../shared/dom";
 
+const THREAD_NAVIGATION_TOP_OFFSET_RATIO = 0.15;
+
 export function getThreadTitleNavigationItems(): NavigationItem[] {
   const items: NavigationItem[] = [];
 
@@ -65,9 +67,29 @@ export function scrollNavigationElementIntoView(
   element: HTMLElement,
   block: ScrollLogicalPosition,
 ): void {
+  if (block === "start") {
+    scrollElementToViewportOffset(element, THREAD_NAVIGATION_TOP_OFFSET_RATIO);
+    return;
+  }
+
   element.scrollIntoView({
     behavior: "smooth",
     block,
+  });
+}
+
+function scrollElementToViewportOffset(
+  element: HTMLElement,
+  offsetRatio: number,
+): void {
+  const targetTop =
+    element.getBoundingClientRect().top +
+    window.scrollY -
+    window.innerHeight * offsetRatio;
+
+  window.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: "smooth",
   });
 }
 
