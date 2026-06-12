@@ -18,48 +18,85 @@ user confirms they are logged in.
 - Do not make permanent user-account changes. Any hidden thread must be restored
   before the test exits, including in failure cleanup.
 
-## Browser and Extension Setup
+## Browser Profile and Script Injection
 
 Use headed Chrome, not bundled Chromium.
 
 Recommended Playwright setup:
 
 - Use `chromium.launchPersistentContext(userDataDir, { channel: "chrome",
-  headless: false })`.
-- Use a dedicated test profile directory, for example
-  `.playwright/forocoches-profile`.
-- The profile must have the userscript manager extension installed
-  (Tampermonkey or Violentmonkey) and the local
-  `../forocoches-premium.user.js` userscript installed with file tracking
-  enabled.
-- Run `bun run build` before starting the test so the watched root userscript is
-  current.
+  headless: false })` so the test can optionally reuse an authenticated
+  session.
+- Put the profile directory inside the future test directory, for example
+  `forocoches-premium.user/tests/.chrome-profile`.
+- Add that profile directory to `forocoches-premium.user/.gitignore` when the
+  test directory is created, so cookies and credentials never enter the repo.
+- The test must not require Tampermonkey, Violentmonkey, or any userscript
+  extension. It should inject the built userscript directly.
+- Run `bun run build` before starting the test so
+  `../forocoches-premium.user.js` is current.
+
+Script injection:
+
+1. Read the generated userscript from `../forocoches-premium.user.js`.
+2. Read `src/userscript-header.txt` and parse the `@match` directives.
+3. Install an init script before the first navigation.
+4. On every new document, compare `location.href` against those parsed
+   `@match` patterns.
+5. Inject/evaluate the userscript only when the URL matches exactly the same
+   pages the userscript manager would match.
+
+At the time of writing, the header contains:
+
+```text
+@match https://forocoches.com/foro/*
+@run-at document-start
+```
+
+The implementation should still parse the header instead of hard-coding this
+match in the test. If the login URL is inside that match, the script should run
+there too. If ForoCoches sends login through a URL outside the match, the test
+must not inject the script on that page.
 
 Manual-login flow:
 
-1. Open `https://forocoches.com/foro/`.
-2. If the page is not logged in, navigate to the login screen or click the login
+1. Open `https://forocoches.com/foro/` after the init script has been installed.
+2. Clear the userscript IndexedDB data immediately, before login and before any
+   feature assertions. Do not clear cookies, localStorage, or the browser
+   profile.
+3. Tell the user in the terminal that they must log in manually.
+4. If the page is not logged in, navigate to the login screen or click the login
    entry point.
-3. Pause for manual login. Implementation options:
+5. Pause for manual login. Implementation options:
    - Use a terminal prompt such as `Press Enter after logging in`.
    - Or show a small page overlay button that the user clicks after login.
    - Avoid `page.pause()` unless the test will only run in Playwright debug
      mode.
-4. After confirmation, assert that the session is logged in by checking for a
+6. After confirmation, assert that the session is logged in by checking for a
    stable logged-in signal, such as the profile link or absence of the login
    form.
+
+The script injection must already be active before this login flow starts. This
+lets the test catch regressions where the userscript breaks login or other
+pre-authenticated ForoCoches pages that match the userscript header.
 
 ## Shared Helpers to Implement
 
 Use helpers to keep the single test readable.
 
 - `gotoGeneral(page)`: navigate to `https://forocoches.com/foro/forumdisplay.php?f=2`.
+- `loadUserscriptMetadata()`: read `src/userscript-header.txt` and extract
+  `@match` patterns.
+- `installUserscriptInjection(context)`: call `context.addInitScript(...)`
+  before any page is opened; evaluate the generated userscript only on URLs
+  matched by the parsed metadata.
 - `waitForPremiumReady(page)`: wait for userscript UI to exist, such as
   `#fc-premium-forum-controls-row` on forum pages or
   `#fc-premium-thread-search-panel` on thread pages.
 - `clearPremiumIndexedDb(page, stores?)`: clear the userscript IndexedDB stores
-  from the ForoCoches origin when a deterministic fresh scrape is required.
-  Clear only after login, and only at planned reset points.
+  or delete the userscript database from the ForoCoches origin. It must run once
+  at the start of the test before login. It should be a no-op if the database
+  does not exist yet.
 - `collectRequests(page, predicate)`: record network requests matching a
   predicate, with helpers for distinct `forumdisplay.php?page=N` and
   `showthread.php?page=N` requests.
@@ -86,15 +123,22 @@ Use helpers to keep the single test readable.
 
 ## Data and State Strategy
 
+The test must always clear userscript IndexedDB state at startup, even when the
+browser profile is new or non-persistent. This avoids stale thread/forum cache
+state while preserving cookies in the optional persistent profile.
+
 The General page checks need both a fresh-cache pass and a cached reload pass.
 
 Recommended sequence:
 
-1. After login, navigate to General.
-2. Clear only the forum-thread-list cache store, not cookies/session.
-3. Reload General and capture network requests while the initial scrape runs.
-4. Wait for the scraper to become idle.
-5. Run cached reload assertions without clearing the cache.
+1. Create the Chrome context and install userscript injection.
+2. Navigate to `https://forocoches.com/foro/`.
+3. Clear all userscript IndexedDB data before login.
+4. Complete manual login, or confirm the existing session is already logged in.
+5. Navigate to General and capture network requests while the initial scrape
+   runs against the now-empty IndexedDB cache.
+6. Wait for the scraper to become idle.
+7. Run cached reload assertions without clearing IndexedDB again.
 
 For thread tests, do not clear all state globally unless needed. The test should
 choose a thread dynamically and may rely on the userscript cache behavior. If a
@@ -107,6 +151,8 @@ Use one Playwright test:
 
 ```text
 test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
+  await test.step("Start Chrome and install userscript injection", ...);
+  await test.step("Clear userscript IndexedDB", ...);
   await test.step("Manual login", ...);
   await test.step("General initial scrape", ...);
   await test.step("General cached reload", ...);
@@ -121,16 +167,15 @@ Prefer `test.step` names that match the sections below.
 ### Step 1: Fresh General Scrape
 
 1. Navigate to General.
-2. Clear the forum-thread-list IndexedDB store.
-3. Start request collection for `forumdisplay.php` requests.
-4. Reload General.
-5. Wait for premium UI and forum scrape idle.
-6. Assert that pagination exists and exposes more than 3 pages.
-7. Assert that requests were made to distinct forum pages through pagination.
+2. Start request collection for `forumdisplay.php` requests.
+3. Reload General if needed to start from a clean post-login General page.
+4. Wait for premium UI and forum scrape idle.
+5. Assert that pagination exists and exposes more than 3 pages.
+6. Assert that requests were made to distinct forum pages through pagination.
    The exact count may depend on the current scraper heuristic, but a fresh
    cache should trigger multiple page requests up to the configured recent-page
    limit or until the scraper stop condition applies.
-8. Record:
+7. Record:
    - visible thread count
    - first page URL
    - first few visible thread ids/titles
