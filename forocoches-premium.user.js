@@ -1789,7 +1789,7 @@
       status.setAttribute("aria-hidden", String(!visible));
       status.title = visible ? "Cargando paginas del foro" : "";
       if (text instanceof HTMLElement) {
-        text.textContent = `Cargando paginas ${loadedPages}/${loadState.targetPages}`;
+        text.textContent = `Cargando paginas ${loadedPages}`;
       }
     }
     function installForumLiveSearch(root) {
@@ -3100,7 +3100,7 @@
       options.setForumThreadLoadState({
         loadedPages: 0,
         targetPages: FORUM_THREAD_CACHE_RECENT_PAGES,
-        isLoading: true
+        isLoading: false
       });
       const scrapeStartedAt = Date.now();
       const cachedThreadIdsBeforeScrape = getCachedForumThreadIdsForCurrentForum();

@@ -482,7 +482,7 @@ export function createForumThreadCacheController(
     options.setForumThreadLoadState({
       loadedPages: 0,
       targetPages: FORUM_THREAD_CACHE_RECENT_PAGES,
-      isLoading: true,
+      isLoading: false,
     });
 
     const scrapeStartedAt = Date.now();

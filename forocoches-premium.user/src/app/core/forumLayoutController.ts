@@ -223,7 +223,7 @@ export function createForumLayoutController(
     status.title = visible ? "Cargando paginas del foro" : "";
 
     if (text instanceof HTMLElement) {
-      text.textContent = `Cargando paginas ${loadedPages}/${loadState.targetPages}`;
+      text.textContent = `Cargando paginas ${loadedPages}`;
     }
   }
 
