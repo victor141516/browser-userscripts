@@ -11,6 +11,8 @@ userscript file, so keep the path stable and use the build command to update it.
 - Build with `bun run build`.
 - After building, sanity-check the generated root userscript with
   `node --check ../forocoches-premium.user.js`.
+- Run the real-site Playwright smoke flow with `bun run e2e` when a change
+  could affect forum or thread behavior.
 - Test browser behavior through Chrome DevTools Protocol on port `19999`.
 - Do not stage `../forocoches-premium.user.js.backup-*` files unless the user
   explicitly asks for them.
@@ -275,21 +277,67 @@ Before handing off a meaningful change:
 1. Run `bun run check`.
 2. Run `bun run build`.
 3. Run `node --check ../forocoches-premium.user.js`.
-4. If styling or interaction changed, test in the user's live Chrome session via
+4. Consider whether `bun run e2e` is appropriate for the change. Use it for
+   changes that can affect end-to-end forum/thread behavior, keyboard flows,
+   caching, filters, graph views, or generated userscript injection.
+5. If styling or interaction changed, test in the user's live Chrome session via
    CDP on port `19999`.
-5. For thread-page changes, test at least selection, page navigation, cache
+6. For thread-page changes, test at least selection, page navigation, cache
    refresh, and one graph/filter view.
-6. For thread render/cache changes, do not rely only on a fully cached thread:
+7. For thread render/cache changes, do not rely only on a fully cached thread:
    use `Actualizar cache` to exercise the real scraper path. For flicker fixes,
    observe child-list mutations on `#posts` through CDP so a final correct DOM
    does not hide unnecessary intermediate rebuilds.
-7. For forum-list changes, test tag filtering, local search, pagination, hidden
+8. For forum-list changes, test tag filtering, local search, pagination, hidden
    thread modal, and keyboard selection.
-8. For forum-list scraper changes, instrument `window.fetch` through CDP and
+9. For forum-list scraper changes, instrument `window.fetch` through CDP and
    verify how many `forumdisplay.php?page=N` requests are made.
-9. If you add a temporary scrape limit, logging, or CDP instrumentation for
+10. If you add a temporary scrape limit, logging, or CDP instrumentation for
    testing, remove it before the final build/commit. Use `rg` for obvious
    leftovers such as `slice(0, 3)`, `TEMP`, `TODO`, and debug logs.
+
+## Playwright E2E
+
+The project has a headed real-site Playwright smoke test at
+`tests/forocoches-premium.e2e.spec.ts`. Run it with:
+
+```sh
+bun run e2e
+```
+
+The E2E test:
+
+- runs against the real ForoCoches site, not mocked pages;
+- uses Playwright's bundled Chromium with a persistent profile in
+  `tests/.chrome-profile`;
+- injects the built userscript directly from `../forocoches-premium.user.js`
+  based on parsed `@match` metadata from `src/userscript-header.txt`;
+- runs `bun run build` before browser startup so the generated userscript is
+  current;
+- clears only the userscript IndexedDB state at startup, preserving cookies and
+  the browser profile;
+- never automates credentials. If the profile is not logged in, the test opens
+  the login page and waits for manual login confirmation in the terminal;
+- prints every `test.step(...)` in the console via the list reporter, with
+  per-step timeouts tuned from observed healthy runs.
+
+Use the E2E test as a regression check when a change touches behavior covered by
+the smoke flow: forum scraping/cache, forum filtering and pagination, keyboard
+selection, hidden threads, thread loading/cache, breadcrumbs, shortcut help,
+quote graph/conversation views, in-thread search, author filters, or hover
+cards. Because it depends on live ForoCoches content, prefer robust selectors and
+dynamic candidate search over fixed thread titles, tags, users, or post ids.
+
+When adding or changing functionality, decide whether test coverage should change:
+
+- For a new user-visible feature or a new end-to-end workflow, add or extend E2E
+  coverage when it makes sense and can be tested reliably against the live site.
+- For a bug fix or small modification to an existing covered flow, do not add a
+  new E2E test by default; run or adjust the existing smoke flow if the fix
+  changes its assumptions.
+- For pure domain parsing, cache validation, or helper logic where live-site E2E
+  would be brittle or too broad, prefer focused lower-level tests if/when such a
+  test harness exists.
 
 ## Commit Hygiene
 
