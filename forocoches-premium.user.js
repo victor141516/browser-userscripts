@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Forocoches Premium
 // @namespace    http://tampermonkey.net/
-// @version      2026-06-09-19
+// @version      2026-06-12-1
 // @description  Improves Forocoches thread reading
 // @author       victor141516
 // @match        https://forocoches.com/foro/*
