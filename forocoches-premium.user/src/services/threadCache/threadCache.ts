@@ -167,6 +167,7 @@ export async function writeCurrentThreadCache(
   posts: PostRecord[],
   totalPages: number,
   cachedPageNumbers: Set<number>,
+  lastSeenPageNumber = totalPages,
 ): Promise<void> {
   const threadId = getThreadId(new URL(location.href));
 
@@ -183,6 +184,7 @@ export async function writeCurrentThreadCache(
     version: THREAD_CACHE_RECORD_VERSION,
     threadId,
     totalPages,
+    lastSeenPageNumber,
     cachedPageNumbers: Array.from(cachedPageNumbers).sort(
       (left, right) => left - right,
     ),

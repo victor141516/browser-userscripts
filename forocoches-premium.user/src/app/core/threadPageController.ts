@@ -378,7 +378,6 @@ export function createThreadPageController(): ThreadPageController {
       prepareThreadPage,
       ensureThreadSummary,
       getThreadPages,
-      getThreadPagesForTotal,
       getPendingInitialHashPostId: () => pendingInitialHashPostId,
       setThreadPages: (pages) => {
         threadPages = pages;

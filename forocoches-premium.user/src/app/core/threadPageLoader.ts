@@ -1,6 +1,7 @@
 import type {
   ActiveGraphView,
   PostRecord,
+  ThreadCacheRecord,
   ThreadLoadState,
   ThreadPage,
 } from "../../domain/types";
@@ -23,7 +24,6 @@ export interface ThreadPageLoaderOptions {
   prepareThreadPage: () => void;
   ensureThreadSummary: () => HTMLElement | null;
   getThreadPages: () => ThreadPage[];
-  getThreadPagesForTotal: (totalPages: number) => ThreadPage[];
   getPendingInitialHashPostId: () => string | null;
   setThreadPages: (pages: ThreadPage[]) => void;
   setLoadedThreadPosts: (posts: PostRecord[]) => void;
@@ -47,6 +47,76 @@ export interface ThreadPageLoaderOptions {
   syncThreadStateUrl: () => void;
 }
 
+function getUniqueThreadPages(pages: ThreadPage[]): ThreadPage[] {
+  const seenPageNumbers = new Set<number>();
+  const uniquePages: ThreadPage[] = [];
+
+  for (const page of pages) {
+    if (seenPageNumbers.has(page.pageNumber)) {
+      continue;
+    }
+
+    seenPageNumbers.add(page.pageNumber);
+    uniquePages.push(page);
+  }
+
+  return uniquePages;
+}
+
+function getThreadPagesToRefresh(options: {
+  allPages: ThreadPage[];
+  cachedThread: ThreadCacheRecord | null;
+}): ThreadPage[] {
+  const firstPage = options.allPages.find((page) => page.pageNumber === 1);
+
+  if (!options.cachedThread || !isCompleteThreadCache(options.cachedThread)) {
+    return options.allPages;
+  }
+
+  const currentLastPageNumber = options.allPages.length;
+  const previousLastPageNumber = Math.min(
+    Math.max(options.cachedThread.lastSeenPageNumber, 1),
+    currentLastPageNumber,
+  );
+  const tailStartPageNumber =
+    currentLastPageNumber > previousLastPageNumber
+      ? previousLastPageNumber
+      : currentLastPageNumber;
+  const tailPages = options.allPages.filter(
+    (page) => page.pageNumber >= tailStartPageNumber,
+  );
+
+  return getUniqueThreadPages([
+    ...(firstPage ? [firstPage] : []),
+    ...tailPages,
+  ]);
+}
+
+function getPageOffset(posts: PostRecord[], pageNumber: number): number {
+  return posts.filter((post) => post.pageNumber < pageNumber).length;
+}
+
+function replaceThreadPagePosts(
+  posts: PostRecord[],
+  pageNumber: number,
+  pagePosts: PostRecord[],
+): PostRecord[] {
+  return posts
+    .filter((post) => post.pageNumber !== pageNumber)
+    .concat(pagePosts)
+    .sort((left, right) => {
+      if (left.originalIndex !== right.originalIndex) {
+        return left.originalIndex - right.originalIndex;
+      }
+
+      if (left.pageNumber !== right.pageNumber) {
+        return left.pageNumber - right.pageNumber;
+      }
+
+      return left.pageIndex - right.pageIndex;
+    });
+}
+
 export async function enhanceThreadPage(
   options: ThreadPageLoaderOptions,
 ): Promise<void> {
@@ -56,12 +126,13 @@ export async function enhanceThreadPage(
   const queryState = readThreadQueryState();
   const allPages = options.getThreadPages();
   const currentPageNumber = getPageNumber(new URL(location.href));
-  const pages = [
-    ...allPages.filter((page) => page.pageNumber === currentPageNumber),
-    ...allPages.filter((page) => page.pageNumber !== currentPageNumber),
-  ];
+  const cachedThread = await readCurrentThreadCache();
+  const pages = getThreadPagesToRefresh({ allPages, cachedThread });
   const allPosts: PostRecord[] = [];
-  let pageOffset = 0;
+  let loadedPosts: PostRecord[] =
+    cachedThread && isCompleteThreadCache(cachedThread)
+      ? cachedThread.posts.filter((post) => post.pageNumber <= allPages.length)
+      : [];
 
   options.setThreadPages(allPages);
   options.setLoadedThreadPosts([]);
@@ -112,37 +183,28 @@ export async function enhanceThreadPage(
   options.renderThreadSummaryMenu(summary);
   options.renderThreadSearchPanel();
 
-  const cachedThread = await readCurrentThreadCache();
-
-  if (cachedThread && isCompleteThreadCache(cachedThread)) {
-    const cachedPages = options.getThreadPagesForTotal(cachedThread.totalPages);
-    const cachedPageNumbers = new Set(cachedThread.cachedPageNumbers);
-    options.setThreadPages(cachedPages);
-    options.setLoadedThreadPageNumbers(cachedPageNumbers);
-    options.hydrateThreadPosts(cachedThread.posts);
-    options.setThreadLoadState({
-      loadedPages: cachedPageNumbers.size,
-      targetPages: cachedThread.totalPages,
-      totalPages: cachedThread.totalPages,
-      loadedPosts: cachedThread.posts.length,
-      isLoading: false,
-    });
-    options.renderThreadPosts();
-    options.renderThreadSummaryMenu(summary);
-    return;
-  }
-
   const currentPageDocument = parseHtml(document.documentElement.outerHTML);
-  const loadedPageNumbers = new Set<number>();
+  const loadedPageNumbers = new Set(
+    loadedPosts.map((post) => post.pageNumber),
+  );
 
   for (const page of pages) {
     const doc =
       page.pageNumber === currentPageNumber
         ? currentPageDocument
         : await fetchThreadDocument(page.url);
-    const pagePosts = collectPosts(doc, page.pageNumber, pageOffset);
-    allPosts.push(...pagePosts);
-    pageOffset += pagePosts.length;
+    const pagePosts = collectPosts(
+      doc,
+      page.pageNumber,
+      getPageOffset(loadedPosts, page.pageNumber),
+    );
+    loadedPosts = replaceThreadPagePosts(
+      loadedPosts,
+      page.pageNumber,
+      pagePosts,
+    );
+    allPosts.length = 0;
+    allPosts.push(...loadedPosts);
     loadedPageNumbers.add(page.pageNumber);
 
     options.setLoadedThreadPageNumbers(new Set(loadedPageNumbers));
@@ -173,11 +235,12 @@ export async function enhanceThreadPage(
   options.renderThreadPosts();
   options.renderThreadSummaryMenu(summary);
 
-  if (loadedPageNumbers.size >= pages.length) {
+  if (allPages.every((page) => loadedPageNumbers.has(page.pageNumber))) {
     await writeCurrentThreadCache(
       allPosts,
       allPages.length,
       loadedPageNumbers,
+      allPages.length,
     );
   }
 }

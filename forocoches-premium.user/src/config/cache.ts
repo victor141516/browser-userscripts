@@ -19,7 +19,7 @@ export const THREAD_CACHE_STORE_NAME = "threads";
 export const FORUM_THREAD_CACHE_STORE_NAME = "forumThreads";
 
 // Bump this when the cached post/thread record shape changes.
-export const THREAD_CACHE_RECORD_VERSION = 2;
+export const THREAD_CACHE_RECORD_VERSION = 3;
 
 // Bump this when the cached forum-list record shape changes.
 export const FORUM_THREAD_CACHE_RECORD_VERSION = 1;

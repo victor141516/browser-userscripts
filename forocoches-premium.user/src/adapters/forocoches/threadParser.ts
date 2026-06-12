@@ -3,6 +3,7 @@ import type { PostRecord } from "../../domain/types";
 import {
   getPageNumber,
   getThreadId,
+  normalizeLayoutText,
   normalizeText,
   toUrl,
 } from "../../shared/dom";
@@ -12,6 +13,12 @@ const FETCH_THREAD_DOCUMENT_TIMEOUT_MS = 10000;
 export function getMaxThreadPage(doc: Document): number {
   const currentUrl = new URL(location.href);
   const currentThreadId = getThreadId(currentUrl) || getThreadIdFromDocument(doc);
+  const lastPageFromLink = getLastThreadPageFromLink(doc, currentThreadId);
+
+  if (lastPageFromLink) {
+    return lastPageFromLink;
+  }
+
   let maxPage = getPageNumber(currentUrl);
 
   for (const link of doc.querySelectorAll("a[href*='showthread.php']")) {
@@ -29,6 +36,41 @@ export function getMaxThreadPage(doc: Document): number {
   }
 
   return maxPage;
+}
+
+function getLastThreadPageFromLink(
+  doc: Document,
+  currentThreadId: string | null,
+): number | null {
+  let lastPage: number | null = null;
+
+  for (const link of doc.querySelectorAll("a[href*='showthread.php']")) {
+    if (!(link instanceof HTMLAnchorElement)) {
+      continue;
+    }
+
+    const label = normalizeLayoutText(
+      `${link.textContent || ""} ${link.title || ""}`,
+    );
+
+    if (
+      !label.includes("ultimo") &&
+      !label.includes("ultima") &&
+      !label.includes("last")
+    ) {
+      continue;
+    }
+
+    const url = toUrl(link.getAttribute("href") || link.href);
+
+    if (!url || getThreadId(url) !== currentThreadId) {
+      continue;
+    }
+
+    lastPage = Math.max(lastPage || 1, getPageNumber(url));
+  }
+
+  return lastPage;
 }
 
 export function getThreadIdFromDocument(doc: Document = document): string | null {

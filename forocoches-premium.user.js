@@ -65,7 +65,7 @@
   var THREAD_CACHE_DB_VERSION = 3;
   var THREAD_CACHE_STORE_NAME = "threads";
   var FORUM_THREAD_CACHE_STORE_NAME = "forumThreads";
-  var THREAD_CACHE_RECORD_VERSION = 2;
+  var THREAD_CACHE_RECORD_VERSION = 3;
   var FORUM_THREAD_CACHE_RECORD_VERSION = 1;
   var FORUM_THREAD_CACHE_RECENT_PAGES = 10;
   var FORUM_THREAD_CACHE_MAX_RECORDS = 1000;
@@ -2451,6 +2451,7 @@
   }
 
   // src/services/threadCache/validation.ts
+  var LEGACY_THREAD_CACHE_RECORD_VERSION = 2;
   function isCachedPostRecord(value) {
     if (!value || typeof value !== "object") {
       return false;
@@ -2493,7 +2494,8 @@
       return null;
     }
     const record = value;
-    if (record.version !== THREAD_CACHE_RECORD_VERSION || typeof record.threadId !== "string" || !Number.isFinite(record.totalPages) || !Array.isArray(record.cachedPageNumbers) || !Array.isArray(record.posts)) {
+    const isSupportedVersion = record.version === THREAD_CACHE_RECORD_VERSION || record.version === LEGACY_THREAD_CACHE_RECORD_VERSION;
+    if (!isSupportedVersion || typeof record.threadId !== "string" || !Number.isFinite(record.totalPages) || !Array.isArray(record.cachedPageNumbers) || !Array.isArray(record.posts)) {
       return null;
     }
     const posts = record.posts.filter(isCachedPostRecord).map(normalizeCachedPostRecord);
@@ -2501,9 +2503,10 @@
       return null;
     }
     return {
-      version: record.version,
+      version: THREAD_CACHE_RECORD_VERSION,
       threadId: record.threadId,
       totalPages: Number(record.totalPages),
+      lastSeenPageNumber: Number.isFinite(record.lastSeenPageNumber) ? Number(record.lastSeenPageNumber) : Number(record.totalPages),
       cachedPageNumbers: record.cachedPageNumbers.map(Number).filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0),
       savedAt: Number(record.savedAt) || 0,
       byteSize: Number(record.byteSize) || estimateThreadCacheByteSize(record),
@@ -2648,7 +2651,7 @@
     const cachedPages = new Set(cache2.cachedPageNumbers);
     return cache2.totalPages > 0 && cachedPages.size >= cache2.totalPages && cache2.posts.length > 0;
   }
-  async function writeCurrentThreadCache(posts, totalPages, cachedPageNumbers) {
+  async function writeCurrentThreadCache(posts, totalPages, cachedPageNumbers, lastSeenPageNumber = totalPages) {
     const threadId = getThreadId(new URL(location.href));
     if (!threadId || !canUseThreadCache() || posts.length === 0 || cachedPageNumbers.size === 0) {
       return;
@@ -2657,6 +2660,7 @@
       version: THREAD_CACHE_RECORD_VERSION,
       threadId,
       totalPages,
+      lastSeenPageNumber,
       cachedPageNumbers: Array.from(cachedPageNumbers).sort((left, right) => left - right),
       savedAt: Date.now(),
       byteSize: 0,
@@ -2748,6 +2752,10 @@
   function getMaxThreadPage(doc) {
     const currentUrl = new URL(location.href);
     const currentThreadId = getThreadId(currentUrl) || getThreadIdFromDocument(doc);
+    const lastPageFromLink = getLastThreadPageFromLink(doc, currentThreadId);
+    if (lastPageFromLink) {
+      return lastPageFromLink;
+    }
     let maxPage = getPageNumber(currentUrl);
     for (const link of doc.querySelectorAll("a[href*='showthread.php']")) {
       if (!(link instanceof HTMLAnchorElement)) {
@@ -2760,6 +2768,24 @@
       maxPage = Math.max(maxPage, getPageNumber(url));
     }
     return maxPage;
+  }
+  function getLastThreadPageFromLink(doc, currentThreadId) {
+    let lastPage = null;
+    for (const link of doc.querySelectorAll("a[href*='showthread.php']")) {
+      if (!(link instanceof HTMLAnchorElement)) {
+        continue;
+      }
+      const label = normalizeLayoutText(`${link.textContent || ""} ${link.title || ""}`);
+      if (!label.includes("ultimo") && !label.includes("ultima") && !label.includes("last")) {
+        continue;
+      }
+      const url = toUrl(link.getAttribute("href") || link.href);
+      if (!url || getThreadId(url) !== currentThreadId) {
+        continue;
+      }
+      lastPage = Math.max(lastPage || 1, getPageNumber(url));
+    }
+    return lastPage;
   }
   function getThreadIdFromDocument(doc = document) {
     for (const link of doc.querySelectorAll("a[href*='showthread.php?t=']")) {
@@ -6343,18 +6369,56 @@ body table.tborder:has(.navbar) {
   }
 
   // src/app/core/threadPageLoader.ts
+  function getUniqueThreadPages(pages) {
+    const seenPageNumbers = new Set;
+    const uniquePages = [];
+    for (const page of pages) {
+      if (seenPageNumbers.has(page.pageNumber)) {
+        continue;
+      }
+      seenPageNumbers.add(page.pageNumber);
+      uniquePages.push(page);
+    }
+    return uniquePages;
+  }
+  function getThreadPagesToRefresh(options) {
+    const firstPage = options.allPages.find((page) => page.pageNumber === 1);
+    if (!options.cachedThread || !isCompleteThreadCache(options.cachedThread)) {
+      return options.allPages;
+    }
+    const currentLastPageNumber = options.allPages.length;
+    const previousLastPageNumber = Math.min(Math.max(options.cachedThread.lastSeenPageNumber, 1), currentLastPageNumber);
+    const tailStartPageNumber = currentLastPageNumber > previousLastPageNumber ? previousLastPageNumber : currentLastPageNumber;
+    const tailPages = options.allPages.filter((page) => page.pageNumber >= tailStartPageNumber);
+    return getUniqueThreadPages([
+      ...firstPage ? [firstPage] : [],
+      ...tailPages
+    ]);
+  }
+  function getPageOffset(posts, pageNumber) {
+    return posts.filter((post) => post.pageNumber < pageNumber).length;
+  }
+  function replaceThreadPagePosts(posts, pageNumber, pagePosts) {
+    return posts.filter((post) => post.pageNumber !== pageNumber).concat(pagePosts).sort((left, right) => {
+      if (left.originalIndex !== right.originalIndex) {
+        return left.originalIndex - right.originalIndex;
+      }
+      if (left.pageNumber !== right.pageNumber) {
+        return left.pageNumber - right.pageNumber;
+      }
+      return left.pageIndex - right.pageIndex;
+    });
+  }
   async function enhanceThreadPage(options) {
     options.prepareThreadPage();
     const summary = options.ensureThreadSummary();
     const queryState = readThreadQueryState();
     const allPages = options.getThreadPages();
     const currentPageNumber = getPageNumber(new URL(location.href));
-    const pages = [
-      ...allPages.filter((page) => page.pageNumber === currentPageNumber),
-      ...allPages.filter((page) => page.pageNumber !== currentPageNumber)
-    ];
+    const cachedThread = await readCurrentThreadCache();
+    const pages = getThreadPagesToRefresh({ allPages, cachedThread });
     const allPosts = [];
-    let pageOffset = 0;
+    let loadedPosts = cachedThread && isCompleteThreadCache(cachedThread) ? cachedThread.posts.filter((post) => post.pageNumber <= allPages.length) : [];
     options.setThreadPages(allPages);
     options.setLoadedThreadPosts([]);
     options.setLoadedThreadPageNumbers(new Set);
@@ -6387,31 +6451,14 @@ body table.tborder:has(.navbar) {
     }
     options.renderThreadSummaryMenu(summary);
     options.renderThreadSearchPanel();
-    const cachedThread = await readCurrentThreadCache();
-    if (cachedThread && isCompleteThreadCache(cachedThread)) {
-      const cachedPages = options.getThreadPagesForTotal(cachedThread.totalPages);
-      const cachedPageNumbers = new Set(cachedThread.cachedPageNumbers);
-      options.setThreadPages(cachedPages);
-      options.setLoadedThreadPageNumbers(cachedPageNumbers);
-      options.hydrateThreadPosts(cachedThread.posts);
-      options.setThreadLoadState({
-        loadedPages: cachedPageNumbers.size,
-        targetPages: cachedThread.totalPages,
-        totalPages: cachedThread.totalPages,
-        loadedPosts: cachedThread.posts.length,
-        isLoading: false
-      });
-      options.renderThreadPosts();
-      options.renderThreadSummaryMenu(summary);
-      return;
-    }
     const currentPageDocument = parseHtml(document.documentElement.outerHTML);
-    const loadedPageNumbers = new Set;
+    const loadedPageNumbers = new Set(loadedPosts.map((post) => post.pageNumber));
     for (const page of pages) {
       const doc = page.pageNumber === currentPageNumber ? currentPageDocument : await fetchThreadDocument(page.url);
-      const pagePosts = collectPosts(doc, page.pageNumber, pageOffset);
-      allPosts.push(...pagePosts);
-      pageOffset += pagePosts.length;
+      const pagePosts = collectPosts(doc, page.pageNumber, getPageOffset(loadedPosts, page.pageNumber));
+      loadedPosts = replaceThreadPagePosts(loadedPosts, page.pageNumber, pagePosts);
+      allPosts.length = 0;
+      allPosts.push(...loadedPosts);
       loadedPageNumbers.add(page.pageNumber);
       options.setLoadedThreadPageNumbers(new Set(loadedPageNumbers));
       options.hydrateThreadPosts(allPosts);
@@ -6436,8 +6483,8 @@ body table.tborder:has(.navbar) {
     });
     options.renderThreadPosts();
     options.renderThreadSummaryMenu(summary);
-    if (loadedPageNumbers.size >= pages.length) {
-      await writeCurrentThreadCache(allPosts, allPages.length, loadedPageNumbers);
+    if (allPages.every((page) => loadedPageNumbers.has(page.pageNumber))) {
+      await writeCurrentThreadCache(allPosts, allPages.length, loadedPageNumbers, allPages.length);
     }
   }
 
@@ -8134,7 +8181,6 @@ body table.tborder:has(.navbar) {
         prepareThreadPage,
         ensureThreadSummary: ensureThreadSummary2,
         getThreadPages,
-        getThreadPagesForTotal,
         getPendingInitialHashPostId: () => pendingInitialHashPostId,
         setThreadPages: (pages) => {
           threadPages = pages;

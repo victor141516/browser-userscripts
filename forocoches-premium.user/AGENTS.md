@@ -125,7 +125,10 @@ shows hidden records.
 Main files:
 
 - `threadPageController.ts` coordinates thread pages.
-- `threadPageLoader.ts` loads all thread pages progressively.
+- `threadPageLoader.ts` loads thread pages progressively. With no complete
+  cache, it loads the full thread. With a complete cache, it always refreshes
+  page 1 and then refreshes the previously last-seen page through the current
+  last page.
 - `threadPagePaginationController.ts` intercepts native page navigation and
   swaps messages with JavaScript.
 - `threadGraphViewController.ts` handles "quoted by" and conversation views.
@@ -169,6 +172,13 @@ Important config lives in `src/config/cache.ts`:
 When changing cache record shapes, update validation code in
 `services/threadCache/validation.ts`, bump the relevant record version, and test
 both fresh-cache and existing-cache paths.
+
+Thread cache records store `lastSeenPageNumber`. On a cached thread page load,
+the browser document supplies page 1, and the loader refreshes the previous
+`lastSeenPageNumber`; if the current last-page link points beyond it, the loader
+also refreshes each new page through the current last page. Determine the current
+last page from the "Ultimo/Last" link URL when available, not from plain pager
+text.
 
 ## Query Parameters
 

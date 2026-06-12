@@ -11,6 +11,8 @@ import type {
 import { getTagsFromText } from "../../domain/tags";
 import { normalizeText } from "../../shared/dom";
 
+const LEGACY_THREAD_CACHE_RECORD_VERSION = 2;
+
 export function isCachedPostRecord(value: unknown): value is PostRecord {
   if (!value || typeof value !== "object") {
     return false;
@@ -74,8 +76,12 @@ export function normalizeThreadCacheRecord(
 
   const record = value as ThreadCacheRecord;
 
+  const isSupportedVersion =
+    record.version === THREAD_CACHE_RECORD_VERSION ||
+    record.version === LEGACY_THREAD_CACHE_RECORD_VERSION;
+
   if (
-    record.version !== THREAD_CACHE_RECORD_VERSION ||
+    !isSupportedVersion ||
     typeof record.threadId !== "string" ||
     !Number.isFinite(record.totalPages) ||
     !Array.isArray(record.cachedPageNumbers) ||
@@ -93,9 +99,12 @@ export function normalizeThreadCacheRecord(
   }
 
   return {
-    version: record.version,
+    version: THREAD_CACHE_RECORD_VERSION,
     threadId: record.threadId,
     totalPages: Number(record.totalPages),
+    lastSeenPageNumber: Number.isFinite(record.lastSeenPageNumber)
+      ? Number(record.lastSeenPageNumber)
+      : Number(record.totalPages),
     cachedPageNumbers: record.cachedPageNumbers
       .map(Number)
       .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0),

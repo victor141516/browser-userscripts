@@ -45,6 +45,7 @@ export interface ThreadCacheRecord {
   version: number;
   threadId: string;
   totalPages: number;
+  lastSeenPageNumber: number;
   cachedPageNumbers: number[];
   savedAt: number;
   byteSize: number;
