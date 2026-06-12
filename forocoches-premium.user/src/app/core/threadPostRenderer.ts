@@ -146,7 +146,6 @@ export function createThreadPostRenderer(
   function getStablePageRenderSignature(optionsForSignature: {
     pendingInitialHashPostId: string | null;
     viewPosts: PostRecord[];
-    rankByPostId: Map<string, number>;
   }): string | null {
     const activePageFilter = options.getActivePageFilter();
 
@@ -160,22 +159,15 @@ export function createThreadPostRenderer(
     }
 
     const visiblePageSignature = optionsForSignature.viewPosts
-      .map((post, index) =>
-        post.pageNumber === activePageFilter
-          ? [
-              index,
-              post.id,
-              post.pageNumber,
-              hashString(post.html).toString(36),
-              post.isOriginalPoster ? 1 : 0,
-              post.replyCount,
-              post.replyingPostIds.join(","),
-              optionsForSignature.rankByPostId.get(post.id) || 0,
-              options.getReplyIndentDepth(post, index),
-            ].join(":")
-          : "",
+      .filter((post) => post.pageNumber === activePageFilter)
+      .map((post) =>
+        [
+          post.id,
+          post.pageNumber,
+          hashString(post.html).toString(36),
+          post.isOriginalPoster ? 1 : 0,
+        ].join(":"),
       )
-      .filter(Boolean)
       .join("|");
 
     return `${activePageFilter}|${visiblePageSignature}`;
@@ -194,7 +186,6 @@ export function createThreadPostRenderer(
       getPostIdFromNavigationElement(
         options.getSelectedNavigationItem()?.element || undefined,
       );
-    postsElement.textContent = "";
     postsElement.dataset.fcPremiumGraphView =
       options.getActiveGraphView()?.type || "";
 
@@ -205,7 +196,6 @@ export function createThreadPostRenderer(
     const stablePageSignature = getStablePageRenderSignature({
       pendingInitialHashPostId,
       viewPosts,
-      rankByPostId,
     });
 
     if (
@@ -217,6 +207,7 @@ export function createThreadPostRenderer(
     }
 
     lastRenderedStablePageSignature = stablePageSignature;
+    postsElement.textContent = "";
 
     for (const [index, post] of viewPosts.entries()) {
       fragment.append(

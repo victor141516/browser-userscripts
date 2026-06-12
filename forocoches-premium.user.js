@@ -7700,17 +7700,12 @@ body table.tborder:has(.navbar) {
       if (!activePageFilter || options.getActiveGraphView() || options.hasActiveThreadPostFilters() || optionsForSignature.pendingInitialHashPostId) {
         return null;
       }
-      const visiblePageSignature = optionsForSignature.viewPosts.map((post, index) => post.pageNumber === activePageFilter ? [
-        index,
+      const visiblePageSignature = optionsForSignature.viewPosts.filter((post) => post.pageNumber === activePageFilter).map((post) => [
         post.id,
         post.pageNumber,
         hashString(post.html).toString(36),
-        post.isOriginalPoster ? 1 : 0,
-        post.replyCount,
-        post.replyingPostIds.join(","),
-        optionsForSignature.rankByPostId.get(post.id) || 0,
-        options.getReplyIndentDepth(post, index)
-      ].join(":") : "").filter(Boolean).join("|");
+        post.isOriginalPoster ? 1 : 0
+      ].join(":")).join("|");
       return `${activePageFilter}|${visiblePageSignature}`;
     }
     function renderThreadPosts(posts) {
@@ -7720,7 +7715,6 @@ body table.tborder:has(.navbar) {
       }
       const pendingInitialHashPostId = options.getPendingInitialHashPostId();
       const selectedPostId = pendingInitialHashPostId || getPostIdFromNavigationElement(options.getSelectedNavigationItem()?.element || undefined);
-      postsElement.textContent = "";
       postsElement.dataset.fcPremiumGraphView = options.getActiveGraphView()?.type || "";
       const fragment = document.createDocumentFragment();
       const postById = new Map(posts.map((post) => [post.id, post]));
@@ -7728,14 +7722,14 @@ body table.tborder:has(.navbar) {
       const viewPosts = options.getThreadViewPosts(posts);
       const stablePageSignature = getStablePageRenderSignature({
         pendingInitialHashPostId,
-        viewPosts,
-        rankByPostId
+        viewPosts
       });
       if (stablePageSignature !== null && stablePageSignature === lastRenderedStablePageSignature) {
         options.renderThreadSearchPanel();
         return;
       }
       lastRenderedStablePageSignature = stablePageSignature;
+      postsElement.textContent = "";
       for (const [index, post] of viewPosts.entries()) {
         fragment.append(renderPost(post, rankByPostId.get(post.id) || 0, postById, options.getReplyIndentDepth(post, index)));
       }
