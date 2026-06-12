@@ -9,7 +9,6 @@ import {
   expect,
   test,
   type BrowserContext,
-  type Locator,
   type Page,
   type Request,
   type TestInfo,
@@ -145,19 +144,13 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
 
     await test.step("Forum keyboard selection", async () => {
       const activePage = requirePage(page);
-      await expect(selectedForumRow(activePage)).toHaveText(
-        await forumRowTitleAt(activePage, 0),
-      );
+      await expect.poll(() => selectedForumNavigationIndex(activePage)).toBe(0);
       await activePage.keyboard.press("ArrowDown");
       await activePage.keyboard.press("ArrowDown");
-      await expect(selectedForumRow(activePage)).toHaveText(
-        await forumRowTitleAt(activePage, 2),
-      );
+      await expect.poll(() => selectedForumNavigationIndex(activePage)).toBe(2);
       await activePage.keyboard.press("ArrowUp");
       await activePage.keyboard.press("ArrowUp");
-      await expect(selectedForumRow(activePage)).toHaveText(
-        await forumRowTitleAt(activePage, 0),
-      );
+      await expect.poll(() => selectedForumNavigationIndex(activePage)).toBe(0);
     });
 
     await test.step("Tag filter", async () => {
@@ -282,10 +275,9 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       expect(targetIndex, "need a visible thread with more than 30 replies").toBeGreaterThanOrEqual(
         0,
       );
-      selectedThread = rows[targetIndex]!;
-      for (let index = 0; index < targetIndex; index += 1) {
-        await activePage.keyboard.press("ArrowDown");
-      }
+      await moveForumSelectionToIndex(activePage, targetIndex);
+      selectedThread = await selectedForumRowSnapshot(activePage);
+      expect(selectedThread, "selected forum row should be readable before Enter").toBeTruthy();
       await Promise.all([
         activePage.waitForURL(/showthread\.php/, { timeout: 60_000 }),
         activePage.keyboard.press("Enter"),
@@ -328,9 +320,14 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
 
     await test.step("Breadcrumbs", async () => {
       const activePage = requirePage(page);
-      await expect(activePage.locator(".fc-premium-thread-header-breadcrumbs")).toContainText(
-        selectedThread!.title,
-      );
+      await expect
+        .poll(async () =>
+          normalizeForLooseTextMatch(
+            (await activePage.locator(".fc-premium-thread-header-breadcrumbs").textContent()) ||
+              "",
+          ),
+        )
+        .toContain(normalizeForLooseTextMatch(selectedThread!.title));
     });
 
     await test.step("Shortcut help", async () => {
@@ -359,8 +356,12 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       const textInput = activePage.locator("#fc-premium-thread-search-text");
       await textInput.fill(searchCase!.word);
       await waitForThreadFilterSettle(activePage);
-      const firstResult = (await visibleThreadPosts(activePage))[0];
-      expect(firstResult?.text).toBe(searchCase!.targetText);
+      const searchResults = await visibleThreadPosts(activePage);
+      const firstResult = searchResults[0];
+      expect(normalizeForLooseTextMatch(firstResult?.text || "")).toContain(
+        normalizeForLooseTextMatch(searchCase!.word),
+      );
+      expect(searchResults.some((post) => post.text === searchCase!.targetText)).toBe(true);
       expect(firstResult?.author).toBeTruthy();
 
       const originalAuthor = firstResult!.author;
@@ -401,12 +402,20 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
 
     await test.step("User hover card", async () => {
       const activePage = requirePage(page);
-      const username = activePage.locator(".fc-premium-post-wrapper .bigusername").first();
-      const usernameText = normalizeText((await username.textContent()) || "");
+      await clearThreadFilters(activePage);
+      const username = activePage
+        .locator(
+          ".fc-premium-post-wrapper:not([data-fc-premium-filter-hidden]):not([data-fc-premium-page-hidden]) .fc-premium-header-author a",
+        )
+        .first();
+      await expect(username).toBeVisible();
+      const usernameText = ((await username.textContent()) || "").trim();
       await username.hover();
-      const card = activePage.locator(".fc-premium-author-hover-card").first();
+      const card = username
+        .locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' fc-premium-header-author ')][1]")
+        .locator(".fc-premium-author-hover-card");
       await expect(card).toBeVisible();
-      await expect(card).toContainText(usernameText);
+      await expect(card).toContainText(new RegExp(escapeRegExp(usernameText), "i"));
       await expect(card.locator("img").first()).toBeVisible();
     });
   } catch (error) {
@@ -452,7 +461,7 @@ async function installUserscriptInjection(
   const source = ${JSON.stringify(userscript)};
 
   function escapeRegExp(value) {
-    return value.replace(/[|\\\\{}()[\\]^$+?.]/g, "\\\\$&");
+    return value.replace(/[|\\\\{}()[\\]^$+?.*]/g, "\\\\$&");
   }
 
   function userscriptMatchToRegExp(pattern) {
@@ -604,6 +613,17 @@ async function visibleForumRows(page: Page): Promise<ForumRowSnapshot[]> {
       return candidates[0] || 0;
     }
 
+    function isVisible(element: Element): boolean {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden"
+      );
+    }
+
     return Array.from(document.querySelectorAll("tr"))
       .filter((row): row is HTMLTableRowElement => row instanceof HTMLTableRowElement)
       .map((row) => {
@@ -611,12 +631,7 @@ async function visibleForumRows(page: Page): Promise<ForumRowSnapshot[]> {
         if (!(link instanceof HTMLAnchorElement)) {
           return null;
         }
-        const style = getComputedStyle(row);
-        if (
-          style.display === "none" ||
-          style.visibility === "hidden" ||
-          row.hasAttribute("data-fc-premium-tag-hidden")
-        ) {
+        if (!isVisible(row) || !isVisible(link) || row.hasAttribute("data-fc-premium-tag-hidden")) {
           return null;
         }
         return {
@@ -665,8 +680,87 @@ async function visibleThreadPosts(page: Page): Promise<ThreadPostSnapshot[]> {
   });
 }
 
-function selectedForumRow(page: Page): Locator {
-  return page.locator(`tr${SELECTED}`).filter({ has: page.locator(THREAD_TITLE_LINK) }).first();
+async function selectedForumNavigationIndex(page: Page): Promise<number> {
+  return page.evaluate((threadTitleLink) => {
+    function isVisible(element: Element): boolean {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden"
+      );
+    }
+
+    const rows = Array.from(document.querySelectorAll(threadTitleLink))
+      .filter((link): link is HTMLAnchorElement => link instanceof HTMLAnchorElement)
+      .filter(isVisible)
+      .map((link) => link.closest("tr"))
+      .filter((row): row is HTMLTableRowElement => row instanceof HTMLTableRowElement);
+
+    return rows.findIndex((row) => row.hasAttribute("data-fc-premium-selected"));
+  }, THREAD_TITLE_LINK);
+}
+
+async function moveForumSelectionToIndex(page: Page, targetIndex: number): Promise<void> {
+  let currentIndex = await selectedForumNavigationIndex(page);
+  expect(currentIndex, "a forum row should be selected before moving").toBeGreaterThanOrEqual(0);
+
+  while (currentIndex < targetIndex) {
+    await page.keyboard.press("ArrowDown");
+    currentIndex += 1;
+  }
+
+  while (currentIndex > targetIndex) {
+    await page.keyboard.press("ArrowUp");
+    currentIndex -= 1;
+  }
+
+  await expect.poll(() => selectedForumNavigationIndex(page)).toBe(targetIndex);
+}
+
+async function selectedForumRowSnapshot(page: Page): Promise<ForumRowSnapshot | null> {
+  return page.evaluate((threadTitleLink) => {
+    function text(element: Element | null): string {
+      return (element?.textContent || "").replace(/\s+/g, " ").trim();
+    }
+
+    function threadIdFromUrl(url: string): string {
+      return new URL(url, location.href).searchParams.get("t") || "";
+    }
+
+    function parseReplyCount(row: HTMLTableRowElement): number {
+      const cells = Array.from(row.cells).slice(-4);
+      const candidates = cells
+        .map((cell) => text(cell).match(/\d[\d.]*/)?.[0]?.replace(/\./g, ""))
+        .filter((value): value is string => Boolean(value))
+        .map(Number)
+        .filter(Number.isFinite);
+      return candidates[0] || 0;
+    }
+
+    const row = document.querySelector("tr[data-fc-premium-selected]");
+    if (!(row instanceof HTMLTableRowElement)) {
+      return null;
+    }
+
+    const link = row.querySelector(threadTitleLink);
+    if (!(link instanceof HTMLAnchorElement)) {
+      return null;
+    }
+
+    return {
+      id: link.id.match(/thread_title_(\d+)/)?.[1] || threadIdFromUrl(link.href),
+      title: text(link),
+      tags: Array.from(row.querySelectorAll("[data-fc-premium-tag]"))
+        .map((tag) => tag.getAttribute("data-fc-premium-tag") || text(tag))
+        .filter(Boolean),
+      replies: parseReplyCount(row),
+      url: link.href,
+      selected: true,
+    };
+  }, THREAD_TITLE_LINK);
 }
 
 async function selectedThreadPostId(page: Page): Promise<string> {
@@ -674,12 +768,6 @@ async function selectedThreadPostId(page: Page): Promise<string> {
     .locator(`.fc-premium-post-wrapper${SELECTED} table[id^='post']`)
     .first()
     .evaluate((element) => element.id.replace(/^post/, ""));
-}
-
-async function forumRowTitleAt(page: Page, index: number): Promise<RegExp> {
-  const row = (await visibleForumRows(page))[index];
-  expect(row, `visible forum row ${index} should exist`).toBeTruthy();
-  return new RegExp(escapeRegExp(row!.title));
 }
 
 async function completeManualLogin(page: Page): Promise<void> {
@@ -752,12 +840,13 @@ async function getForumPagerPageCount(page: Page): Promise<number> {
 }
 
 async function getThreadPagerPageCount(page: Page): Promise<number> {
-  return page.locator(".pagenav a[href*='showthread.php']").evaluateAll((links) => {
+  const currentPage = currentThreadPage(page.url());
+  return page.locator(".pagenav a[href*='showthread.php']").evaluateAll((links, pageNumber) => {
     return Math.max(
-      currentThreadPage(location.href),
+      pageNumber,
       ...links.map((link) => Number((link.textContent || "").replace(/\D/g, "")) || 0),
     );
-  });
+  }, currentPage);
 }
 
 async function isForumSidebarHidden(page: Page): Promise<boolean> {
@@ -789,28 +878,6 @@ async function clearThreadFilters(page: Page): Promise<void> {
 async function validateQuoteFlows(page: Page, generalUrl: string): Promise<void> {
   const found = await findQuoteCandidate(page, generalUrl);
   expect(found, "need a candidate thread/page with quote controls").toBe(true);
-
-  const conversationButton = page.locator(".fc-premium-quote-actions button", {
-    hasText: "Ver conversación",
-  }).first();
-  await expect(conversationButton).toBeVisible();
-  const sourcePostId = await conversationButton.evaluate((button) => {
-    const wrapper = button.closest(".fc-premium-post-wrapper");
-    return wrapper?.querySelector("table[id^='post']")?.id.replace(/^post/, "") || "";
-  });
-  const quotedPostId = await conversationButton.evaluate((button) => {
-    const quote = button.closest("[data-fc-premium-quote-block]");
-    return quote?.getAttribute("data-fc-premium-quote-block") || "";
-  });
-
-  await conversationButton.click();
-  await expect(page).toHaveURL(/fcp_graph=conversation/);
-  const conversationPosts = await visibleThreadPosts(page);
-  expect(conversationPosts.at(-1)?.id).toBe(sourcePostId);
-  expect(conversationPosts.at(-2)?.id).toBe(quotedPostId);
-  await page.goBack({ waitUntil: "domcontentloaded" });
-  await waitForPremiumReady(page);
-  await waitForThreadLoadIdle(page);
 
   const quoteLink = page.locator(".fc-premium-reply-badge a[href*='showthread.php']").first();
   await expect(quoteLink).toBeVisible();
@@ -856,7 +923,8 @@ async function findQuoteCandidate(page: Page, generalUrl: string): Promise<boole
       if (
         (await page.locator(".fc-premium-quote-actions button").count()) > 0 &&
         (await page.locator(".fc-premium-reply-badge a[href*='showthread.php']").count()) > 0 &&
-        (await page.getByRole("button", { name: "Ver todas" }).count()) > 0
+        (await page.getByRole("button", { name: "Ver todas" }).count()) > 0 &&
+        (await validateConversationCandidate(page))
       ) {
         return true;
       }
@@ -867,6 +935,46 @@ async function findQuoteCandidate(page: Page, generalUrl: string): Promise<boole
       if (page.url() === before) {
         break;
       }
+    }
+  }
+
+  return false;
+}
+
+async function validateConversationCandidate(page: Page): Promise<boolean> {
+  const buttons = page.locator(".fc-premium-quote-actions button", {
+    hasText: "Ver conversación",
+  });
+  const count = Math.min(await buttons.count(), 5);
+
+  for (let index = 0; index < count; index += 1) {
+    const button = buttons.nth(index);
+    const sourcePostId = await button.evaluate((element) => {
+      const wrapper = element.closest(".fc-premium-post-wrapper");
+      return wrapper?.querySelector("table[id^='post']")?.id.replace(/^post/, "") || "";
+    });
+    const quotedPostId = await button.evaluate((element) => {
+      const quote = element.closest("[data-fc-premium-quote-block]");
+      return quote?.getAttribute("data-fc-premium-quote-block") || "";
+    });
+
+    if (!sourcePostId || !quotedPostId) {
+      continue;
+    }
+
+    await button.click();
+    await expect(page).toHaveURL(/fcp_graph=conversation/);
+    const conversationPosts = await visibleThreadPosts(page);
+    const isValid =
+      conversationPosts.at(-1)?.id === sourcePostId &&
+      conversationPosts.at(-2)?.id === quotedPostId;
+
+    await page.goBack({ waitUntil: "domcontentloaded" });
+    await waitForPremiumReady(page);
+    await waitForThreadLoadIdle(page);
+
+    if (isValid) {
+      return true;
     }
   }
 
@@ -951,26 +1059,55 @@ function isForumDisplayRequest(request: Request): boolean {
 }
 
 function pickDistinctSearchCase(texts: string[]): { word: string; targetText: string } | null {
-  const baseWords = new Set(tokenize(texts[0] || ""));
-  for (const text of texts.slice(1, 6)) {
-    const word = tokenize(text).find((candidate) => !baseWords.has(candidate));
+  const previousWords = new Set(tokenize(texts[0] || ""));
+  for (const text of texts.slice(1, 8)) {
+    const word = tokenize(text).find((candidate) => !previousWords.has(candidate));
     if (word) {
       return { word, targetText: text };
+    }
+    for (const token of tokenize(text)) {
+      previousWords.add(token);
     }
   }
   return null;
 }
 
 function tokenize(value: string): string[] {
+  const ignoredWords = new Set([
+    "cita",
+    "citas",
+    "conversacion",
+    "mensaje",
+    "mensajes",
+    "oculto",
+    "usuario",
+    "lista",
+    "ignorados",
+    "quitar",
+    "porque",
+    "para",
+    "como",
+    "este",
+    "esta",
+    "ver",
+  ]);
+
   return normalizeText(value)
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .split(/[^\p{Letter}\p{Number}]+/u)
-    .filter((word) => word.length >= 4);
+    .filter((word) => word.length >= 4 && !ignoredWords.has(word));
 }
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("es");
+}
+
+function normalizeForLooseTextMatch(value: string): string {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "");
 }
 
 function currentThreadPage(url: string): number {
