@@ -108,6 +108,14 @@ The forum list is rendered dynamically from IndexedDB records. By default it
 queries the most recently seen non-hidden records. If `fcp_tag` is present in the
 URL, it filters by tag. Local live search filters by title only.
 
+`forumThreadCacheController.ts` scrapes page 1 first, then recent forum pages up
+to `FORUM_THREAD_CACHE_RECENT_PAGES`. Before merging a scraped page into the
+in-memory cache, compare that page's thread ids against a snapshot of ids that
+were cached before the current scrape began. If every thread on a scraped page
+was already in that snapshot, save/update that page and stop scraping further
+pages. Do not compare against `cachedForumThreads` after merging the current
+page, because that would make the just-scraped page look previously cached.
+
 Hidden threads are stored on the forum-thread cache record with `isHidden` and
 `hiddenAt`. Pressing `h` hides the selected thread. The "Hilos escondidos" modal
 shows hidden records.
@@ -129,6 +137,14 @@ Main files:
 The normal thread view keeps chronological order, except the first post remains
 first and the top cited messages can be promoted near the top. Graph views are
 stored in query params so reload/back/forward can restore the view.
+
+`threadPostRenderer.ts` should avoid rebuilding `#posts` when the visible page is
+unchanged. Compute any stable render signature before clearing or replacing
+children, especially before `postsElement.textContent = ""`. The signature should
+represent the currently visible page's post sequence and HTML. Avoid including
+global metadata such as quote rank or reply counts when the goal is to preserve
+existing embeds, because those values can change as later pages load even though
+the visible post DOM does not need to be rebuilt.
 
 ## Cache Model
 
@@ -182,12 +198,15 @@ should be derived from those constants, not duplicated by hand.
 Current important actions:
 
 - `ArrowUp` / `ArrowDown`: move selected post or thread.
+- `ArrowLeft` / `ArrowRight`: move to previous or next page on thread and
+  forum-list pages.
 - `Home` / `End`: jump to first or last post.
 - `Escape`: clear active thread view/filter.
 - `?`: open shortcut help.
 - `Enter`: quote the selected post on thread pages, open selected thread on
   forum-list pages.
 - `Cmd/Ctrl + Enter`: open selected thread in a new tab.
+- `l`: return from a thread page to the forum thread list.
 - `h`: hide selected thread on forum-list pages.
 - `n`: new reply in the current thread.
 - `m`: multiquote selected post.
@@ -224,7 +243,12 @@ Keyboard handlers should ignore modified arrow keys so browser shortcuts like
 - Start with `runForocochesPremiumCore.ts` to understand page detection.
 - For a thread bug, inspect `threadPageController.ts` first, then follow the
   specific collaborator it calls.
+- For post flicker, embed resets, or unexpected `#posts` rebuilds, inspect
+  `threadPostRenderer.ts` first, then `threadPageLoader.ts`.
 - For a forum-list bug, inspect `forumPageController.ts` first.
+- For forum-list scraping that fetches too many or too few pages, inspect
+  `forumThreadCacheController.ts`, especially `initializeForumThreadCache`,
+  `scrapeRecentForumThreadPages`, and `saveScrapedForumThreadRecords`.
 - For selector issues, check `config/selectors.ts` and the relevant
   `adapters/forocoches/*` file before changing controllers.
 - For visual regressions, search CSS classes in `src/styles/parts` and then find
@@ -245,11 +269,24 @@ Before handing off a meaningful change:
    CDP on port `19999`.
 5. For thread-page changes, test at least selection, page navigation, cache
    refresh, and one graph/filter view.
-6. For forum-list changes, test tag filtering, local search, pagination, hidden
+6. For thread render/cache changes, do not rely only on a fully cached thread:
+   use `Actualizar cache` to exercise the real scraper path. For flicker fixes,
+   observe child-list mutations on `#posts` through CDP so a final correct DOM
+   does not hide unnecessary intermediate rebuilds.
+7. For forum-list changes, test tag filtering, local search, pagination, hidden
    thread modal, and keyboard selection.
+8. For forum-list scraper changes, instrument `window.fetch` through CDP and
+   verify how many `forumdisplay.php?page=N` requests are made.
+9. If you add a temporary scrape limit, logging, or CDP instrumentation for
+   testing, remove it before the final build/commit. Use `rg` for obvious
+   leftovers such as `slice(0, 3)`, `TEMP`, `TODO`, and debug logs.
 
 ## Commit Hygiene
 
 Keep commits focused by feature or refactor step. The generated root userscript
 `../forocoches-premium.user.js` should be committed together with source changes
 when the build output intentionally changes.
+
+Do not commit temporary test aids such as scrape caps, extra logging, or CDP
+instrumentation. Do not stage `../forocoches-premium.user.js.backup-*` files
+unless the user explicitly asks for them.
