@@ -58,6 +58,28 @@ const THREAD_SEARCH_PANEL = "#fc-premium-thread-search-panel";
 const SELECTED = "[data-fc-premium-selected]";
 const THREAD_TITLE_LINK = "a[id^='thread_title_'][href*='showthread.php?t=']";
 
+// Based on Math.ceil(1.5 * observed duration), with a 3s floor for
+// browser-scheduler and live-site jitter on very short steps.
+const STEP_TIMEOUTS = {
+  generalInitialScrape: 6_150,
+  generalCachedReload: 3_000,
+  forumKeyboardSelection: 3_000,
+  tagFilter: 3_000,
+  leftPanelToggle: 3_000,
+  forumPagination: 3_000,
+  hideAndRestoreThread: 3_000,
+  forumSearchFlow: 8_700,
+  enterThreadDynamically: 3_000,
+  threadLayout: 3_000,
+  postKeyboardNavigation: 3_000,
+  threadPagePaginationShortcuts: 3_000,
+  breadcrumbs: 3_000,
+  shortcutHelp: 3_000,
+  quoteAndConversationFlows: 15_000,
+  threadMessageSearchAndAuthorFilters: 6_600,
+  userHoverCard: 3_000,
+} as const;
+
 test.describe.configure({ mode: "serial" });
 test.setTimeout(30 * 60 * 1000);
 
@@ -107,51 +129,63 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
     let initialForumRows: ForumRowSnapshot[] = [];
     let initialForumRequests: RequestCollector;
 
-    await test.step("General initial scrape", async () => {
-      const activePage = requirePage(page);
-      initialForumRequests = collectRequests(activePage, isForumDisplayRequest);
-      await gotoGeneral(activePage);
-      generalUrl = activePage.url();
-      await waitForPremiumReady(activePage);
-      await waitForForumScrapeIdle(activePage);
+    await test.step(
+      "General initial scrape",
+      async () => {
+        const activePage = requirePage(page);
+        initialForumRequests = collectRequests(activePage, isForumDisplayRequest);
+        await gotoGeneral(activePage);
+        generalUrl = activePage.url();
+        await waitForPremiumReady(activePage);
+        await waitForForumScrapeIdle(activePage);
 
-      const pageCount = await getForumPagerPageCount(activePage);
-      expect(pageCount, "General should expose several forum pages").toBeGreaterThan(3);
+        const pageCount = await getForumPagerPageCount(activePage);
+        expect(pageCount, "General should expose several forum pages").toBeGreaterThan(3);
 
-      initialForumRows = await visibleForumRows(activePage);
-      expect(initialForumRows.length, "General should render visible threads").toBeGreaterThan(5);
-      expect(
-        initialForumRequests.distinctForumPages().length,
-        "fresh cache should scrape more than one forum page",
-      ).toBeGreaterThanOrEqual(2);
-    });
+        initialForumRows = await visibleForumRows(activePage);
+        expect(initialForumRows.length, "General should render visible threads").toBeGreaterThan(5);
+        expect(
+          initialForumRequests.distinctForumPages().length,
+          "fresh cache should scrape more than one forum page",
+        ).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: STEP_TIMEOUTS.generalInitialScrape },
+    );
 
-    await test.step("General cached reload", async () => {
-      const activePage = requirePage(page);
-      initialForumRequests.reset();
-      await activePage.reload({ waitUntil: "domcontentloaded" });
-      await waitForPremiumReady(activePage);
-      await waitForForumScrapeIdle(activePage);
+    await test.step(
+      "General cached reload",
+      async () => {
+        const activePage = requirePage(page);
+        initialForumRequests.reset();
+        await activePage.reload({ waitUntil: "domcontentloaded" });
+        await waitForPremiumReady(activePage);
+        await waitForForumScrapeIdle(activePage);
 
-      const rowsAfterReload = await visibleForumRows(activePage);
-      expect(rowsAfterReload.length).toBe(initialForumRows.length);
-      expect(
-        initialForumRequests.distinctForumPages().length,
-        "cached reload should not crawl many forum pages",
-      ).toBeLessThanOrEqual(2);
-      initialForumRequests.stop();
-    });
+        const rowsAfterReload = await visibleForumRows(activePage);
+        expect(rowsAfterReload.length).toBe(initialForumRows.length);
+        expect(
+          initialForumRequests.distinctForumPages().length,
+          "cached reload should not crawl many forum pages",
+        ).toBeLessThanOrEqual(2);
+        initialForumRequests.stop();
+      },
+      { timeout: STEP_TIMEOUTS.generalCachedReload },
+    );
 
-    await test.step("Forum keyboard selection", async () => {
-      const activePage = requirePage(page);
-      await expect.poll(() => selectedForumNavigationIndex(activePage)).toBe(0);
-      await activePage.keyboard.press("ArrowDown");
-      await activePage.keyboard.press("ArrowDown");
-      await expect.poll(() => selectedForumNavigationIndex(activePage)).toBe(2);
-      await activePage.keyboard.press("ArrowUp");
-      await activePage.keyboard.press("ArrowUp");
-      await expect.poll(() => selectedForumNavigationIndex(activePage)).toBe(0);
-    });
+    await test.step(
+      "Forum keyboard selection",
+      async () => {
+        const activePage = requirePage(page);
+        await expect.poll(() => selectedForumNavigationIndex(activePage)).toBe(0);
+        await activePage.keyboard.press("ArrowDown");
+        await activePage.keyboard.press("ArrowDown");
+        await expect.poll(() => selectedForumNavigationIndex(activePage)).toBe(2);
+        await activePage.keyboard.press("ArrowUp");
+        await activePage.keyboard.press("ArrowUp");
+        await expect.poll(() => selectedForumNavigationIndex(activePage)).toBe(0);
+      },
+      { timeout: STEP_TIMEOUTS.forumKeyboardSelection },
+    );
 
     await test.step("Tag filter", async () => {
       const activePage = requirePage(page);
@@ -178,7 +212,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       expect((await visibleForumRows(activePage)).some((row) => !row.tags.includes(tag))).toBe(
         true,
       );
-    });
+    }, { timeout: STEP_TIMEOUTS.tagFilter });
 
     await test.step("Left panel toggle", async () => {
       const activePage = requirePage(page);
@@ -191,7 +225,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       await expect
         .poll(() => isForumSidebarHidden(activePage))
         .toBe(before);
-    });
+    }, { timeout: STEP_TIMEOUTS.leftPanelToggle });
 
     await test.step("Forum pagination", async () => {
       const activePage = requirePage(page);
@@ -213,7 +247,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       await waitForPremiumReady(activePage);
       await waitForForumScrapeIdle(activePage);
       generalUrl = activePage.url();
-    });
+    }, { timeout: STEP_TIMEOUTS.forumPagination });
 
     await test.step("Hide and restore thread", async () => {
       const activePage = requirePage(page);
@@ -241,7 +275,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
         )
         .toBe(true);
       hiddenThreadToRestore = null;
-    });
+    }, { timeout: STEP_TIMEOUTS.hideAndRestoreThread });
 
     await test.step("Forum search flow", async () => {
       const activePage = requirePage(page);
@@ -266,7 +300,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       await activePage.goto(generalUrl, { waitUntil: "domcontentloaded" });
       await waitForPremiumReady(activePage);
       await waitForForumScrapeIdle(activePage);
-    });
+    }, { timeout: STEP_TIMEOUTS.forumSearchFlow });
 
     await test.step("Enter a thread dynamically", async () => {
       const activePage = requirePage(page);
@@ -284,13 +318,13 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       ]);
       await waitForPremiumReady(activePage);
       await waitForThreadLoadIdle(activePage);
-    });
+    }, { timeout: STEP_TIMEOUTS.enterThreadDynamically });
 
     await test.step("Thread layout", async () => {
       const activePage = requirePage(page);
       await expect(activePage.locator(".fc-premium-author-cell").first()).not.toBeVisible();
       await expect(activePage.locator(".fc-premium-message-cell").first()).toBeVisible();
-    });
+    }, { timeout: STEP_TIMEOUTS.threadLayout });
 
     await test.step("Post keyboard navigation", async () => {
       const activePage = requirePage(page);
@@ -299,7 +333,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       await expect.poll(() => selectedThreadPostId(activePage)).not.toBe(first);
       await activePage.keyboard.press("ArrowUp");
       await expect.poll(() => selectedThreadPostId(activePage)).toBe(first);
-    });
+    }, { timeout: STEP_TIMEOUTS.postKeyboardNavigation });
 
     await test.step("Thread page pagination shortcuts", async () => {
       const activePage = requirePage(page);
@@ -316,7 +350,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       await expect.poll(() => currentThreadPage(activePage.url())).toBe(originalPage + 1);
       await activePage.keyboard.press("ArrowLeft");
       await expect.poll(() => currentThreadPage(activePage.url())).toBe(originalPage);
-    });
+    }, { timeout: STEP_TIMEOUTS.threadPagePaginationShortcuts });
 
     await test.step("Breadcrumbs", async () => {
       const activePage = requirePage(page);
@@ -328,7 +362,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
           ),
         )
         .toContain(normalizeForLooseTextMatch(selectedThread!.title));
-    });
+    }, { timeout: STEP_TIMEOUTS.breadcrumbs });
 
     await test.step("Shortcut help", async () => {
       const activePage = requirePage(page);
@@ -339,12 +373,12 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       await expect(activePage.locator(".fc-premium-shortcut-help-row").first()).toBeVisible();
       await button.click();
       await expect(activePage.locator("#fc-premium-shortcut-help-popover")).toBeHidden();
-    });
+    }, { timeout: STEP_TIMEOUTS.shortcutHelp });
 
     await test.step("Quote and conversation flows", async () => {
       const activePage = requirePage(page);
       await validateQuoteFlows(activePage, generalUrl);
-    });
+    }, { timeout: STEP_TIMEOUTS.quoteAndConversationFlows });
 
     await test.step("In-thread message search and author filters", async () => {
       const activePage = requirePage(page);
@@ -398,7 +432,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       await waitForThreadFilterSettle(activePage);
       await expect(activePage.locator("#fc-premium-thread-search-text")).toHaveValue("");
       await expect(activePage.locator("#fc-premium-thread-search-selected-authors")).toBeEmpty();
-    });
+    }, { timeout: STEP_TIMEOUTS.threadMessageSearchAndAuthorFilters });
 
     await test.step("User hover card", async () => {
       const activePage = requirePage(page);
@@ -417,7 +451,7 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
       await expect(card).toBeVisible();
       await expect(card).toContainText(new RegExp(escapeRegExp(usernameText), "i"));
       await expect(card.locator("img").first()).toBeVisible();
-    });
+    }, { timeout: STEP_TIMEOUTS.userHoverCard });
   } catch (error) {
     if (page) {
       await attachDiagnostics(testInfo, page, "failure");
@@ -952,6 +986,10 @@ async function validateConversationCandidate(page: Page): Promise<boolean> {
 
   for (let index = 0; index < count; index += 1) {
     const button = buttons.nth(index);
+    if (!(await button.isVisible().catch(() => false))) {
+      continue;
+    }
+
     const sourcePostId = await button.evaluate((element) => {
       const wrapper = element.closest(".fc-premium-post-wrapper");
       return wrapper?.querySelector("table[id^='post']")?.id.replace(/^post/, "") || "";
