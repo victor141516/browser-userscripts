@@ -16,8 +16,9 @@ bun run build
 
 `bun run build`:
 
-1. Reads `src/userscript-header.txt`.
-2. Reads `src/styles/styles.css`.
+1. Generates the Tampermonkey/Violentmonkey metadata block with a timestamped
+   version.
+2. Reads `src/styles/parts/*.css`.
 3. Bundles `src/index.ts` for the browser with Bun.
 4. Injects the CSS as a string define.
 5. Writes `dist/forocoches-premium.user.js`.
@@ -33,7 +34,6 @@ first generated write.
 src/
   index.ts                 Entry point. Starts the userscript.
   app.ts                   Main compatibility core migrated from the old file.
-  userscript-header.txt    Tampermonkey/Violentmonkey metadata block.
   config/
     constants.ts           Barrel export used by the compatibility core.
     cache.ts               IndexedDB/cache limits and schema versions.
@@ -45,7 +45,7 @@ src/
   shared/
     dom.ts                 Small typed DOM/text/url helpers.
   styles/
-    styles.css             Injected stylesheet.
+    parts/                 Injected stylesheet fragments.
   ui/
     shortcutHelp.tsx       Small JSX DOM factory and shortcut-help row.
 scripts/
@@ -66,8 +66,8 @@ narrowing instead of JSDoc type comments.
 
 The first stable extraction pass moved low-risk pieces out of the old monolith:
 
-- metadata into `src/userscript-header.txt`
-- CSS into `src/styles/styles.css`
+- metadata generation into `scripts/build.ts`
+- CSS into `src/styles/parts/*.css`
 - constants into focused config files
 - reusable typed DOM helpers into `src/shared/dom.ts`
 - a shortcut-help UI fragment into TSX

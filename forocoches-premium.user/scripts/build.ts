@@ -9,23 +9,53 @@ const distDir = resolve(projectRoot, "dist");
 const bundledPath = resolve(distDir, "bundle.js");
 const generatedPath = resolve(distDir, "forocoches-premium.user.js");
 
+function padDatePart(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function getTimestampedUserscriptVersion(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = padDatePart(date.getMonth() + 1);
+  const day = padDatePart(date.getDate());
+  const hours = padDatePart(date.getHours());
+  const minutes = padDatePart(date.getMinutes());
+  const seconds = padDatePart(date.getSeconds());
+
+  return `${year}-${month}-${day}-${hours}${minutes}${seconds}`;
+}
+
+function getUserscriptHeader(): string {
+  return `// ==UserScript==
+// @name         Forocoches Premium
+// @namespace    http://tampermonkey.net/
+// @version      ${getTimestampedUserscriptVersion()}
+// @description  Improves Forocoches thread reading
+// @author       victor141516
+// @match        https://forocoches.com/foro/*
+// @icon         https://forocoches.com/favicon.ico
+// @grant        none
+// @run-at       document-start
+// @license      MIT
+// ==/UserScript==`;
+}
+
+async function readBundledCss(): Promise<string> {
+  const styleDirectory = resolve(projectRoot, "src/styles/parts");
+  const styleFiles = (await readdir(styleDirectory))
+    .filter((file) => file.endsWith(".css"))
+    .sort()
+    .map((file) => resolve(styleDirectory, file));
+
+  const styleContents = await Promise.all(
+    styleFiles.map((path) => readFile(path, "utf8")),
+  );
+
+  return styleContents.join("\n");
+}
+
 async function build() {
-  const [header, css] = await Promise.all([
-    readFile(resolve(projectRoot, "src/userscript-header.txt"), "utf8"),
-    (async () => {
-      const styleDirectory = resolve(projectRoot, "src/styles/parts");
-      const styleFiles = (await readdir(styleDirectory))
-        .filter((file) => file.endsWith(".css"))
-        .sort()
-        .map((file) => resolve(styleDirectory, file));
-
-      const styleContents = await Promise.all(
-        styleFiles.map((path) => readFile(path, "utf8")),
-      );
-
-      return styleContents.join("\n");
-    })(),
-  ]);
+  const header = getUserscriptHeader();
+  const css = await readBundledCss();
   const previousUserscript = await readFile(originalUserscriptPath, "utf8");
 
   await mkdir(dirname(bundledPath), { recursive: true });

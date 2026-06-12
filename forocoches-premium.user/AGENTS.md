@@ -310,7 +310,7 @@ The E2E test:
 - uses Playwright's bundled Chromium with a persistent profile in
   `tests/.chrome-profile`;
 - injects the built userscript directly from `../forocoches-premium.user.js`
-  based on parsed `@match` metadata from `src/userscript-header.txt`;
+  based on parsed `@match` metadata from the generated userscript;
 - runs `bun run build` before browser startup so the generated userscript is
   current;
 - clears only the userscript IndexedDB state at startup, preserving cookies and

@@ -46,7 +46,6 @@ const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_DIR = path.resolve(TEST_DIR, "..");
 const PROFILE_DIR = path.join(TEST_DIR, ".chrome-profile");
 const USERSCRIPT_PATH = path.resolve(PROJECT_DIR, "..", "forocoches-premium.user.js");
-const HEADER_PATH = path.join(PROJECT_DIR, "src", "userscript-header.txt");
 
 const FORUM_HOME_URL = "https://forocoches.com/foro/";
 const GENERAL_URL = "https://forocoches.com/foro/forumdisplay.php?f=2";
@@ -470,14 +469,14 @@ test("ForoCoches Premium full real-site smoke flow", async ({}, testInfo) => {
 });
 
 async function loadUserscriptMetadata(): Promise<UserscriptMetadata> {
-  const header = await readFile(HEADER_PATH, "utf8");
-  const matches = header
+  const userscript = await readFile(USERSCRIPT_PATH, "utf8");
+  const matches = userscript
     .split(/\r?\n/)
     .map((line) => line.match(/^\s*\/\/\s*@match\s+(.+?)\s*$/)?.[1])
     .filter((match): match is string => Boolean(match));
 
   if (matches.length === 0) {
-    throw new Error("No @match directives found in userscript header");
+    throw new Error("No @match directives found in generated userscript");
   }
 
   return { matches };
