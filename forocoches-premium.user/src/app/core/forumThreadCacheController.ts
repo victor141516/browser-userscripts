@@ -92,6 +92,20 @@ export function createForumThreadCacheController(
     });
   }
 
+  function getCachedForumThreadIdsForCurrentForum(): Set<string> {
+    return new Set(
+      getCachedForumThreadsForCurrentForum().map((record) => record.id),
+    );
+  }
+
+  function wereAllForumThreadRecordsAlreadyCached(
+    records: ForumThreadRecord[],
+    cachedThreadIds: Set<string>,
+  ): boolean {
+    return records.length > 0 &&
+      records.every((record) => cachedThreadIds.has(record.id));
+  }
+
   function mergeCachedForumThreadRecords(records: ForumThreadRecord[]) {
     if (records.length === 0) {
       return;
@@ -361,7 +375,7 @@ export function createForumThreadCacheController(
     records: ForumThreadRecord[],
   ): Promise<void> {
     mergeCachedForumThreadRecords(records);
-    void runCacheOperation(
+    await runCacheOperation(
       writeForumThreadCacheRecords(
         records
           .map((record) =>
@@ -380,6 +394,7 @@ export function createForumThreadCacheController(
   async function scrapeRecentForumThreadPages(
     startPage: number,
     scrapeStartedAt: number,
+    cachedThreadIdsBeforeScrape: Set<string>,
   ): Promise<void> {
     if (forumThreadScrapeStarted) {
       return;
@@ -387,6 +402,7 @@ export function createForumThreadCacheController(
 
     forumThreadScrapeStarted = true;
     options.setForumThreadLoadState({ isLoading: true });
+    let lastScrapedPage = Math.max(startPage - 1, 0);
 
     for (
       let pageNumber = startPage;
@@ -398,6 +414,11 @@ export function createForumThreadCacheController(
           pageNumber,
           scrapeStartedAt,
         );
+        const pageWasAlreadyCached = wereAllForumThreadRecordsAlreadyCached(
+          records,
+          cachedThreadIdsBeforeScrape,
+        );
+        lastScrapedPage = pageNumber;
         options.setForumThreadLoadState({
           loadedPages: Math.max(
             options.getForumThreadLoadState().loadedPages,
@@ -405,6 +426,10 @@ export function createForumThreadCacheController(
           ),
         });
         await saveScrapedForumThreadRecords(records);
+
+        if (pageWasAlreadyCached) {
+          break;
+        }
       } catch (error) {
         console.warn(
           `Forocoches Premium: no se pudo cachear la pagina ${pageNumber} del foro`,
@@ -436,8 +461,12 @@ export function createForumThreadCacheController(
         "leer cache final",
       );
     } finally {
+      const loadedPages = Math.max(
+        options.getForumThreadLoadState().loadedPages,
+        lastScrapedPage,
+      );
       options.setForumThreadLoadState({
-        loadedPages: FORUM_THREAD_CACHE_RECENT_PAGES,
+        loadedPages,
         isLoading: false,
       });
       options.refreshForumTagUi();
@@ -457,9 +486,15 @@ export function createForumThreadCacheController(
     });
 
     const scrapeStartedAt = Date.now();
+    const cachedThreadIdsBeforeScrape = getCachedForumThreadIdsForCurrentForum();
+    let firstPageWasAlreadyCached = false;
 
     try {
       const firstPageRecords = await scrapeForumThreadPage(1, scrapeStartedAt);
+      firstPageWasAlreadyCached = wereAllForumThreadRecordsAlreadyCached(
+        firstPageRecords,
+        cachedThreadIdsBeforeScrape,
+      );
       await saveScrapedForumThreadRecords(firstPageRecords);
     } catch (error) {
       console.warn(
@@ -473,7 +508,16 @@ export function createForumThreadCacheController(
       });
     }
 
-    void scrapeRecentForumThreadPages(2, scrapeStartedAt);
+    if (firstPageWasAlreadyCached) {
+      options.setForumThreadLoadState({ isLoading: false });
+      return;
+    }
+
+    void scrapeRecentForumThreadPages(
+      2,
+      scrapeStartedAt,
+      cachedThreadIdsBeforeScrape,
+    );
   }
 
   return {
