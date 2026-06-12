@@ -219,6 +219,7 @@
 }
 
 .fc-premium-thread-header-breadcrumbs {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
 }
@@ -263,6 +264,32 @@
   font: 700 11px Verdana, Arial, sans-serif;
   height: 20px;
   padding: 0 6px;
+}
+
+.fc-premium-thread-header-message-search {
+  flex: 1;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-panel {
+  margin: 0;
+  width: 100%;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-panel td {
+  padding: 2px 4px;
+}
+
+.fc-premium-thread-header-message-search .fc-premium-thread-search-layout {
+  gap: 3px 5px;
+  grid-template-columns: minmax(120px, 1fr) minmax(100px, 0.85fr) auto auto;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-status {
+  grid-column: 1 / -1;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-selected-authors {
+  margin-top: 3px;
 }
 
 #fc-premium-thread-search-panel {

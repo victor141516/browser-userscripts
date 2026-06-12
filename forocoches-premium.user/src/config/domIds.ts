@@ -40,6 +40,9 @@ export const THREAD_CONTROLS_ID = "fc-premium-thread-controls";
 
 export const THREAD_SEARCH_PANEL_ID = "fc-premium-thread-search-panel";
 
+export const THREAD_SEARCH_HEADER_SLOT_ID =
+  "fc-premium-thread-search-header-slot";
+
 export const THREAD_SEARCH_TEXT_INPUT_ID = "fc-premium-thread-search-text";
 
 export const THREAD_SEARCH_AUTHOR_INPUT_ID = "fc-premium-thread-search-author";

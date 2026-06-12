@@ -33,6 +33,7 @@
   var THREAD_SUMMARY_ID = "fc-premium-thread-summary";
   var THREAD_CONTROLS_ID = "fc-premium-thread-controls";
   var THREAD_SEARCH_PANEL_ID = "fc-premium-thread-search-panel";
+  var THREAD_SEARCH_HEADER_SLOT_ID = "fc-premium-thread-search-header-slot";
   var THREAD_SEARCH_TEXT_INPUT_ID = "fc-premium-thread-search-text";
   var THREAD_SEARCH_AUTHOR_INPUT_ID = "fc-premium-thread-search-author";
   var THREAD_SEARCH_AUTHOR_DATALIST_ID = "fc-premium-thread-search-authors";
@@ -3627,6 +3628,7 @@
 }
 
 .fc-premium-thread-header-breadcrumbs {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
 }
@@ -3671,6 +3673,32 @@
   font: 700 11px Verdana, Arial, sans-serif;
   height: 20px;
   padding: 0 6px;
+}
+
+.fc-premium-thread-header-message-search {
+  flex: 1;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-panel {
+  margin: 0;
+  width: 100%;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-panel td {
+  padding: 2px 4px;
+}
+
+.fc-premium-thread-header-message-search .fc-premium-thread-search-layout {
+  gap: 3px 5px;
+  grid-template-columns: minmax(120px, 1fr) minmax(100px, 0.85fr) auto auto;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-status {
+  grid-column: 1 / -1;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-selected-authors {
+  margin-top: 3px;
 }
 
 #fc-premium-thread-search-panel {
@@ -5336,6 +5364,7 @@ body table.tborder:has(.navbar) {
 }
 
 .fc-premium-thread-header-breadcrumbs {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
 }
@@ -5380,6 +5409,32 @@ body table.tborder:has(.navbar) {
   font: 700 11px Verdana, Arial, sans-serif;
   height: 20px;
   padding: 0 6px;
+}
+
+.fc-premium-thread-header-message-search {
+  flex: 1;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-panel {
+  margin: 0;
+  width: 100%;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-panel td {
+  padding: 2px 4px;
+}
+
+.fc-premium-thread-header-message-search .fc-premium-thread-search-layout {
+  gap: 3px 5px;
+  grid-template-columns: minmax(120px, 1fr) minmax(100px, 0.85fr) auto auto;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-status {
+  grid-column: 1 / -1;
+}
+
+.fc-premium-thread-header-message-search #fc-premium-thread-search-selected-authors {
+  margin-top: 3px;
 }
 
 #fc-premium-thread-search-panel {
@@ -6170,6 +6225,10 @@ body table.tborder:has(.navbar) {
         breadcrumbSlot.append(breadcrumbs);
       }
       layout.append(breadcrumbSlot);
+      const searchSlot = document.createElement("div");
+      searchSlot.id = THREAD_SEARCH_HEADER_SLOT_ID;
+      searchSlot.className = "fc-premium-thread-header-message-search";
+      layout.append(searchSlot);
       cell.append(layout);
       hideForumHeaderSearchForm();
       if (searchParentCell instanceof HTMLElement) {
@@ -6886,6 +6945,10 @@ body table.tborder:has(.navbar) {
     }
     function ensureThreadSearchPanel() {
       const existing = document.getElementById(THREAD_SEARCH_PANEL_ID);
+      const headerSlot = document.getElementById(THREAD_SEARCH_HEADER_SLOT_ID);
+      if (existing instanceof HTMLTableElement && headerSlot instanceof HTMLElement && !headerSlot.contains(existing)) {
+        headerSlot.append(existing);
+      }
       if (existing instanceof HTMLTableElement) {
         return existing;
       }
@@ -6899,7 +6962,11 @@ body table.tborder:has(.navbar) {
         onAddAuthor: addThreadAuthorFilterFromInput,
         onClearFilters: clearThreadPostFilters
       });
-      posts.before(panel);
+      if (headerSlot instanceof HTMLElement) {
+        headerSlot.append(panel);
+      } else {
+        posts.before(panel);
+      }
       return panel;
     }
     function refreshThreadAuthorDatalist2() {

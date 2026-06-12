@@ -13,6 +13,7 @@ import {
 } from "../../ui/threadPostFiltersDom";
 import {
   THREAD_SEARCH_AUTHOR_INPUT_ID,
+  THREAD_SEARCH_HEADER_SLOT_ID,
   THREAD_SEARCH_PANEL_ID,
 } from "../../config/constants";
 import type {
@@ -140,6 +141,15 @@ export function createThreadPostFilterController(
 
   function ensureThreadSearchPanel(): HTMLTableElement | null {
     const existing = document.getElementById(THREAD_SEARCH_PANEL_ID);
+    const headerSlot = document.getElementById(THREAD_SEARCH_HEADER_SLOT_ID);
+
+    if (
+      existing instanceof HTMLTableElement &&
+      headerSlot instanceof HTMLElement &&
+      !headerSlot.contains(existing)
+    ) {
+      headerSlot.append(existing);
+    }
 
     if (existing instanceof HTMLTableElement) {
       return existing;
@@ -158,7 +168,12 @@ export function createThreadPostFilterController(
       onClearFilters: clearThreadPostFilters,
     });
 
-    posts.before(panel);
+    if (headerSlot instanceof HTMLElement) {
+      headerSlot.append(panel);
+    } else {
+      posts.before(panel);
+    }
+
     return panel;
   }
 

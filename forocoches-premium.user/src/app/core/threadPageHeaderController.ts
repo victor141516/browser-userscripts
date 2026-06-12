@@ -1,4 +1,8 @@
-import { STYLE_ID, FORUM_LAYOUT_HIDDEN_ATTRIBUTE } from "../../config/constants";
+import {
+  STYLE_ID,
+  FORUM_LAYOUT_HIDDEN_ATTRIBUTE,
+  THREAD_SEARCH_HEADER_SLOT_ID,
+} from "../../config/constants";
 import { hideTopShortcutBarsBefore } from "../../adapters/forocoches/forumLayout";
 import {
   getNavbarSearchLink,
@@ -75,6 +79,12 @@ export function createThreadPageHeaderController(): ThreadPageHeaderController {
     }
 
     layout.append(breadcrumbSlot);
+
+    const searchSlot = document.createElement("div");
+    searchSlot.id = THREAD_SEARCH_HEADER_SLOT_ID;
+    searchSlot.className = "fc-premium-thread-header-message-search";
+    layout.append(searchSlot);
+
     cell.append(layout);
     hideForumHeaderSearchForm();
 
