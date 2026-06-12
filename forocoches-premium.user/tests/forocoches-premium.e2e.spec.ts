@@ -879,16 +879,6 @@ async function validateQuoteFlows(page: Page, generalUrl: string): Promise<void>
   const found = await findQuoteCandidate(page, generalUrl);
   expect(found, "need a candidate thread/page with quote controls").toBe(true);
 
-  const quoteLink = page.locator(".fc-premium-reply-badge a[href*='showthread.php']").first();
-  await expect(quoteLink).toBeVisible();
-  const target = await quoteLink.evaluate((link) =>
-    new URL((link as HTMLAnchorElement).href).hash.replace(/^#post/, ""),
-  );
-  await quoteLink.click();
-  await expect
-    .poll(() => page.url())
-    .toMatch(new RegExp(`(?:#post${target}|[?&]p=${target})`));
-
   const viewAll = page.getByRole("button", { name: "Ver todas" }).first();
   await expect(viewAll).toBeVisible();
   const rootPostId = await viewAll.evaluate((button) => {
@@ -900,6 +890,19 @@ async function validateQuoteFlows(page: Page, generalUrl: string): Promise<void>
   const quotedByPosts = await visibleThreadPosts(page);
   expect(quotedByPosts[0]?.id).toBe(rootPostId);
   expect(quotedByPosts.length).toBeGreaterThanOrEqual(3);
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await waitForPremiumReady(page);
+  await waitForThreadLoadIdle(page);
+
+  const quoteLink = page.locator(".fc-premium-reply-badge a[href*='showthread.php']").first();
+  await expect(quoteLink).toBeVisible();
+  const target = await quoteLink.evaluate((link) =>
+    new URL((link as HTMLAnchorElement).href).hash.replace(/^#post/, ""),
+  );
+  await quoteLink.click();
+  await expect
+    .poll(() => page.url())
+    .toMatch(new RegExp(`(?:#post${target}|[?&]p=${target})`));
 }
 
 async function findQuoteCandidate(page: Page, generalUrl: string): Promise<boolean> {
