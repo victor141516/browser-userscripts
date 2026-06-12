@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -682,22 +683,24 @@ async function forumRowTitleAt(page: Page, index: number): Promise<RegExp> {
 }
 
 async function completeManualLogin(page: Page): Promise<void> {
-  if (!(await isLoggedIn(page))) {
-    await openLoginScreen(page);
+  if (await isLoggedIn(page)) {
+    console.log("\nForoCoches session already appears logged in; continuing.\n");
+    return;
   }
 
+  await openLoginScreen(page);
   console.log(
-    "\nForoCoches login needed: use the headed browser window to log in, then click the blue 'Continue E2E test' button injected on the page.\n",
+    "\nForoCoches login needed: use the headed browser window to log in manually.",
   );
-  await showManualLoginOverlay(page);
-  await page.waitForFunction(() => window.__fcPremiumManualLoginConfirmed === true, {
-    timeout: 15 * 60 * 1000,
-  });
-  await page.evaluate(() => document.getElementById("__fcPremiumManualLoginOverlay")?.remove());
+  await waitForManualLoginConfirmation();
+  await page.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => undefined);
 
-  expect(await isLoggedIn(page), "manual login confirmation must leave an authenticated page").toBe(
-    true,
-  );
+  await expect
+    .poll(() => isLoggedIn(page), {
+      message: "manual login confirmation must leave an authenticated page",
+      timeout: 120_000,
+    })
+    .toBe(true);
 }
 
 async function openLoginScreen(page: Page): Promise<void> {
@@ -712,35 +715,17 @@ async function openLoginScreen(page: Page): Promise<void> {
   await page.goto("https://forocoches.com/foro/login.php", { waitUntil: "domcontentloaded" });
 }
 
-async function showManualLoginOverlay(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    window.__fcPremiumManualLoginConfirmed = false;
-    document.getElementById("__fcPremiumManualLoginOverlay")?.remove();
-    const overlay = document.createElement("div");
-    overlay.id = "__fcPremiumManualLoginOverlay";
-    overlay.style.cssText = [
-      "position:fixed",
-      "z-index:2147483647",
-      "right:16px",
-      "bottom:16px",
-      "background:#0b5fff",
-      "color:white",
-      "font:14px system-ui,sans-serif",
-      "padding:12px",
-      "box-shadow:0 8px 24px rgba(0,0,0,.25)",
-      "border-radius:6px",
-    ].join(";");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "Continue E2E test";
-    button.style.cssText =
-      "font:inherit;color:#0b5fff;background:white;border:0;border-radius:4px;padding:8px 10px;cursor:pointer";
-    button.onclick = () => {
-      window.__fcPremiumManualLoginConfirmed = true;
-    };
-    overlay.append(button);
-    document.body.append(overlay);
+async function waitForManualLoginConfirmation(): Promise<void> {
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
   });
+
+  try {
+    await readline.question("Press Enter here after ForoCoches is logged in...");
+  } finally {
+    readline.close();
+  }
 }
 
 async function isLoggedIn(page: Page): Promise<boolean> {
@@ -1006,10 +991,4 @@ function requirePage(page: Page | null): Page {
     throw new Error("Playwright page was not initialized");
   }
   return page;
-}
-
-declare global {
-  interface Window {
-    __fcPremiumManualLoginConfirmed?: boolean;
-  }
 }
