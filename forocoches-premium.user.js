@@ -7638,6 +7638,7 @@ body table.tborder:has(.navbar) {
 
   // src/app/core/threadPostRenderer.ts
   function createThreadPostRenderer(options) {
+    let lastRenderedStablePageSignature = null;
     function selectPostById(postId, selectOptions = {}) {
       const table = document.getElementById(`post${postId}`);
       const wrapper = table?.closest(".fc-premium-post-wrapper");
@@ -7694,6 +7695,24 @@ body table.tborder:has(.navbar) {
       updatePostCompactLayout(wrapper, options.compactModeEnabled);
       return wrapper;
     }
+    function getStablePageRenderSignature(optionsForSignature) {
+      const activePageFilter = options.getActivePageFilter();
+      if (!activePageFilter || options.getActiveGraphView() || options.hasActiveThreadPostFilters() || optionsForSignature.pendingInitialHashPostId) {
+        return null;
+      }
+      const visiblePageSignature = optionsForSignature.viewPosts.map((post, index) => post.pageNumber === activePageFilter ? [
+        index,
+        post.id,
+        post.pageNumber,
+        hashString(post.html).toString(36),
+        post.isOriginalPoster ? 1 : 0,
+        post.replyCount,
+        post.replyingPostIds.join(","),
+        optionsForSignature.rankByPostId.get(post.id) || 0,
+        options.getReplyIndentDepth(post, index)
+      ].join(":") : "").filter(Boolean).join("|");
+      return `${activePageFilter}|${visiblePageSignature}`;
+    }
     function renderThreadPosts(posts) {
       const postsElement = options.getPostsElement();
       if (!postsElement) {
@@ -7707,6 +7726,16 @@ body table.tborder:has(.navbar) {
       const postById = new Map(posts.map((post) => [post.id, post]));
       const rankByPostId = getReplyRankByPostId(posts);
       const viewPosts = options.getThreadViewPosts(posts);
+      const stablePageSignature = getStablePageRenderSignature({
+        pendingInitialHashPostId,
+        viewPosts,
+        rankByPostId
+      });
+      if (stablePageSignature !== null && stablePageSignature === lastRenderedStablePageSignature) {
+        options.renderThreadSearchPanel();
+        return;
+      }
+      lastRenderedStablePageSignature = stablePageSignature;
       for (const [index, post] of viewPosts.entries()) {
         fragment.append(renderPost(post, rankByPostId.get(post.id) || 0, postById, options.getReplyIndentDepth(post, index)));
       }
@@ -8058,6 +8087,8 @@ body table.tborder:has(.navbar) {
       compactModeEnabled,
       getPostsElement,
       getActiveGraphView: () => activeGraphView,
+      getActivePageFilter: () => activePageFilter,
+      hasActiveThreadPostFilters: () => hasActiveThreadPostFilters(),
       getPendingInitialHashPostId: () => pendingInitialHashPostId,
       clearPendingInitialHashPostId: () => {
         pendingInitialHashPostId = null;

@@ -342,6 +342,8 @@ export function createThreadPageController(): ThreadPageController {
     compactModeEnabled,
     getPostsElement,
     getActiveGraphView: () => activeGraphView,
+    getActivePageFilter: () => activePageFilter,
+    hasActiveThreadPostFilters: () => hasActiveThreadPostFilters(),
     getPendingInitialHashPostId: () => pendingInitialHashPostId,
     clearPendingInitialHashPostId: () => {
       pendingInitialHashPostId = null;

@@ -15,11 +15,14 @@ import { updatePostCompactLayout } from "../../ui/postCompactLayoutDom";
 import { appendReplyBadge } from "../../ui/postReplyBadgeDom";
 import { getQuotedPostId } from "../../adapters/forocoches/threadParser";
 import { isVisible } from "../../shared/dom";
+import { hashString } from "../../shared/hash";
 
 export interface ThreadPostRendererOptions {
   compactModeEnabled: boolean;
   getPostsElement: () => HTMLElement | null;
   getActiveGraphView: () => ActiveGraphView | null;
+  getActivePageFilter: () => number | null;
+  hasActiveThreadPostFilters: () => boolean;
   getPendingInitialHashPostId: () => string | null;
   clearPendingInitialHashPostId: () => void;
   getSelectedNavigationItem: () => NavigationItem | null;
@@ -61,6 +64,8 @@ export interface ThreadPostRenderer {
 export function createThreadPostRenderer(
   options: ThreadPostRendererOptions,
 ): ThreadPostRenderer {
+  let lastRenderedStablePageSignature: string | null = null;
+
   function selectPostById(
     postId: string,
     selectOptions: { scroll?: boolean; updateUrl?: boolean } = {},
@@ -138,6 +143,44 @@ export function createThreadPostRenderer(
     return wrapper;
   }
 
+  function getStablePageRenderSignature(optionsForSignature: {
+    pendingInitialHashPostId: string | null;
+    viewPosts: PostRecord[];
+    rankByPostId: Map<string, number>;
+  }): string | null {
+    const activePageFilter = options.getActivePageFilter();
+
+    if (
+      !activePageFilter ||
+      options.getActiveGraphView() ||
+      options.hasActiveThreadPostFilters() ||
+      optionsForSignature.pendingInitialHashPostId
+    ) {
+      return null;
+    }
+
+    const visiblePageSignature = optionsForSignature.viewPosts
+      .map((post, index) =>
+        post.pageNumber === activePageFilter
+          ? [
+              index,
+              post.id,
+              post.pageNumber,
+              hashString(post.html).toString(36),
+              post.isOriginalPoster ? 1 : 0,
+              post.replyCount,
+              post.replyingPostIds.join(","),
+              optionsForSignature.rankByPostId.get(post.id) || 0,
+              options.getReplyIndentDepth(post, index),
+            ].join(":")
+          : "",
+      )
+      .filter(Boolean)
+      .join("|");
+
+    return `${activePageFilter}|${visiblePageSignature}`;
+  }
+
   function renderThreadPosts(posts: PostRecord[]) {
     const postsElement = options.getPostsElement();
 
@@ -159,6 +202,21 @@ export function createThreadPostRenderer(
     const postById = new Map(posts.map((post) => [post.id, post]));
     const rankByPostId = getReplyRankByPostId(posts);
     const viewPosts = options.getThreadViewPosts(posts);
+    const stablePageSignature = getStablePageRenderSignature({
+      pendingInitialHashPostId,
+      viewPosts,
+      rankByPostId,
+    });
+
+    if (
+      stablePageSignature !== null &&
+      stablePageSignature === lastRenderedStablePageSignature
+    ) {
+      options.renderThreadSearchPanel();
+      return;
+    }
+
+    lastRenderedStablePageSignature = stablePageSignature;
 
     for (const [index, post] of viewPosts.entries()) {
       fragment.append(
