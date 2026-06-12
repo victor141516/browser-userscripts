@@ -26,6 +26,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .eslintcache
 .cache
 *.tsbuildinfo
+tests/.chrome-profile
+test-results
+playwright-report
 
 # IntelliJ based IDEs
 .idea

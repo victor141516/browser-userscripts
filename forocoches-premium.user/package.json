@@ -5,9 +5,11 @@
   "private": true,
   "scripts": {
     "build": "bun run scripts/build.ts",
-    "check": "bunx tsc --noEmit"
+    "check": "bunx tsc --noEmit",
+    "e2e": "playwright test tests/forocoches-premium.e2e.spec.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/bun": "latest"
   },
   "peerDependencies": {
