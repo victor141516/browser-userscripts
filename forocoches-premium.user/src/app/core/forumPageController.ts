@@ -526,9 +526,6 @@ export function createForumPageController(): ForumPageController {
 
   const forumPageKeyboard = createForumPageKeyboardController({
     moveNavigation,
-    selectNavigationIndex,
-    getNavigationLength,
-    refreshNavigation,
     isOpenSelectedThreadInNewTabShortcut,
     openSelectedForumThreadInNewTab,
     isHiddenThreadsModalOpen,

@@ -2,8 +2,6 @@ import {
   KEY_CLEAR_ACTIVE_VIEW,
   KEY_HIDE_SELECTED_THREAD,
   KEY_MULTIQUOTE_SELECTED_POST,
-  KEY_NAV_FIRST_POST,
-  KEY_NAV_LAST_POST,
   KEY_NAV_NEXT_POST,
   KEY_NAV_NEXT_PAGE,
   KEY_NAV_PREVIOUS_PAGE,
@@ -22,10 +20,6 @@ export function getShortcutHelpItems(): ShortcutHelpItem[] {
     {
       keys: [KEY_NAV_PREVIOUS_POST, KEY_NAV_NEXT_POST],
       description: "Seleccionar mensaje anterior/siguiente",
-    },
-    {
-      keys: [KEY_NAV_FIRST_POST, KEY_NAV_LAST_POST],
-      description: "Ir al primer/ultimo mensaje",
     },
     {
       keys: [KEY_NAV_PREVIOUS_PAGE, KEY_NAV_NEXT_PAGE],
@@ -84,14 +78,6 @@ export function formatShortcutHelpKey(key: string): string {
 
   if (key === KEY_NAV_NEXT_PAGE) {
     return "Derecha";
-  }
-
-  if (key === KEY_NAV_FIRST_POST) {
-    return "Inicio";
-  }
-
-  if (key === KEY_NAV_LAST_POST) {
-    return "Fin";
   }
 
   if (key === KEY_CLEAR_ACTIVE_VIEW) {

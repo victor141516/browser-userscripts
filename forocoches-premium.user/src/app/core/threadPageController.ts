@@ -132,12 +132,10 @@ export function createThreadPageController(): ThreadPageController {
 
   const refreshNavigation = navigationController.refreshNavigation;
   const moveNavigation = navigationController.moveNavigation;
-  const selectNavigationIndex = navigationController.selectNavigationIndex;
   const selectNavigationElement = navigationController.selectNavigationElement;
   const getSelectedNavigationItem =
     navigationController.getSelectedNavigationItem;
   const getSelectedPostWrapper = navigationController.getSelectedPostWrapper;
-  const getNavigationLength = navigationController.getNavigationLength;
 
   function quoteSelectedPost(wrapper: HTMLElement): boolean {
     return clickPostQuoteAction(wrapper);
@@ -229,9 +227,6 @@ export function createThreadPageController(): ThreadPageController {
 
   const threadPageKeyboard = createThreadPageKeyboardController({
     moveNavigation,
-    selectNavigationIndex,
-    getNavigationLength,
-    refreshNavigation,
     getActiveGraphView: () => activeGraphView,
     hasActiveThreadPostFilters: () => hasActiveThreadPostFilters(),
     openThreadReplyWithoutQuote,
@@ -426,8 +421,9 @@ export function createThreadPageController(): ThreadPageController {
     }
 
     installKeyboardNavigation();
-    await enhanceThreadPage();
+    prepareThreadPage();
     renderShortcutHelpButton();
+    await enhanceThreadPage();
     installThreadPageNavigation();
     installThreadHistoryNavigation();
   }

@@ -44,8 +44,6 @@
   // src/config/keyboard.ts
   var KEY_NAV_PREVIOUS_POST = "ArrowUp";
   var KEY_NAV_NEXT_POST = "ArrowDown";
-  var KEY_NAV_FIRST_POST = "Home";
-  var KEY_NAV_LAST_POST = "End";
   var KEY_NAV_PREVIOUS_PAGE = "ArrowLeft";
   var KEY_NAV_NEXT_PAGE = "ArrowRight";
   var KEY_CLEAR_ACTIVE_VIEW = "Escape";
@@ -684,10 +682,6 @@
         description: "Seleccionar mensaje anterior/siguiente"
       },
       {
-        keys: [KEY_NAV_FIRST_POST, KEY_NAV_LAST_POST],
-        description: "Ir al primer/ultimo mensaje"
-      },
-      {
         keys: [KEY_NAV_PREVIOUS_PAGE, KEY_NAV_NEXT_PAGE],
         description: "Ir a la pagina anterior/siguiente"
       },
@@ -740,12 +734,6 @@
     }
     if (key === KEY_NAV_NEXT_PAGE) {
       return "Derecha";
-    }
-    if (key === KEY_NAV_FIRST_POST) {
-      return "Inicio";
-    }
-    if (key === KEY_NAV_LAST_POST) {
-      return "Fin";
     }
     if (key === KEY_CLEAR_ACTIVE_VIEW) {
       return "Esc";
@@ -1995,19 +1983,6 @@
           return true;
         }
         return false;
-      }
-      if (event.key === KEY_NAV_FIRST_POST) {
-        event.preventDefault();
-        handlers.selectNavigationIndex(0);
-        return true;
-      }
-      if (event.key === KEY_NAV_LAST_POST) {
-        event.preventDefault();
-        if (handlers.getNavigationLength() === 0) {
-          handlers.refreshNavigation({ reset: true });
-        }
-        handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
-        return true;
       }
       if (event.key === KEY_NAV_PREVIOUS_PAGE) {
         event.preventDefault();
@@ -4800,9 +4775,6 @@ body table.tborder:has(.navbar) {
     }
     const forumPageKeyboard = createForumPageKeyboardController({
       moveNavigation,
-      selectNavigationIndex,
-      getNavigationLength,
-      refreshNavigation,
       isOpenSelectedThreadInNewTabShortcut,
       openSelectedForumThreadInNewTab,
       isHiddenThreadsModalOpen: isHiddenThreadsModalOpen2,
@@ -6560,19 +6532,6 @@ body table.tborder:has(.navbar) {
         handlers.moveNavigation(-1);
         return true;
       }
-      if (event.key === KEY_NAV_FIRST_POST) {
-        event.preventDefault();
-        handlers.selectNavigationIndex(0);
-        return true;
-      }
-      if (event.key === KEY_NAV_LAST_POST) {
-        event.preventDefault();
-        if (handlers.getNavigationLength() === 0) {
-          handlers.refreshNavigation({ reset: true });
-        }
-        handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
-        return true;
-      }
       if (event.key === KEY_NAV_PREVIOUS_PAGE) {
         event.preventDefault();
         return handlers.navigatePage(-1);
@@ -7992,11 +7951,9 @@ body table.tborder:has(.navbar) {
     }
     const refreshNavigation = navigationController.refreshNavigation;
     const moveNavigation = navigationController.moveNavigation;
-    const selectNavigationIndex = navigationController.selectNavigationIndex;
     const selectNavigationElement = navigationController.selectNavigationElement;
     const getSelectedNavigationItem = navigationController.getSelectedNavigationItem;
     const getSelectedPostWrapper2 = navigationController.getSelectedPostWrapper;
-    const getNavigationLength = navigationController.getNavigationLength;
     function quoteSelectedPost(wrapper) {
       return clickPostQuoteAction(wrapper);
     }
@@ -8066,9 +8023,6 @@ body table.tborder:has(.navbar) {
     const installThreadPageNavigation = threadPagePaginationController.installThreadPageNavigation;
     const threadPageKeyboard = createThreadPageKeyboardController({
       moveNavigation,
-      selectNavigationIndex,
-      getNavigationLength,
-      refreshNavigation,
       getActiveGraphView: () => activeGraphView,
       hasActiveThreadPostFilters: () => hasActiveThreadPostFilters(),
       openThreadReplyWithoutQuote: openThreadReplyWithoutQuote2,
@@ -8239,8 +8193,9 @@ body table.tborder:has(.navbar) {
         return;
       }
       installKeyboardNavigation();
-      await enhanceThreadPage2();
+      prepareThreadPage();
       renderShortcutHelpButton2();
+      await enhanceThreadPage2();
       installThreadPageNavigation();
       installThreadHistoryNavigation();
     }

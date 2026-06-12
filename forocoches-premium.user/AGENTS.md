@@ -212,7 +212,6 @@ Current important actions:
 - `ArrowUp` / `ArrowDown`: move selected post or thread.
 - `ArrowLeft` / `ArrowRight`: move to previous or next page on thread and
   forum-list pages.
-- `Home` / `End`: jump to first or last post.
 - `Escape`: clear active thread view/filter.
 - `?`: open shortcut help.
 - `Enter`: quote the selected post on thread pages, open selected thread on

@@ -1,8 +1,6 @@
 import {
   KEY_CLEAR_ACTIVE_VIEW,
   KEY_HIDE_SELECTED_THREAD,
-  KEY_NAV_FIRST_POST,
-  KEY_NAV_LAST_POST,
   KEY_NAV_NEXT_PAGE,
   KEY_NAV_NEXT_POST,
   KEY_NAV_PREVIOUS_PAGE,
@@ -23,9 +21,6 @@ import {
 
 export interface ForumPageKeyboardHandlers {
   moveNavigation: (direction: number) => void;
-  selectNavigationIndex: (index: number) => void;
-  getNavigationLength: () => number;
-  refreshNavigation: (options?: { reset?: boolean }) => void;
   isOpenSelectedThreadInNewTabShortcut: (event: KeyboardEvent) => boolean;
   openSelectedForumThreadInNewTab: () => boolean;
   isHiddenThreadsModalOpen: () => boolean;
@@ -95,22 +90,6 @@ export function createForumPageKeyboardController(
       }
 
       return false;
-    }
-
-    if (event.key === KEY_NAV_FIRST_POST) {
-      event.preventDefault();
-      handlers.selectNavigationIndex(0);
-      return true;
-    }
-
-    if (event.key === KEY_NAV_LAST_POST) {
-      event.preventDefault();
-      if (handlers.getNavigationLength() === 0) {
-        handlers.refreshNavigation({ reset: true });
-      }
-
-      handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
-      return true;
     }
 
     if (event.key === KEY_NAV_PREVIOUS_PAGE) {
