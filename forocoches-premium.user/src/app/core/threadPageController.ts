@@ -37,6 +37,7 @@ import {
   openThreadReplyWithoutQuote as openThreadReplyWithoutQuoteAction,
   togglePostMultiquote,
 } from "../../adapters/forocoches/postReplyActions";
+import { getThreadForumListLink } from "../../adapters/forocoches/threadHeader";
 import { readThreadQueryState } from "../../services/queryState";
 import {
   cleanupThreadCache,
@@ -155,27 +156,15 @@ export function createThreadPageController(): ThreadPageController {
     );
   }
 
-  const threadPageKeyboard = createThreadPageKeyboardController({
-    moveNavigation,
-    selectNavigationIndex,
-    getNavigationLength,
-    refreshNavigation,
-    getActiveGraphView: () => activeGraphView,
-    hasActiveThreadPostFilters: () => hasActiveThreadPostFilters(),
-    openThreadReplyWithoutQuote,
-    quoteSelectedPost: (wrapper) => quoteSelectedPost(wrapper),
-    toggleSelectedPostMultiquote: (wrapper) =>
-      toggleSelectedPostMultiquote(wrapper),
-    getSelectedPostWrapper,
-    clearThreadFilters: () => clearThreadFilters(),
-  });
+  function returnToThreadList(): boolean {
+    const link = getThreadForumListLink();
 
-  function installKeyboardNavigation() {
-    window.addEventListener(
-      "keydown",
-      threadPageKeyboard.handleNavigationKeyDown,
-      true,
-    );
+    if (!link) {
+      return false;
+    }
+
+    location.assign(link.href);
+    return true;
   }
 
   function getThreadPages(): ThreadPage[] {
@@ -237,6 +226,32 @@ export function createThreadPageController(): ThreadPageController {
     threadPagePaginationController.updateOriginalThreadPageMenus;
   const installThreadPageNavigation =
     threadPagePaginationController.installThreadPageNavigation;
+
+  const threadPageKeyboard = createThreadPageKeyboardController({
+    moveNavigation,
+    selectNavigationIndex,
+    getNavigationLength,
+    refreshNavigation,
+    getActiveGraphView: () => activeGraphView,
+    hasActiveThreadPostFilters: () => hasActiveThreadPostFilters(),
+    openThreadReplyWithoutQuote,
+    quoteSelectedPost: (wrapper) => quoteSelectedPost(wrapper),
+    toggleSelectedPostMultiquote: (wrapper) =>
+      toggleSelectedPostMultiquote(wrapper),
+    getSelectedPostWrapper,
+    clearThreadFilters: () => clearThreadFilters(),
+    navigatePage: (direction) =>
+      threadPagePaginationController.navigatePage(direction),
+    returnToThreadList,
+  });
+
+  function installKeyboardNavigation() {
+    window.addEventListener(
+      "keydown",
+      threadPageKeyboard.handleNavigationKeyDown,
+      true,
+    );
+  }
 
   const threadPostFilterController = createThreadPostFilterController({
     getPostsElement,
@@ -411,6 +426,7 @@ export function createThreadPageController(): ThreadPageController {
 
     installKeyboardNavigation();
     await enhanceThreadPage();
+    renderShortcutHelpButton();
     installThreadPageNavigation();
     installThreadHistoryNavigation();
   }

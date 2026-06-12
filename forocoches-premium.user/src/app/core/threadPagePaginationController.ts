@@ -25,6 +25,7 @@ export interface ThreadPagePaginationControllerOptions {
 
 export interface ThreadPagePaginationController {
   setPageFilter(pageNumber: number): void;
+  navigatePage(direction: number): boolean;
   applyPageFilter(): { total: number; visible: number };
   updateOriginalThreadPageMenus(): void;
   installThreadPageNavigation(): void;
@@ -45,6 +46,29 @@ export function createThreadPagePaginationController(
     options.renderThreadPosts();
     options.renderThreadSummaryMenu();
     window.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  function navigatePage(direction: number): boolean {
+    if (!isThreadPage() || options.getActiveGraphView()) {
+      return false;
+    }
+
+    const totalPages = options.getThreadPages().length;
+
+    if (totalPages <= 1) {
+      return false;
+    }
+
+    const currentPage =
+      options.getActivePageFilter() || getPageNumber(new URL(location.href));
+    const nextPage = Math.min(Math.max(currentPage + direction, 1), totalPages);
+
+    if (nextPage === currentPage) {
+      return false;
+    }
+
+    setPageFilter(nextPage);
+    return true;
   }
 
   function applyPageFilter(): { total: number; visible: number } {
@@ -101,6 +125,7 @@ export function createThreadPagePaginationController(
 
   return {
     setPageFilter,
+    navigatePage,
     applyPageFilter,
     updateOriginalThreadPageMenus,
     installThreadPageNavigation,

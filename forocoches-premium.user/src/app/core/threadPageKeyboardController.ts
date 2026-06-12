@@ -10,16 +10,20 @@ import {
   KEY_CLEAR_ACTIVE_VIEW,
   KEY_NAV_FIRST_POST,
   KEY_NAV_LAST_POST,
+  KEY_NAV_NEXT_PAGE,
   KEY_NAV_NEXT_POST,
+  KEY_NAV_PREVIOUS_PAGE,
   KEY_NAV_PREVIOUS_POST,
   KEY_MULTIQUOTE_SELECTED_POST,
   KEY_NEW_THREAD_REPLY,
   KEY_OPEN_SHORTCUT_HELP,
   KEY_QUOTE_SELECTED_POST,
+  KEY_RETURN_TO_THREAD_LIST,
 } from "../../config/constants";
 import {
   hasKeyboardModifier,
   isEditableTarget,
+  keyboardShortcutMatches,
 } from "../../services/keyboard";
 
 export interface ThreadPageKeyboardHandlers {
@@ -34,6 +38,8 @@ export interface ThreadPageKeyboardHandlers {
   toggleSelectedPostMultiquote: (wrapper: HTMLElement) => boolean;
   getSelectedPostWrapper: () => HTMLElement | null;
   clearThreadFilters: () => void;
+  navigatePage: (direction: number) => boolean;
+  returnToThreadList: () => boolean;
   getSelectedNavigationElement?: () => HTMLElement | null;
 }
 
@@ -92,7 +98,9 @@ export function createThreadPageKeyboardController(
 
     if (
       (event.key === KEY_NAV_NEXT_POST ||
-        event.key === KEY_NAV_PREVIOUS_POST) &&
+        event.key === KEY_NAV_PREVIOUS_POST ||
+        event.key === KEY_NAV_NEXT_PAGE ||
+        event.key === KEY_NAV_PREVIOUS_PAGE) &&
       hasKeyboardModifier(event)
     ) {
       return false;
@@ -136,6 +144,24 @@ export function createThreadPageKeyboardController(
 
       handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
       return true;
+    }
+
+    if (event.key === KEY_NAV_PREVIOUS_PAGE) {
+      event.preventDefault();
+      return handlers.navigatePage(-1);
+    }
+
+    if (event.key === KEY_NAV_NEXT_PAGE) {
+      event.preventDefault();
+      return handlers.navigatePage(1);
+    }
+
+    if (
+      !hasKeyboardModifier(event) &&
+      keyboardShortcutMatches(event, KEY_RETURN_TO_THREAD_LIST)
+    ) {
+      event.preventDefault();
+      return handlers.returnToThreadList();
     }
 
     if (handleSelectedPostActionShortcut(event)) {

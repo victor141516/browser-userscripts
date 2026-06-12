@@ -53,6 +53,19 @@ export function getNavbarSearchLink(): HTMLAnchorElement | null {
   return link instanceof HTMLAnchorElement ? link : null;
 }
 
+export function getThreadForumListLink(): HTMLAnchorElement | null {
+  const breadcrumbs =
+    document.querySelector(".fc-premium-thread-header-breadcrumbs") ||
+    getThreadBreadcrumbContentTable() ||
+    getThreadBreadcrumbOuterTable();
+
+  const links = Array.from(
+    (breadcrumbs || document).querySelectorAll("a[href*='forumdisplay.php']"),
+  ).filter((link): link is HTMLAnchorElement => link instanceof HTMLAnchorElement);
+
+  return links.at(-1) || null;
+}
+
 export function moveForumHeaderSearchForm(searchSlot: HTMLElement): boolean {
   const parts = getForumHeaderSearchFormParts();
 

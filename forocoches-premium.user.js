@@ -46,6 +46,8 @@
   var KEY_NAV_NEXT_POST = "ArrowDown";
   var KEY_NAV_FIRST_POST = "Home";
   var KEY_NAV_LAST_POST = "End";
+  var KEY_NAV_PREVIOUS_PAGE = "ArrowLeft";
+  var KEY_NAV_NEXT_PAGE = "ArrowRight";
   var KEY_CLEAR_ACTIVE_VIEW = "Escape";
   var KEY_OPEN_SHORTCUT_HELP = "?";
   var KEY_QUOTE_SELECTED_POST = "Enter";
@@ -54,6 +56,7 @@
   var KEY_HIDE_SELECTED_THREAD = "h";
   var KEY_NEW_THREAD_REPLY = "n";
   var KEY_MULTIQUOTE_SELECTED_POST = "m";
+  var KEY_RETURN_TO_THREAD_LIST = "l";
   // src/config/cache.ts
   var FORUM_SIDEBAR_STORAGE_KEY = "fcPremiumForumSidebarHidden";
   var THREAD_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
@@ -673,6 +676,14 @@
         description: "Ir al primer/ultimo mensaje"
       },
       {
+        keys: [KEY_NAV_PREVIOUS_PAGE, KEY_NAV_NEXT_PAGE],
+        description: "Ir a la pagina anterior/siguiente"
+      },
+      {
+        keys: [KEY_RETURN_TO_THREAD_LIST],
+        description: "Volver a la lista de hilos"
+      },
+      {
         keys: [KEY_QUOTE_SELECTED_POST],
         description: "Abrir/citar el seleccionado"
       },
@@ -712,6 +723,12 @@
     if (key === KEY_NAV_NEXT_POST) {
       return "Abajo";
     }
+    if (key === KEY_NAV_PREVIOUS_PAGE) {
+      return "Izquierda";
+    }
+    if (key === KEY_NAV_NEXT_PAGE) {
+      return "Derecha";
+    }
     if (key === KEY_NAV_FIRST_POST) {
       return "Inicio";
     }
@@ -725,6 +742,39 @@
       return key.toUpperCase();
     }
     return key;
+  }
+
+  // src/shared/hash.ts
+  function hashString(value) {
+    let hash = 0;
+    for (let index = 0;index < value.length; index += 1) {
+      hash = hash * 31 + value.charCodeAt(index) >>> 0;
+    }
+    return hash;
+  }
+
+  // src/domain/forumThreadList.ts
+  function getForumThreadRowsSignature(rowHtmlList, scope) {
+    return `${scope}|${rowHtmlList.length}|${rowHtmlList.map((html) => hashString(html).toString(36)).join(":")}`;
+  }
+  function getForumThreadListPage(records, requestedPage, pageSize) {
+    const totalPages = getForumThreadListTotalPages(records.length, pageSize);
+    const currentPage = clampForumThreadListPage(requestedPage, totalPages);
+    const start = (currentPage - 1) * pageSize;
+    const pageRecords = records.slice(start, start + pageSize);
+    return {
+      currentPage,
+      totalPages,
+      pageSize,
+      records: pageRecords,
+      rowHtmlList: pageRecords.map((record) => record.html)
+    };
+  }
+  function getForumThreadListTotalPages(totalRecords, pageSize) {
+    return Math.max(1, Math.ceil(totalRecords / pageSize));
+  }
+  function clampForumThreadListPage(pageNumber, totalPages) {
+    return Math.min(Math.max(pageNumber, 1), totalPages);
   }
 
   // src/services/queryState.ts
@@ -793,6 +843,12 @@
   }
   function hasKeyboardModifier(event) {
     return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+  }
+  function keyboardShortcutMatches(event, key) {
+    if (key.length === 1) {
+      return event.key.toLowerCase() === key.toLowerCase();
+    }
+    return event.key === key;
   }
   function isMacKeyboardPlatform() {
     return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || "");
@@ -957,15 +1013,6 @@
         }, undefined, false, undefined, this)
       ]
     }, undefined, true, undefined, this));
-  }
-
-  // src/shared/hash.ts
-  function hashString(value) {
-    let hash = 0;
-    for (let index = 0;index < value.length; index += 1) {
-      hash = hash * 31 + value.charCodeAt(index) >>> 0;
-    }
-    return hash;
   }
 
   // src/domain/tags.ts
@@ -1560,6 +1607,11 @@
     const link = document.getElementById("navbar_search");
     return link instanceof HTMLAnchorElement ? link : null;
   }
+  function getThreadForumListLink() {
+    const breadcrumbs = document.querySelector(".fc-premium-thread-header-breadcrumbs") || getThreadBreadcrumbContentTable() || getThreadBreadcrumbOuterTable();
+    const links = Array.from((breadcrumbs || document).querySelectorAll("a[href*='forumdisplay.php']")).filter((link) => link instanceof HTMLAnchorElement);
+    return links.at(-1) || null;
+  }
   function moveForumHeaderSearchForm(searchSlot) {
     const parts = getForumHeaderSearchFormParts();
     if (!parts) {
@@ -1903,6 +1955,9 @@
       if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && hasKeyboardModifier(event)) {
         return false;
       }
+      if ((event.key === KEY_NAV_NEXT_PAGE || event.key === KEY_NAV_PREVIOUS_PAGE) && hasKeyboardModifier(event)) {
+        return false;
+      }
       if (event.key === KEY_OPEN_SHORTCUT_HELP) {
         event.preventDefault();
         setShortcutHelpPopoverOpen(true);
@@ -1941,6 +1996,14 @@
         }
         handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
         return true;
+      }
+      if (event.key === KEY_NAV_PREVIOUS_PAGE) {
+        event.preventDefault();
+        return handlers.navigateForumPage(-1);
+      }
+      if (event.key === KEY_NAV_NEXT_PAGE) {
+        event.preventDefault();
+        return handlers.navigateForumPage(1);
       }
       if (event.key === KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB && handlers.isOpenSelectedThreadInNewTabShortcut(event)) {
         event.preventDefault();
@@ -3052,30 +3115,6 @@
     };
   }
 
-  // src/domain/forumThreadList.ts
-  function getForumThreadRowsSignature(rowHtmlList, scope) {
-    return `${scope}|${rowHtmlList.length}|${rowHtmlList.map((html) => hashString(html).toString(36)).join(":")}`;
-  }
-  function getForumThreadListPage(records, requestedPage, pageSize) {
-    const totalPages = getForumThreadListTotalPages(records.length, pageSize);
-    const currentPage = clampForumThreadListPage(requestedPage, totalPages);
-    const start = (currentPage - 1) * pageSize;
-    const pageRecords = records.slice(start, start + pageSize);
-    return {
-      currentPage,
-      totalPages,
-      pageSize,
-      records: pageRecords,
-      rowHtmlList: pageRecords.map((record) => record.html)
-    };
-  }
-  function getForumThreadListTotalPages(totalRecords, pageSize) {
-    return Math.max(1, Math.ceil(totalRecords / pageSize));
-  }
-  function clampForumThreadListPage(pageNumber, totalPages) {
-    return Math.min(Math.max(pageNumber, 1), totalPages);
-  }
-
   // src/domain/pagination.ts
   function getVisiblePageNumbers(totalPages, currentPage) {
     if (totalPages <= 11) {
@@ -3396,6 +3435,31 @@
         return;
       }
       selected.link.click();
+    }
+    function navigateForumPage(direction) {
+      if (!isForumDisplayPage()) {
+        return false;
+      }
+      const currentPage = activeTagFilter || activeForumSearchQuery ? activeForumTagPage : getPageNumber(new URL(location.href));
+      const targetPage = currentPage + direction;
+      if (targetPage < 1) {
+        return false;
+      }
+      if (activeTagFilter || activeForumSearchQuery) {
+        const totalPages = getForumThreadListTotalPages(getForumThreadRecordsForTag(activeTagFilter).length, getForumThreadsPerPage());
+        const clampedPage = clampForumThreadListPage(targetPage, totalPages);
+        if (clampedPage === currentPage) {
+          return false;
+        }
+        setForumTagPage(clampedPage);
+        return true;
+      }
+      const targetUrl = Array.from(document.querySelectorAll(".pagenav a[href*='forumdisplay.php']")).filter((link) => link instanceof HTMLAnchorElement).map((link) => toUrl(link.getAttribute("href") || link.href)).find((url) => url && url.pathname === location.pathname && getForumId(url) === getForumId() && getPageNumber(url) === targetPage);
+      if (!targetUrl) {
+        return false;
+      }
+      loadForumDisplayPageWithJavascript(targetUrl);
+      return true;
     }
     function renderShortcutHelpButton2() {
       renderShortcutHelpButton({ items: getShortcutHelpItems(), formatKey: formatShortcutHelpKey });
@@ -4689,6 +4753,7 @@ body table.tborder:has(.navbar) {
       clearTagFilter,
       hideSelectedForumThread,
       openSelectedNavigationItem,
+      navigateForumPage,
       isThreadPage
     });
     return {
@@ -6393,7 +6458,7 @@ body table.tborder:has(.navbar) {
       if (isEditableTarget(event.target)) {
         return false;
       }
-      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) && hasKeyboardModifier(event)) {
+      if ((event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST || event.key === KEY_NAV_NEXT_PAGE || event.key === KEY_NAV_PREVIOUS_PAGE) && hasKeyboardModifier(event)) {
         return false;
       }
       if (event.key === KEY_OPEN_SHORTCUT_HELP) {
@@ -6428,6 +6493,18 @@ body table.tborder:has(.navbar) {
         }
         handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
         return true;
+      }
+      if (event.key === KEY_NAV_PREVIOUS_PAGE) {
+        event.preventDefault();
+        return handlers.navigatePage(-1);
+      }
+      if (event.key === KEY_NAV_NEXT_PAGE) {
+        event.preventDefault();
+        return handlers.navigatePage(1);
+      }
+      if (!hasKeyboardModifier(event) && keyboardShortcutMatches(event, KEY_RETURN_TO_THREAD_LIST)) {
+        event.preventDefault();
+        return handlers.returnToThreadList();
       }
       if (handleSelectedPostActionShortcut(event)) {
         return true;
@@ -6622,6 +6699,22 @@ body table.tborder:has(.navbar) {
       options.renderThreadSummaryMenu();
       window.scrollTo({ top: 0, behavior: "auto" });
     }
+    function navigatePage(direction) {
+      if (!isThreadPage() || options.getActiveGraphView()) {
+        return false;
+      }
+      const totalPages = options.getThreadPages().length;
+      if (totalPages <= 1) {
+        return false;
+      }
+      const currentPage = options.getActivePageFilter() || getPageNumber(new URL(location.href));
+      const nextPage = Math.min(Math.max(currentPage + direction, 1), totalPages);
+      if (nextPage === currentPage) {
+        return false;
+      }
+      setPageFilter(nextPage);
+      return true;
+    }
     function applyPageFilter() {
       return applyPageFilterToRenderedPosts(options.getPostsElement(), options.getActivePageFilter());
     }
@@ -6656,6 +6749,7 @@ body table.tborder:has(.navbar) {
     }
     return {
       setPageFilter,
+      navigatePage,
       applyPageFilter,
       updateOriginalThreadPageMenus: updateOriginalThreadPageMenus2,
       installThreadPageNavigation
@@ -7810,21 +7904,13 @@ body table.tborder:has(.navbar) {
     function openThreadReplyWithoutQuote2() {
       return openThreadReplyWithoutQuote(getThreadId(new URL(location.href)));
     }
-    const threadPageKeyboard = createThreadPageKeyboardController({
-      moveNavigation,
-      selectNavigationIndex,
-      getNavigationLength,
-      refreshNavigation,
-      getActiveGraphView: () => activeGraphView,
-      hasActiveThreadPostFilters: () => hasActiveThreadPostFilters(),
-      openThreadReplyWithoutQuote: openThreadReplyWithoutQuote2,
-      quoteSelectedPost: (wrapper) => quoteSelectedPost(wrapper),
-      toggleSelectedPostMultiquote: (wrapper) => toggleSelectedPostMultiquote(wrapper),
-      getSelectedPostWrapper: getSelectedPostWrapper2,
-      clearThreadFilters: () => clearThreadFilters()
-    });
-    function installKeyboardNavigation() {
-      window.addEventListener("keydown", threadPageKeyboard.handleNavigationKeyDown, true);
+    function returnToThreadList() {
+      const link = getThreadForumListLink();
+      if (!link) {
+        return false;
+      }
+      location.assign(link.href);
+      return true;
     }
     function getThreadPages() {
       const maxPage = getMaxThreadPage(document);
@@ -7876,6 +7962,24 @@ body table.tborder:has(.navbar) {
     const applyPageFilter = threadPagePaginationController.applyPageFilter;
     const updateOriginalThreadPageMenus2 = threadPagePaginationController.updateOriginalThreadPageMenus;
     const installThreadPageNavigation = threadPagePaginationController.installThreadPageNavigation;
+    const threadPageKeyboard = createThreadPageKeyboardController({
+      moveNavigation,
+      selectNavigationIndex,
+      getNavigationLength,
+      refreshNavigation,
+      getActiveGraphView: () => activeGraphView,
+      hasActiveThreadPostFilters: () => hasActiveThreadPostFilters(),
+      openThreadReplyWithoutQuote: openThreadReplyWithoutQuote2,
+      quoteSelectedPost: (wrapper) => quoteSelectedPost(wrapper),
+      toggleSelectedPostMultiquote: (wrapper) => toggleSelectedPostMultiquote(wrapper),
+      getSelectedPostWrapper: getSelectedPostWrapper2,
+      clearThreadFilters: () => clearThreadFilters(),
+      navigatePage: (direction) => threadPagePaginationController.navigatePage(direction),
+      returnToThreadList
+    });
+    function installKeyboardNavigation() {
+      window.addEventListener("keydown", threadPageKeyboard.handleNavigationKeyDown, true);
+    }
     const threadPostFilterController = createThreadPostFilterController({
       getPostsElement,
       getLoadedThreadPosts: () => loadedThreadPosts,
@@ -8033,6 +8137,7 @@ body table.tborder:has(.navbar) {
       }
       installKeyboardNavigation();
       await enhanceThreadPage2();
+      renderShortcutHelpButton2();
       installThreadPageNavigation();
       installThreadHistoryNavigation();
     }

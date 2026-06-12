@@ -32,6 +32,10 @@ import type {
   NavigationItem,
 } from "../../domain/types";
 import {
+  clampForumThreadListPage,
+  getForumThreadListTotalPages,
+} from "../../domain/forumThreadList";
+import {
   clearForumStateQueryParams,
   readForumQueryState,
 } from "../../services/queryState";
@@ -166,6 +170,56 @@ export function createForumPageController(): ForumPageController {
     }
 
     selected.link.click();
+  }
+
+  function navigateForumPage(direction: number): boolean {
+    if (!isForumDisplayPage()) {
+      return false;
+    }
+
+    const currentPage = activeTagFilter || activeForumSearchQuery
+      ? activeForumTagPage
+      : getPageNumber(new URL(location.href));
+    const targetPage = currentPage + direction;
+
+    if (targetPage < 1) {
+      return false;
+    }
+
+    if (activeTagFilter || activeForumSearchQuery) {
+      const totalPages = getForumThreadListTotalPages(
+        getForumThreadRecordsForTag(activeTagFilter).length,
+        getForumThreadsPerPage(),
+      );
+      const clampedPage = clampForumThreadListPage(targetPage, totalPages);
+
+      if (clampedPage === currentPage) {
+        return false;
+      }
+
+      setForumTagPage(clampedPage);
+      return true;
+    }
+
+    const targetUrl = Array.from(
+      document.querySelectorAll(".pagenav a[href*='forumdisplay.php']"),
+    )
+      .filter((link): link is HTMLAnchorElement => link instanceof HTMLAnchorElement)
+      .map((link) => toUrl(link.getAttribute("href") || link.href))
+      .find(
+        (url) =>
+          url &&
+          url.pathname === location.pathname &&
+          getForumId(url) === getForumId() &&
+          getPageNumber(url) === targetPage,
+      );
+
+    if (!targetUrl) {
+      return false;
+    }
+
+    void loadForumDisplayPageWithJavascript(targetUrl);
+    return true;
   }
 
   function renderShortcutHelpButton() {
@@ -483,6 +537,7 @@ export function createForumPageController(): ForumPageController {
     clearTagFilter,
     hideSelectedForumThread,
     openSelectedNavigationItem,
+    navigateForumPage,
     isThreadPage,
   });
 

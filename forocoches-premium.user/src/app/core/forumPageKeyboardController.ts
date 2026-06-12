@@ -3,7 +3,9 @@ import {
   KEY_HIDE_SELECTED_THREAD,
   KEY_NAV_FIRST_POST,
   KEY_NAV_LAST_POST,
+  KEY_NAV_NEXT_PAGE,
   KEY_NAV_NEXT_POST,
+  KEY_NAV_PREVIOUS_PAGE,
   KEY_NAV_PREVIOUS_POST,
   KEY_OPEN_SHORTCUT_HELP,
   KEY_OPEN_SELECTED_THREAD_IN_NEW_TAB,
@@ -32,6 +34,7 @@ export interface ForumPageKeyboardHandlers {
   clearTagFilter: () => void;
   hideSelectedForumThread: () => void | Promise<boolean>;
   openSelectedNavigationItem: () => void;
+  navigateForumPage: (direction: number) => boolean;
   isThreadPage: () => boolean;
 }
 
@@ -49,6 +52,14 @@ export function createForumPageKeyboardController(
 
     if (
       (event.key === KEY_NAV_NEXT_POST || event.key === KEY_NAV_PREVIOUS_POST) &&
+      hasKeyboardModifier(event)
+    ) {
+      return false;
+    }
+
+    if (
+      (event.key === KEY_NAV_NEXT_PAGE ||
+        event.key === KEY_NAV_PREVIOUS_PAGE) &&
       hasKeyboardModifier(event)
     ) {
       return false;
@@ -100,6 +111,16 @@ export function createForumPageKeyboardController(
 
       handlers.selectNavigationIndex(handlers.getNavigationLength() - 1);
       return true;
+    }
+
+    if (event.key === KEY_NAV_PREVIOUS_PAGE) {
+      event.preventDefault();
+      return handlers.navigateForumPage(-1);
+    }
+
+    if (event.key === KEY_NAV_NEXT_PAGE) {
+      event.preventDefault();
+      return handlers.navigateForumPage(1);
     }
 
     if (

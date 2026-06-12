@@ -6,6 +6,10 @@ export const KEY_NAV_FIRST_POST = "Home";
 
 export const KEY_NAV_LAST_POST = "End";
 
+export const KEY_NAV_PREVIOUS_PAGE = "ArrowLeft";
+
+export const KEY_NAV_NEXT_PAGE = "ArrowRight";
+
 export const KEY_CLEAR_ACTIVE_VIEW = "Escape";
 
 export const KEY_OPEN_SHORTCUT_HELP = "?";
@@ -21,3 +25,5 @@ export const KEY_HIDE_SELECTED_THREAD = "h";
 export const KEY_NEW_THREAD_REPLY = "n";
 
 export const KEY_MULTIQUOTE_SELECTED_POST = "m";
+
+export const KEY_RETURN_TO_THREAD_LIST = "l";
